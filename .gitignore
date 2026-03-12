@@ -1,0 +1,15 @@
+# Firebase Configuration
+firebaseConfig.js
+
+# Node.js and Dependencies (for Functions)
+node_modules/
+functions/node_modules/
+
+# Environment Variables
+.env
+functions/.env
+
+# Firebase CLI Cache Files
+.firebase/
+firebase-debug.log
+.firebaserc
