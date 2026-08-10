@@ -1,0 +1,32 @@
+{
+  "rules": {
+    "lobbyRooms": {
+      "$tableId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child('hostId').val() === auth.uid || data.child('playerIds').child(auth.uid).exists() || newData.child('hostId').val() === auth.uid || newData.child('playerIds').child(auth.uid).exists())",
+        "players": {
+          ".validate": "newData.hasChildren()"
+        }
+      }
+    },
+    "gameRooms": {
+      "$roomId": {
+        ".read": "auth != null && data.child('playerIds').child(auth.uid).exists()",
+        ".write": "auth != null && (!data.exists() || data.child('playerIds').child(auth.uid).exists())",
+        "players": {
+          "$playerId": {
+            "activeEmoji": {
+              ".write": "auth != null && data.parent().child('uid').val() === auth.uid"
+            }
+          }
+        }
+      }
+    },
+    "presence": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "$uid === auth.uid"
+      }
+    }
+  }
+}

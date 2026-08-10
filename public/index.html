@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Egyptian Rat Screw</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+    <link rel="stylesheet" href="style.css?v=2.9.0">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+
+<body class="theme-classic menu-screen">
+
+    <!-- PARALLAX 3D SCENE (Desktop Only — mobilde yüklenmez) -->
+    <div id="parallax-scene" class="parallax-hidden">
+        <div id="parallax-bg"></div>
+        <div id="parallax-glow">
+            <span class="glow-orb orb-1"></span>
+            <span class="glow-orb orb-2"></span>
+            <span class="glow-orb orb-3"></span>
+        </div>
+    </div>
+
+    <!-- TOP LEFT CORNER: PROFILE OR USERNAME -->
+    <div id="top-left-corner" style="position: absolute; top: 15px; left: 15px; z-index: 100;">
+        <div id="user-profile-btn" class="profile-btn">
+            <svg fill="currentColor" viewBox="0 0 24 24">
+                <path
+                    d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+            </svg>
+        </div>
+        <div id="display-username"
+            style="display: none; background: rgba(22, 27, 34, 0.6); padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.1); color: var(--primary); font-weight: bold; backdrop-filter: blur(10px);">
+        </div>
+    </div>
+
+    <!-- TOP RIGHT CORNER: SCORE -->
+    <div id="top-right-score"
+        style="display: none; position: absolute; top: 15px; right: 15px; z-index: 100; background: rgba(22, 27, 34, 0.6); padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255, 215, 0, 0.4); color: gold; font-weight: bold; backdrop-filter: blur(10px); box-shadow: 0 0 10px rgba(255,215,0,0.2);">
+        <span data-i18n="scoreLabel">Score</span>: <span id="display-score">0</span>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="main-menu" class="screen active">
+        <div style="flex: 1;"></div> <!-- Spacer to push UI to the lower center -->
+
+        <div class="setting-group" id="main-menu-username-group" style="margin-top: 1rem; margin-bottom: 2rem;">
+            <label data-i18n="enterName"
+                style="color: #fff; text-shadow: 0 0 10px var(--primary); font-weight: bold; font-size: 1.2rem; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Enter
+                Your Name</label>
+            <input type="text" id="input-username" data-i18n="phPlayer" placeholder="Player" maxlength="12"
+                class="ui-input crisp-dark">
+        </div>
+
+        <div class="menu-buttons sleek-layout">
+            <button id="btn-play-bots" class="btn primary vibrant-play" data-i18n="playBots"
+                style="margin-bottom: 10px;">Start With Bots</button>
+            <button id="btn-play-multi" class="btn primary" data-i18n="playMulti"
+                style="background: linear-gradient(135deg, #10b981, #059669); margin-bottom: 15px;">Multiplayer
+                Start</button>
+            <div class="secondary-actions">
+                <button id="btn-practice" class="btn secondary sleek-sub" data-i18n="practiceMode" style="border-color: rgba(167, 139, 250, 0.5); color: #d6bbfb;">🎓 Practice Mode</button>
+                <button id="btn-shop" class="btn secondary sleek-sub" data-i18n="shopButton" style="border-color: rgba(255, 215, 0, 0.4); color: #ffd700;">🛍️ Shop</button>
+                <button id="btn-rules" class="btn secondary sleek-sub" data-i18n="rules">Game Rules</button>
+                <button id="btn-leaderboard" class="btn secondary sleek-sub" data-i18n="topPlayers">Top Players</button>
+                <button id="btn-settings" class="btn secondary sleek-sub" data-i18n="settings">Settings</button>
+            </div>
+        </div>
+        <div style="flex: 0.5;"></div> <!-- Bottom spacer -->
+
+        <div id="game-version">Developer Berk Elmalı - v2.9.0</div>
+    </div>
+
+    <!-- PRACTICE / TUTORIAL MODE -->
+    <div id="tutorial-screen" class="screen">
+        <div class="tutorial-container">
+            <button id="btn-tutorial-exit" class="tutorial-exit-btn" data-i18n="tutorialExitBtn">✕ Exit Practice</button>
+
+            <div id="tutorial-intro" class="tutorial-intro">
+                <h2 data-i18n="tutorialIntroTitle">Welcome to Practice Mode</h2>
+                <p data-i18n="tutorialIntroDesc">Learn every slap pattern risk-free — no burns, no pressure. Just you, the pile, and four scripted hands.</p>
+                <button id="btn-tutorial-start" class="btn primary" data-i18n="tutorialNextBtn">Got it, continue</button>
+            </div>
+
+            <div id="tutorial-table" class="tutorial-table" style="display:none;">
+                <div id="tutorial-progress" class="tutorial-progress"></div>
+                <div id="tutorial-pile" class="tutorial-pile"></div>
+                <div id="tutorial-coach" class="tutorial-coach"></div>
+            </div>
+
+            <div id="tutorial-done" class="tutorial-done" style="display:none;">
+                <h2 data-i18n="tutorialDoneTitle">Practice Complete!</h2>
+                <p data-i18n="tutorialDoneDesc">You've seen every slap pattern and a full challenge. You're ready for the real table.</p>
+                <button id="btn-tutorial-finish" class="btn primary" data-i18n="tutorialNextBtn">Got it, continue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SHOP PANEL (v2.9.0) -->
+    <div id="shop-panel" class="screen scrollable-screen">
+        <h2 data-i18n="shopTitle">🛍️ Shop</h2>
+        <div id="shop-coin-balance" class="shop-coin-balance">🪙 0</div>
+        <div id="shop-notification" class="shop-notification"></div>
+        <div id="shop-grid" class="shop-grid">
+            <!-- Dynamically rendered by shopUI.js -->
+        </div>
+        <button id="btn-shop-back" class="btn secondary" data-i18n="back">Back</button>
+    </div>
+
+    <!-- LEADERBOARD PANEL -->
+    <div id="leaderboard-panel" class="screen scrollable-screen">
+        <h2 data-i18n="topPlayers">Top Players</h2>
+        <div id="leaderboard-content" class="rules-content" style="text-align: left;">
+            <p data-i18n="loading">Loading...</p>
+        </div>
+        <button id="btn-leaderboard-back" class="btn secondary" data-i18n="back">Back</button>
+    </div>
+
+    <!-- SETTINGS PANEL -->
+    <div id="settings-panel" class="screen">
+        <div class="lobby-content-container">
+            <h2 data-i18n="settings" class="panel-title">Settings</h2>
+
+            <div class="setting-group">
+                <label data-i18n="theme">Theme</label>
+                <select id="select-theme">
+                    <option value="theme-classic" data-i18n="themeClassic">Classic Table</option>
+                    <option value="theme-green" data-i18n="themeGreen">Green Table</option>
+                    <option value="theme-blue" data-i18n="themeBlue">Blue Table</option>
+                    <option value="theme-red" data-i18n="themeRed">Red Table</option>
+                    <option value="theme-dark" data-i18n="themeDark">Dark Table</option>
+                </select>
+            </div>
+
+            <div class="setting-group">
+                <label data-i18n="difficulty">Difficulty</label>
+                <select id="select-difficulty">
+                    <option value="easy" data-i18n="diffEasy">Easy</option>
+                    <option value="medium" data-i18n="diffMedium" selected>Medium</option>
+                    <option value="hard" data-i18n="diffHard">Hard</option>
+                    <option value="challenger" data-i18n="diffChallenger">Challenger</option>
+                </select>
+                <div id="difficulty-desc" style="font-size: 0.82rem; opacity: 0.95; margin-top: 8px; line-height: 1.45; color: #f59e0b; font-weight: 500; text-shadow: 0 1px 2px rgba(0,0,0,0.5);"></div>
+            </div>
+
+            <div class="setting-group">
+                <label data-i18n="matchLength">Match Length</label>
+                <select id="select-match-length">
+                    <option value="full" data-i18n="matchLengthFull" selected>Full Game</option>
+                    <option value="blitz" data-i18n="matchLengthBlitz">5-Minute Blitz</option>
+                </select>
+                <div style="font-size: 0.78rem; opacity: 0.55; margin-top: 6px;" data-i18n="matchLengthDesc">Blitz ends the match on a timer — most cards when time's up wins. Offline only.</div>
+            </div>
+
+            <div class="setting-group">
+                <label data-i18n="language">Language</label>
+                <select id="select-lang">
+                    <option value="en">English</option>
+                    <option value="tr">Türkçe</option>
+                    <option value="de">Deutsch</option>
+                    <option value="ru">Русский</option>
+                </select>
+            </div>
+
+            <div class="setting-group"
+                style="flex-direction: row; justify-content: space-between; align-items: center;">
+                <label data-i18n="music" style="margin-bottom: 0;">Music &amp; Ambience</label>
+                <input type="checkbox" id="toggle-music" checked style="width: 25px; height: 25px; cursor: pointer;">
+            </div>
+
+            <div class="setting-group"
+                style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <label data-i18n="sfx" style="margin-bottom: 0;">Sound Effects</label>
+                <input type="checkbox" id="toggle-sfx" checked style="width: 25px; height: 25px; cursor: pointer;">
+            </div>
+
+            <div class="setting-group"
+                style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <div>
+                    <label data-i18n="fastAnim" style="margin-bottom: 0;">Fast Animations</label>
+                    <div data-i18n="fastAnimDesc" style="font-size: 0.78rem; opacity: 0.55; margin-top: 2px;">Speeds up win-pile and card transitions</div>
+                </div>
+                <input type="checkbox" id="toggle-fast-anim" style="width: 25px; height: 25px; cursor: pointer; flex-shrink: 0; margin-left: 1rem;">
+            </div>
+
+            <h3 data-i18n="comfortSectionTitle" style="margin: 0.5rem 0 1rem; font-size: 1.05rem; opacity: 0.85; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.2rem;">Comfort &amp; Accessibility</h3>
+
+            <div class="setting-group"
+                style="flex-direction: row; justify-content: space-between; align-items: center;">
+                <div>
+                    <label data-i18n="reducedMotion" style="margin-bottom: 0;">Reduced Motion</label>
+                    <div data-i18n="reducedMotionDesc" style="font-size: 0.78rem; opacity: 0.55; margin-top: 2px;">Calms screen shake, parallax, and flashy transitions</div>
+                </div>
+                <input type="checkbox" id="toggle-reduced-motion" style="width: 25px; height: 25px; cursor: pointer; flex-shrink: 0; margin-left: 1rem;">
+            </div>
+
+            <div class="setting-group"
+                style="flex-direction: row; justify-content: space-between; align-items: center;">
+                <div>
+                    <label data-i18n="highLegibility" style="margin-bottom: 0;">High Legibility Text</label>
+                    <div data-i18n="highLegibilityDesc" style="font-size: 0.78rem; opacity: 0.55; margin-top: 2px;">Plain system font, wider spacing, no decorative shadows</div>
+                </div>
+                <input type="checkbox" id="toggle-high-legibility" style="width: 25px; height: 25px; cursor: pointer; flex-shrink: 0; margin-left: 1rem;">
+            </div>
+
+            <div class="setting-group"
+                style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <div>
+                    <label data-i18n="largerText" style="margin-bottom: 0;">Larger Text</label>
+                    <div data-i18n="largerTextDesc" style="font-size: 0.78rem; opacity: 0.55; margin-top: 2px;">Scales up in-game text for easier reading</div>
+                </div>
+                <input type="checkbox" id="toggle-larger-text" style="width: 25px; height: 25px; cursor: pointer; flex-shrink: 0; margin-left: 1rem;">
+            </div>
+
+            <button id="btn-back" class="btn secondary" data-i18n="back">Back</button>
+        </div>
+    </div>
+
+    <!-- RULES PANEL -->
+    <div id="rules-panel" class="screen scrollable-screen">
+        <div class="lobby-content-container rules-container">
+            <h2 data-i18n="rules" class="panel-title">Game Rules</h2>
+            <div class="rules-content">
+
+                <div class="rules-section">
+                    <h3 data-i18n="rWinTitle">🏆 How to Win</h3>
+                    <p data-i18n="rWinDesc">Collect <strong>all 52 cards</strong> to win the game. Cards are added to
+                        the bottom of your deck
+                        when you win the pile.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="rLoseTitle">💀 How to Lose</h3>
+                    <p data-i18n="rLoseDesc">When you play or burn your last card and <strong>cannot slap back
+                            in</strong>, you are
+                        eliminated. You can still slap the pile even with 0 cards — a successful slap returns cards to
+                        your hand!</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="rGameplayTitle">🃏 Gameplay</h3>
+                    <p data-i18n="rGameplayDesc">Players take turns clockwise playing the top card of their deck face-up
+                        onto the center pile. The
+                        goal is to collect all cards via valid slaps or won challenges.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="rChalTitle">⚔️ Face Card Challenges (J / Q / K / A)</h3>
+                    <p data-i18n="rChalDesc">Playing a face card forces the next player to respond with their own face
+                        card:</p>
+                    <ul>
+                        <li data-i18n="rChalJ"><strong>Jack (J)</strong> — 1 chance to respond</li>
+                        <li data-i18n="rChalQ"><strong>Queen (Q)</strong> — 2 chances to respond</li>
+                        <li data-i18n="rChalK"><strong>King (K)</strong> — 3 chances to respond</li>
+                        <li data-i18n="rChalA"><strong>Ace (A)</strong> — 4 chances to respond</li>
+                    </ul>
+                    <p data-i18n="rChalEnd">If the defender plays all their chances without a face card, the attacker
+                        wins the entire pile.
+                        If the defender plays a face card, the challenge reverses and the attacker must now defend.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="rSlapTitle">👋 Slap Rules</h3>
+                    <p data-i18n="rSlapDesc">Any player can slap the pile at any time. Slapping on a valid pattern wins the pile. Slapping on an invalid pattern costs you a burn card (penalty).</p>
+                    <ul>
+                        <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+                            <span data-i18n="rSlapD">🟡 <strong>Doubles</strong> — Two cards of the same rank in a row. e.g. 7 → 7</span>
+                            <div class="mini-card-row">
+                                <div class="mini-card red"><span class="val">7</span><span class="suit">♦</span></div>
+                                <div class="mini-card black"><span class="val">7</span><span class="suit">♣</span></div>
+                            </div>
+                        </li>
+                        <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+                            <span data-i18n="rSlapT">🟠 <strong>Tens</strong> — Two number cards that add up to 10. e.g. 3 → 7</span>
+                            <div class="mini-card-row">
+                                <div class="mini-card red"><span class="val">3</span><span class="suit">♥</span></div>
+                                <div class="mini-card black"><span class="val">7</span><span class="suit">♠</span></div>
+                            </div>
+                        </li>
+                        <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+                            <span data-i18n="rSlapM">💍 <strong>Marriage</strong> — King and Queen next to each other. e.g. K → Q</span>
+                            <div class="mini-card-row">
+                                <div class="mini-card black"><span class="val">K</span><span class="suit">♣</span></div>
+                                <div class="mini-card red"><span class="val">Q</span><span class="suit">♥</span></div>
+                            </div>
+                        </li>
+                        <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+                            <span data-i18n="rSlapS">🥪 <strong>Sandwich</strong> — Two cards of the same rank with exactly one card between them. e.g. 8 → 5 → 8</span>
+                            <div class="mini-card-row">
+                                <div class="mini-card black"><span class="val">8</span><span class="suit">♠</span></div>
+                                <div class="mini-card red"><span class="val">5</span><span class="suit">♦</span></div>
+                                <div class="mini-card black"><span class="val">8</span><span class="suit">♣</span></div>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="rBurnTitle">🔥 Burn Cards</h3>
+                    <p data-i18n="rBurnDesc">An <strong>invalid slap</strong> forces you to burn a card from your hand —
+                        it goes to a separate
+                        penalty pool. When anyone wins the pile, burn-pile cards are awarded <em>first</em>, followed by
+                        the played cards in chronological order, all added to the bottom of the winner's deck.</p>
+                </div>
+
+                <div class="rules-section"
+                    style="border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+                    <h3 data-i18n="rTimeoutTitle">⏱️ AFK / Idle Timeout</h3>
+                    <p data-i18n="rTimeoutDesc">If a player fails to play a card within the allowed time (Easy: 20s,
+                        Medium: 15s, Hard: 10s), they automatically <strong>burn a card</strong> and the turn passes to
+                        the next player.</p>
+                </div>
+
+                <div class="rules-section" style="border-left: 3px solid #58a6ff; background: rgba(88, 166, 255, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+                    <h3 data-i18n="rCalibTitle">⚡ Reflex Calibration Tool</h3>
+                    <p data-i18n="rCalibDesc">Test and benchmark your average response reaction speed in the Settings menu! Compare your reflexes directly against simulated Challenger Bot speeds to calibrate your game.</p>
+                </div>
+
+                <div class="rules-section" style="border-left: 3px solid #ffd700; background: rgba(255, 215, 0, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+                    <h3 data-i18n="rPerfectTitle">🎯 Perfect Slap precision</h3>
+                    <p data-i18n="rPerfectDesc">Slapping very close to the center of the pile (within 15 pixels) triggers a <strong>Perfect Slap</strong> bonus! Triggers special neon star particles and custom sound chime multipliers.</p>
+                </div>
+
+                <div class="rules-section" style="border-left: 3px solid #ff5722; background: rgba(255, 87, 34, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+                    <h3 data-i18n="rShieldTitle">🛡️ Combustion Shield</h3>
+                    <p data-i18n="rShieldDesc">Achieving a <strong>3-slap streak</strong> (slaps only) activates a fiery <strong>Combustion Shield</strong> valid for <strong>30 seconds</strong>! Performing another successful slap within 30s renews the shield timer. The shield protects your deck from burning a card once per activation by shattering.</p>
+                </div>
+
+                <div class="rules-section" style="border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+                    <h3 data-i18n="rReconTitle">🔄 Reconnection & Bot Takeover</h3>
+                    <p data-i18n="rReconDesc">If your connection drops in multiplayer, an automated Bot temporarily takes over your slot so the match continues. You have a grace period to reconnect and seamlessly resume control of your deck and active streaks!</p>
+                </div>
+
+                <div class="rules-section" style="border-left: 3px solid #a855f7; background: rgba(168, 85, 247, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+                    <h3 data-i18n="rSpecTitle">👁️ Spectator Mode & Slap Back</h3>
+                    <p data-i18n="rSpecDesc">Eliminated? Don't leave yet! You enter Spectator Mode where you can watch the match, send quick chat emojis, and still attempt to <strong>Slap Back In</strong> at any time. A successful slap resurrects you with the pile!</p>
+                </div>
+
+                <div class="rules-section" style="border-left: 3px solid #06b6d4; background: rgba(6, 182, 212, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+                    <h3 data-i18n="rSpeedHUDTitle">⚡ Reflex Speed & HUD Badges</h3>
+                    <p data-i18n="rSpeedHUDDesc">Every successful slap displays your response reaction speed in milliseconds in the action log. Slapping under 400ms grants a <strong>Fast Slap</strong> bonus and shows dynamic speed badges (⚡ GODSPEED, ☄️ LIGHTNING, etc.) in the HUD!</p>
+                </div>
+
+                <div class="rules-section" style="border-left: 3px solid #ec4899; background: rgba(236, 72, 153, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+                    <h3 data-i18n="rProfileStatsTitle">📈 Match History & SVG Analytics</h3>
+                    <p data-i18n="rProfileStatsDesc">Check out your Account Profile to view your complete match history, card win records, and an interactive SVG-rendered reflex speed trend curve showing your reaction improvement over time.</p>
+                </div>
+
+                <div class="rules-section" style="border-left: 3px solid #a78bfa; background: rgba(167, 139, 250, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+                    <h3 data-i18n="rPersonalityTitle">🎭 Bot Personalities</h3>
+                    <p data-i18n="rPersonalityDesc">Each seat plays differently: <strong>Blitz</strong> is fast and bluffs often, <strong>Chaos</strong> is wildly unpredictable, and <strong>Viper</strong> is patient and rarely wrong. Same difficulty, three different fights.</p>
+                </div>
+
+            </div>
+            <button id="btn-rules-back" class="btn secondary" data-i18n="back" style="margin-top: 1rem;">Back</button>
+        </div>
+    </div>
+
+    <!-- VICTORY SCREEN -->
+    <div id="victory-screen" class="screen">
+        <div class="confetti-container" id="confetti"></div>
+        <h1 class="victory-title" id="victory-title" data-i18n="win">Congratulations!</h1>
+        <p class="victory-message" id="victory-message">Player won the game!</p>
+
+        <div class="menu-buttons" style="margin-top: 2rem;">
+            <button id="btn-play-again" class="btn primary" data-i18n="playAgain">Play Again</button>
+            <button id="btn-victory-menu" class="btn secondary" data-i18n="returnMenu">Main Menu</button>
+        </div>
+    </div>
+
+    <!-- MULTIPLAYER LOBBY -->
+    <div id="lobby-panel" class="screen">
+        <div class="lobby-content-container">
+            <h2 data-i18n="multiplayerLobby" style="text-align: center; margin-bottom: 2rem;">Multiplayer Lobby</h2>
+            <div class="menu-buttons sleek-layout">
+                <button id="btn-create-table" class="btn primary vibrant-play" data-i18n="createTable">Create
+                    Table</button>
+                <div class="lobby-divider"><span data-i18n="or">OR</span></div>
+                <div class="setting-group" style="margin-bottom: 10px;">
+                    <input type="text" id="input-join-id" data-i18n="phTableId" placeholder="Enter Table ID"
+                        class="ui-input crisp-dark" style="text-align: center; text-transform: uppercase;"
+                        maxlength="6">
+                </div>
+                <button id="btn-join-table" class="btn primary" data-i18n="joinTable" style="margin-bottom: 15px;">Join
+                    Table</button>
+                <button id="btn-lobby-back" class="btn secondary" data-i18n="back">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WAITING ROOM -->
+    <div id="waiting-room-panel" class="screen">
+        <div class="lobby-content-container">
+            <h2 data-i18n="waitingRoom" class="panel-title">Waiting Room</h2>
+
+            <div style="margin-bottom: 1rem;">
+                <span
+                    style="background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 5px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid rgba(16, 185, 129, 0.5);">
+                    Multiplayer Mode: Competitive AI
+                </span>
+            </div>
+
+            <div
+                style="background: rgba(22, 27, 34, 0.6); padding: 14px; border-radius: 10px; margin-bottom: 18px; text-align: center; border: 1px solid rgba(255,255,255,0.1); width: 100%;">
+                <h3 style="color: var(--primary); margin-bottom: 5px;" data-i18n="tableId">Table ID</h3>
+                <div
+                    style="font-size: 2rem; font-weight: bold; letter-spacing: 5px; color: white; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                    <span id="display-table-id">------</span>
+                    <button id="btn-copy-id" class="btn-small" style="font-size: 0.9rem; padding: 5px 10px;"
+                        data-i18n="copyId">Copy ID</button>
+                </div>
+            </div>
+
+            <div style="text-align: left; width: 100%; margin-bottom: 18px;">
+                <h3 style="color: white; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 5px; margin-bottom: 10px;"
+                    data-i18n="players">Players</h3>
+                <ul id="waiting-players-list"
+                    style="list-style: none; padding: 0; margin: 0; color: #ddd; font-size: 1.05rem; min-height: 110px;">
+                    <!-- Player items go here -->
+                </ul>
+            </div>
+
+            <div class="menu-buttons sleek-layout">
+                <button id="btn-start-table" class="btn primary vibrant-play" data-i18n="startGame"
+                    style="display: none; margin-bottom: 10px;">Start Game</button>
+                <button id="btn-leave-table" class="btn secondary" data-i18n="leaveTable">Leave Table</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACCOUNT PANEL -->
+    <div id="account-panel" class="screen">
+        <h2 data-i18n="account">Account</h2>
+
+        <div id="account-logged-out" class="account-section">
+            <div class="auth-card">
+                <div class="setting-group" id="auth-username-group" style="display: none;">
+                    <div class="auth-input-wrap">
+                        <span class="auth-input-icon">👤</span>
+                        <input type="text" id="auth-username" data-i18n="phUsername" placeholder="Username"
+                            class="ui-input crisp-dark auth-input" maxlength="15">
+                    </div>
+                </div>
+                <div class="setting-group" id="auth-email-group">
+                    <div class="auth-input-wrap">
+                        <span class="auth-input-icon">📧</span>
+                        <input type="email" id="auth-email" data-i18n="phEmail" placeholder="Email" class="ui-input crisp-dark auth-input">
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="auth-input-wrap">
+                        <span class="auth-input-icon">🔒</span>
+                        <input type="password" id="auth-password" data-i18n="phPassword" placeholder="Password"
+                            class="ui-input crisp-dark auth-input">
+                    </div>
+                </div>
+                <div id="auth-error" class="error-msg"></div>
+                <div class="menu-buttons sleek-layout" style="margin-top:20px;">
+                    <button id="btn-signin" class="btn primary" data-i18n="signIn">Sign In</button>
+                    <button id="btn-toggle-register" class="btn secondary" data-i18n="needAccount">Need an account?
+                        Register</button>
+                    <div id="register-actions" style="display:none; flex-direction:column; gap:1.2rem;">
+                        <button id="btn-signup" class="btn primary vibrant-play" data-i18n="register">Register</button>
+                        <button id="btn-toggle-login" class="btn secondary" data-i18n="backToLogin">Back to Login</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="account-logged-in" class="account-section" style="display: none;">
+            <div
+                style="background: rgba(22, 27, 34, 0.6); padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: left; border: 1px solid rgba(255,255,255,0.1);">
+                <p style="margin: 5px 0;"><strong style="color:var(--primary);"
+                        data-i18n="usernameLabel">Username:</strong> <span id="account-username-display"></span></p>
+                <p style="margin: 5px 0;"><strong style="color:var(--primary);" data-i18n="emailLabel">Email:</strong>
+                    <span id="account-email-display"></span>
+                </p>
+                <p style="margin: 5px 0;"><strong style="color:gold;" data-i18n="scoreLabel">Score:</strong> <span
+                        id="account-score-display">0</span></p>
+                <p style="margin: 5px 0;"><strong style="color:#58a6ff;" data-i18n="bestReflexLabel">Best Reflex:</strong> <span
+                        id="account-reflex-display">---</span></p>
+            </div>
+
+            <!-- MATCH HISTORY & PERFORMANCE GRAPH -->
+            <div id="match-history-container" style="background: rgba(22, 27, 34, 0.45); padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08); text-align: left; max-height: 250px; overflow-y: auto;">
+                <h4 style="margin: 0 0 10px 0; color: var(--primary); display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem; font-weight: 700;">
+                    <span data-i18n="matchHistoryTitle">Match History & Reflex Trend</span>
+                    <span style="font-size: 0.72rem; color: rgba(255,255,255,0.4);" data-i18n="last5matches">Last 5 Matches</span>
+                </h4>
+                
+                <!-- SVG Trend Curve Graph -->
+                <div id="reflex-graph-wrapper" style="width: 100%; height: 100px; margin-bottom: 12px; position: relative; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
+                    <!-- Dynamically rendered SVG will go here -->
+                </div>
+
+                <!-- Match List -->
+                <div id="match-history-list" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Dynamically rendered matches go here -->
+                </div>
+            </div>
+
+            <!-- BOT NEMESIS TRACKER -->
+            <div id="bot-nemesis-container" style="background: rgba(22, 27, 34, 0.45); padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08); text-align: left;">
+                <h4 style="margin: 0 0 10px 0; color: var(--primary); font-size: 0.95rem; font-weight: 700;" data-i18n="nemesisTitle">🎭 Bot Rivalry</h4>
+                <div id="bot-nemesis-content" style="font-size: 0.85rem;">
+                    <p style="opacity:0.5; margin:0;" data-i18n="nemesisEmpty">Play some offline matches to build a rivalry record.</p>
+                </div>
+            </div>
+
+            <div class="menu-buttons sleek-layout">
+                <button id="btn-signout" class="btn secondary" data-i18n="signOut">Sign Out</button>
+            </div>
+        </div>
+
+        <div class="menu-buttons" style="margin-top: 2rem;">
+            <button id="btn-close-account" class="btn secondary" data-i18n="close">Close</button>
+        </div>
+    </div>
+
+    <!-- GAME CONTAINER -->
+    <div id="game-container" class="screen">
+        <div id="match-timer-display" style="display:none;"></div>
+
+        <div id="top-player" class="player-zone bot">
+            <div class="deck bot-deck" id="top-deck"><span id="p2-name">Bot 2</span> <br><span id="p2-count"
+                    class="count">13</span></div>
+        </div>
+
+        <!-- CHALLENGE BANNER -->
+        <div id="challenge-banner" class="challenge-banner-glass" style="display: none;">
+            <div class="challenge-active-title" data-i18n="challengeActive">Active Challenge</div>
+            <div class="challenge-competitors">
+                <span id="challenge-attacker-name" class="name attacker">Player 1</span>
+                <span class="vs">VS</span>
+                <span id="challenge-defender-name" class="name defender">Player 2</span>
+            </div>
+            <div id="challenge-chances-container" class="challenge-chances">
+                <!-- Glowing dots dynamically rendered -->
+            </div>
+        </div>
+
+        <div id="middle-row">
+            <div id="left-player" class="player-zone bot">
+                <div class="deck bot-deck" id="left-deck"><span id="p1-name">Bot 1</span> <br><span id="p1-count"
+                        class="count">13</span></div>
+            </div>
+
+            <div id="center-pile" class="pile-zone">
+                <div id="burn-pile-indicator" class="burn-indicator-pill" style="display: none;">
+                    <span class="icon">🔥</span>
+                    <span id="burn-pile-count">0</span>
+                </div>
+                <div class="pile-label" data-i18n="tapToSlap">TAP TO SLAP</div>
+                <div id="pile-cards"></div>
+            </div>
+
+            <div id="right-player" class="player-zone bot">
+                <div class="deck bot-deck" id="right-deck"><span id="p3-name">Bot 3</span> <br><span id="p3-count"
+                        class="count">13</span></div>
+            </div>
+        </div>
+
+        <div id="bottom-player" class="player-zone human">
+            <div class="deck human-deck" id="human-deck"><span id="player-name-display" data-i18n="you">YOU</span>
+                <br><span id="p0-count" class="count">13</span><br><small data-i18n="tapToPlay">TAP TO PLAY</small>
+            </div>
+        </div>
+
+        <div id="action-log"></div>
+        <div id="notifications"></div>
+
+        <button id="btn-quit" class="btn-small" data-i18n="quit">Quit</button>
+    </div>
+
+    <!-- LOADING OVERLAY -->
+    <div id="loading-overlay"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.9); z-index: 9999; flex-direction: column; justify-content: center; align-items: center; color: white;">
+        <div class="spinner"
+            style="width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;">
+        </div>
+        <h2 id="loading-message" style="font-family: 'Outfit', sans-serif; letter-spacing: 2px;">Connecting...</h2>
+    </div>
+
+    <!-- Reconnect Popup (Frosted Glass) -->
+    <div id="reconnect-popup" class="reconnect-popup-frosted" style="display: none;">
+        <div class="reconnect-header">
+            <span class="icon">🔌</span>
+            <strong data-i18n="connectionLost">Connection Lost</strong>
+        </div>
+        <div class="reconnect-body">
+            <p data-i18n="reconnectMsg">You disconnected from the multiplayer game. Do you want to join again?</p>
+        </div>
+        <div class="reconnect-timer-container">
+            <span id="reconnect-countdown-text" class="reconnect-countdown">60</span>
+            <small style="color: rgba(255,255,255,0.4);" data-i18n="secondsRemaining">seconds remaining</small>
+        </div>
+        <div class="reconnect-footer">
+            <button id="btn-reconnect" class="btn primary" style="flex: 2; padding: 12px; font-size: 1rem;"
+                data-i18n="joinGame">Join Game</button>
+            <button id="btn-abandon-reconnect" class="btn secondary" style="flex: 1; padding: 12px; font-size: 0.9rem;"
+                data-i18n="leaveTable">Leave</button>
+        </div>
+    </div>
+
+    <!-- CONFIRM MODAL -->
+    <div id="confirm-modal" class="screen modal-overlay">
+        <div class="modal-content glassmorphic-card">
+            <div class="warning-icon-wrapper">
+                <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+            </div>
+            <h3 data-i18n="confirmLeave">Are you sure you want to leave?</h3>
+            <p class="modal-subtext">Your slot will instantly convert to a Bot. Any active slap streaks or score increments for this match will be forfeited!</p>
+            <div class="modal-buttons">
+                <button id="btn-confirm-leave" class="btn primary danger-btn" data-i18n="leaveTable">Leave</button>
+                <button id="btn-cancel-leave" class="btn secondary cancel-btn" data-i18n="cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Note the type="module" -->
+    <script type="module" src="js/main.js?v=2.9.0"></script>
+</body>
+
+</html>
