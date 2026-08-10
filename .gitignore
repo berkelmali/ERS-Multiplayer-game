@@ -18,6 +18,7 @@ firestore-debug.log*
 ui-debug.log*
 
 # Environment and sensitive credential files
+public/js/firebaseConfig.js
 .env
 .env.local
 .env.*.local
