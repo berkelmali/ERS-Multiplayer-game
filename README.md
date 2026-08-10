@@ -4,7 +4,6 @@
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES6%2B%20Native%20Modules-F7DF1E?logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
 [![CSS3](https://img.shields.io/badge/CSS3-3D%20Transforms%20%26%20Animations-1572B6?logo=css3&logoColor=white)](https://w3.org/TR/css-transforms-1/)
 [![Node.js](https://img.shields.io/badge/Node.js-v20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **TR:** Tarayıcı üzerinden gerçek zamanlı, çok oyunculu ve yapay zeka destekli Mısır Fare Kapanı (Egyptian Rat Screw) kart oyunu.  
 > **EN:** A fast-paced, real-time multiplayer & AI-powered web implementation of the classic Egyptian Rat Screw card game.
@@ -165,9 +164,9 @@ firebase deploy
 
 ---
 
-## 📄 Lisans / License
+## 📄 Telif Hakkı / Copyright
 
-Bu proje **MIT Lisansı** altında lisanslanmıştır. Detaylar için `LICENSE` dosyasına bakabilirsiniz.
+Tüm hakları saklıdır. © **Berk Elmalı** — Bu projenin kodları ve varlıkları yazılı izin olmaksızın izinsiz kopyalanamaz veya dağıtılamaz. (All Rights Reserved)
 
 ---
 
