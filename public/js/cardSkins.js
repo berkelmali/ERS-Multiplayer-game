@@ -95,6 +95,19 @@ export const CardSkins = {
         return winnerId === 0 ? 40 : -15;
     },
 
+    // Mid-game quit penalty — same magnitude as a normal loss so quitting
+    // is never "free". Exposed as a constant so the confirm modal can show
+    // the exact number before the player commits.
+    QUIT_PENALTY: -15,
+
+    applyQuitPenalty() {
+        if (this.gameProcessed) return; // already handled by gameOver
+        this.gameProcessed = true;
+        const penalty = this.QUIT_PENALTY;
+        this.addCoins(penalty);
+        EventBus.emit('coinsAwarded', { winnerId: -1, amount: penalty });
+    },
+
     getCoins() {
         try {
             return parseInt(localStorage.getItem(COINS_KEY) || '0', 10) || 0;

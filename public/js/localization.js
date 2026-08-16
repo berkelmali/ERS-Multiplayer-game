@@ -216,7 +216,9 @@ const translations = {
         emailLabel: "Email:",
         matchHistoryTitle: "Match History & Reflex Trend",
         last5matches: "Last 5 Matches",
-        cancel: "Cancel"
+        cancel: "Cancel",
+        coinPenaltyWarning: "coins will be deducted for leaving mid-game.",
+        coinPenaltyDefeat: "Coins lost from defeat:"
     },
     tr: {
         play: "Oyna",
@@ -435,7 +437,9 @@ const translations = {
         emailLabel: "E-posta:",
         matchHistoryTitle: "Maç Geçmişi & Refleks Eğilimi",
         last5matches: "Son 5 Maç",
-        cancel: "İptal"
+        cancel: "İptal",
+        coinPenaltyWarning: "coin maçtan ayrıldığınız için düşülecektir.",
+        coinPenaltyDefeat: "Yenilgi sonucu kaybedilen coin:"
     },
     de: {
         play: "Spielen",
@@ -656,7 +660,9 @@ const translations = {
         emailLabel: "E-Mail:",
         matchHistoryTitle: "Spielverlauf & Reflex-Trend",
         last5matches: "Letzte 5 Spiele",
-        cancel: "Abbrechen"
+        cancel: "Abbrechen",
+        coinPenaltyWarning: "Münzen werden für das vorzeitige Verlassen abgezogen.",
+        coinPenaltyDefeat: "Durch Niederlage verlorene Münzen:"
     },
     ru: {
         play: "Играть",
@@ -877,7 +883,9 @@ const translations = {
         emailLabel: "Эл. почта:",
         matchHistoryTitle: "История матчей и динамика реакции",
         last5matches: "Последние 5 матчей",
-        cancel: "Отмена"
+        cancel: "Отмена",
+        coinPenaltyWarning: "монет будет списано за выход из матча.",
+        coinPenaltyDefeat: "Потерянные монеты за поражение:"
     }
 };
 

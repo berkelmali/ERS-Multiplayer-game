@@ -1124,14 +1124,18 @@ export const UIManager = {
         });
     },
 
-    showConfirmModal(action) {
+    showConfirmModal(action, opts = {}) {
         const modal = document.getElementById('confirm-modal');
         const btnConfirm = document.getElementById('btn-confirm-leave');
         const btnCancel = document.getElementById('btn-cancel-leave');
         const subtext = modal.querySelector('.modal-subtext');
 
         if (subtext) {
-            subtext.innerText = Localization.get('confirmLeaveSubtext') || "Your slot will instantly convert to a Bot. Any active slap streaks or score increments for this match will be forfeited!";
+            let text = Localization.get('confirmLeaveSubtext') || "Your slot will instantly convert to a Bot. Any active slap streaks or score increments for this match will be forfeited!";
+            if (typeof opts.coinPenalty === 'number' && opts.coinPenalty !== 0) {
+                text += `\n\n🪙 ${opts.coinPenalty} ` + (Localization.get('coinPenaltyWarning') || 'coin will be deducted.');
+            }
+            subtext.innerText = text;
         }
 
         modal.classList.add('active');

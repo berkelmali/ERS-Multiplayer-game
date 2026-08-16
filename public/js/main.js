@@ -102,7 +102,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('btn-quit').addEventListener('click', () => {
+        const isLiveGame = GameManager.activeMode === 'bots' || GameManager.activeMode === 'multiplayer';
         UIManager.showConfirmModal(() => {
+            if (isLiveGame) {
+                CardSkins.applyQuitPenalty();
+            }
             // Stop logic
             if (GameManager.activeMode === 'bots') {
                 UIManager.resetOfflineUI();
@@ -117,7 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Menüye dönüldüğünde 3D sahneyi yeniden yükle
             Spline3D.resume();
-        });
+        }, isLiveGame ? { coinPenalty: CardSkins.QUIT_PENALTY } : {});
     });
 
     // 4. Spline 3D Lifecycle via EventBus (handles multiplayer & victory screen transitions)
