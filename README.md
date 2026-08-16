@@ -100,9 +100,7 @@ ers-web/
 │   └── package.json            # Node.js 20 ESM paketi
 ├── test_gameLogic.mjs          # Birim test kümesi (53/53 PASS)
 ├── firebase.json               # Firebase Hosting & Database kural yapılandırması
-├── database.rules.json         # Realtime Database güvenlik kuralları
-├── CLAUDE.md                   # Detaylı mimari ve geliştirici dokümantasyonu
-└── COUNCIL.md                  # Geliştirme yol haritası
+└── database.rules.json         # Realtime Database güvenlik kuralları
 ```
 
 ---
