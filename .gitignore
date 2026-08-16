@@ -55,6 +55,8 @@ desktop.ini
 .gemini/
 .agents/
 scratch/
+CLAUDE.md
+COUNCIL.md
 
 # Testing & Coverage
 coverage/
