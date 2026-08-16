@@ -778,6 +778,14 @@ Bu turdan sonra tüm doğrulamalar tekrar çalıştırıldı: 33 client dosyası
 
 ---
 
+## 6.31 Kullanıcı İsteği: Coin Ekonomisi Yeniden Kalibrasyonu + Profil Doğrulaması
+
+- **Profil paneli çıkış/kapat butonları — DOĞRULANDI, zaten çalışıyordu.** Kullanıcı bunları "eklenmesini" istedi ama kod incelemesi `#btn-signout` ve `#btn-close-account`'ın ZATEN var olduğunu VE `profileUI.js`'in `previousScreenId`/`wasGameScreen`/`_parallaxWasActive` takibiyle "kapat, açılmadan önceki ekrana dön" davranışını doğru uyguladığını gösterdi. Hiçbir şey eklenmedi, sadece tüm zincir (HTML → handler → `main.js` init) doğrulandı. **Yan bulgu (düzeltilmedi):** `#display-username` elementi kalıcı olarak `display:none` — hiçbir yerde görünür yapılmıyor, `lobbyUI.js`'deki `.click()` çağrısı pratikte hiç ateşlenmeyen ölü kod. Kullanıcının sorduğu şey bu değildi, bu yüzden dokunulmadı — ama not düşülüyor.
+- **Coin ekonomisi yeniden tasarlandı: artık kayıpta CEZA var.** Önceki tasarım (§6.30) her sonuçta pozitif coin veriyordu (20 kayıpta, 40 galibiyette) — kullanıcı doğru bir şekilde bunun "bilerek hızlı kaybet, coin biriktir" açığı olduğunu fark etti. `CardSkins.computeReward(winnerId)` artık TEK kaynak: galibiyette +40, HERHANGİ bir kayıp/berabere durumunda -15. Denge noktası matematiksel olarak %27.3 kazanma oranı (`40x = 15(1-x)`) — 4 kişilik bir masada "adil pay" zaten %25 olduğu için, gerçekten kazanmaya çalışan HERKES zamanla net pozitif kalıyor, sadece bilerek-kaybetme farming'i caydırılıyor. `addCoins()` artık `Math.max(0, ...)` ile sıfırın altına inmiyor.
+- **Kazanma ekranında coin değişimi gösteriliyor.** Yeni `coinsAwarded` event'i (`{winnerId, amount}`) — `CardSkins`'in KENDİSİ hesaplayıp uyguladığı değeri taşıyor, `victoryScreen.js` bunu SADECE gösteriyor, kendi formülünü YENİDEN TÜRETMİYOR (bu, §6.29'da bir kez düzeltilen "aynı veri iki yerde" hatasının üçüncü kez tekrarlanmaması için bilinçli bir tasarım). `victoryScreen.js` bu event'i KENDİ `init()`'inde dinliyor (show()'un 1500ms'lik gecikmesinden ÇOK önce), değeri saklıyor, `gameStarted`'da sıfırlıyor (önceki maçtan kalma değer sızmasın diye).
+
+---
+
 ## 7. Güvenlik
 
 ### 7.1 Firebase Hosting Başlıkları (`firebase.json`)

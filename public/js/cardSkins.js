@@ -59,20 +59,40 @@ export const CardSkins = {
             this.gameProcessed = true;
 
             import('./gameManager.js').then(({ GameManager }) => {
-                // Bots AND multiplayer now — both emit 'gameOver' with the same
+                // Bots AND multiplayer — both emit 'gameOver' with the same
                 // shape (winnerId === 0 means "you", in both modes, since
                 // firebaseSync.js already rotates multiplayer's visual index
                 // the same way offline mode's is inherently 0-based). Coins stay
                 // purely cosmetic/client-local regardless of mode — see the
                 // module comment above for why that's safe in multiplayer too.
                 if (GameManager.activeMode !== 'bots' && GameManager.activeMode !== 'multiplayer') return;
-                // Calibrated so ~8-9 games gets you the cheapest skin (150)
-                // even on an unlucky all-losses streak: 8 x 20 = 160. Winning
-                // doubles the reward, so a mix of wins gets there faster.
-                const reward = winnerId === 0 ? 40 : 20;
+                const reward = this.computeReward(winnerId);
                 this.addCoins(reward);
+                // victoryScreen.js listens for this (registered at its own init,
+                // well before this fires) to display the coin change — it does
+                // NOT recompute the formula itself, to avoid re-creating the
+                // exact "same data in two places" problem §6.29 already fixed
+                // once for skin FX data.
+                EventBus.emit('coinsAwarded', { winnerId, amount: reward });
             });
         });
+    },
+
+    // Single source of truth for the reward formula — used both to actually
+    // award coins above AND by victoryScreen.js's display (indirectly, via
+    // the coinsAwarded event) so the two can never drift apart.
+    //
+    // A real, asymmetric penalty on loss (not just "fewer coins") is
+    // deliberate: the previous version gave positive coins for ANY outcome,
+    // which meant a player could deliberately lose fast, over and over, and
+    // farm coins with zero effort — arguably faster than actually trying to
+    // win. Losing now costs more than a single win recovers in isolation,
+    // but the break-even win rate is only ~27% (40x = 15(1-x) => x ≈ 0.267),
+    // well under the ~25% "fair share" baseline in a 4-player free-for-all,
+    // so anyone actually trying to win comes out ahead over time — only
+    // farming via deliberate loss is discouraged.
+    computeReward(winnerId) {
+        return winnerId === 0 ? 40 : -15;
     },
 
     getCoins() {
@@ -85,7 +105,7 @@ export const CardSkins = {
 
     addCoins(amount) {
         try {
-            const total = this.getCoins() + amount;
+            const total = Math.max(0, this.getCoins() + amount);
             localStorage.setItem(COINS_KEY, String(total));
             EventBus.emit('coinsUpdated', total);
             return total;

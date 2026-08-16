@@ -15,6 +15,18 @@ export const VictoryScreen = {
         this.victoryTitle = document.getElementById('victory-title');
         this.isDefeat = false;
         this.redirectTimeout = null;
+        this.lastCoinDelta = null;
+
+        EventBus.on('gameStarted', () => {
+            this.lastCoinDelta = null; // Defensive reset — don't show a stale value from a previous match.
+        });
+
+        // Registered here (init time), well before show() actually runs — see
+        // cardSkins.js::computeReward for why this doesn't recompute the
+        // formula itself, just displays what was already awarded.
+        EventBus.on('coinsAwarded', ({ amount }) => {
+            this.lastCoinDelta = amount;
+        });
 
         EventBus.on('gameOver', (winnerId) => {
             setTimeout(() => {
@@ -232,8 +244,16 @@ export const VictoryScreen = {
                 const mvpText = this.computeMvpMoment(GameState.stats, winnerId === 0);
                 const mvpHtml = mvpText ? `<div class="mvp-moment">${mvpText}</div>` : '';
 
+                let coinHtml = '';
+                if (typeof this.lastCoinDelta === 'number') {
+                    const isGain = this.lastCoinDelta > 0;
+                    const sign = isGain ? '+' : '';
+                    coinHtml = `<div class="coin-result-badge ${isGain ? 'coin-gain' : 'coin-loss'}">🪙 ${sign}${this.lastCoinDelta}</div>`;
+                }
+
                 statsHtml = `
                     ${mvpHtml}
+                    ${coinHtml}
                     <div class="stats-panel">
                         <div class="stat-card">
                             <span class="stat-title">${Localization.get('statReaction') || 'Reaction Time'}</span>
