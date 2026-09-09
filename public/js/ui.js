@@ -497,7 +497,12 @@ export const UIManager = {
             const name = this.getVisualName(winnerId);
             const tpl = Localization.get('photoFinish') || '{name} won the race by {ms}ms';
             const ms = (marginMs === null || marginMs === undefined) ? '—' : marginMs;
-            this.showNotification(`📸 ${tpl.replace('{name}', name).replace('{ms}', ms)}`, 'var(--primary)');
+            // v3.13.0 — no toast here any more. Measured: for ONE slap the
+            // 2.8rem uppercase centre toast and the new photo-finish banner
+            // were both on screen, forty pixels apart, saying the same
+            // sentence — plus the log line below. #notifications is this
+            // game's loudest channel and it is reserved for the winner and
+            // for losing the connection; a photo finish is smaller than both.
             // Only the styles that actually exist in style.css: log-slap and
             // log-highlight. Inventing a `log-success` class here would render
             // as an unstyled default entry.
