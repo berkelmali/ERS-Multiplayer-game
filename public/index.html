@@ -4,11 +4,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- AdSense site verification. A STATIC marker only: it makes no request,
+         loads no script and sets no cookie. Deliberately chosen over pasting
+         the adsbygoogle snippet here, because that snippet would start
+         Google's tag on every page load before the consent screen (CMP) is
+         configured — i.e. cookies for EU visitors with nothing to consent to.
+         The real tag is loaded by js/ads.js, on menu screens only, and only
+         once adsConfig.js carries a publisher id. -->
+    <meta name="google-adsense-account" content="ca-pub-7456321071922775">
     <title>Egyptian Rat Screw</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
-    <link rel="stylesheet" href="style.css?v=2.9.0">
+    <meta name="description" content="Play Egyptian Rat Screw with friends or bots. Practice your reflexes, discover slap patterns and take on the daily challenge.">
+    <meta name="theme-color" content="#0a111c">
+    <!-- v3.13.0 — installable, but NOT offline-cached. The manifest is 18
+         lines of static JSON: a name, an icon and a splash colour, with no
+         caching behaviour of its own. `start_url` is "./" and not
+         "./index.html" on purpose: firebase.json runs `cleanUrls: true`, so
+         /index.html is a redirect and the `no-store` cache header is on "/".
+         An installed app must not launch through a redirect on every start.
+         The service worker from ers-revamp is deliberately NOT here — it
+         precached "./style.css" while the page requests "style.css?v=N", a
+         different cache key, so the offline page would load with no
+         stylesheet at all. -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="style.css?v=3.13.0">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <!-- BOOT SAFETY NET (v3.7.0) — must stay INLINE and must stay in <head>.
+         index.html loads exactly one script: the js/main.js module. main.js has
+         30+ static imports, three of them gstatic Firebase URLs. If any single
+         one fails to fetch or parse, main.js never evaluates a statement, and a
+         handler registered inside main.js is never registered at all — which is
+         precisely the case it would exist to catch. A separate .js file has the
+         same failure mode one hop away, so this net has no src and no imports.
+         It is the only code in the app guaranteed to run. -->
+    <script>
+        (function () {
+            var shown = false;
+            function reveal(detail) {
+                if (shown) return;
+                shown = true;
+                function paint() {
+                    var el = document.getElementById('boot-error');
+                    if (!el) return;
+                    var d = el.querySelector('.boot-error-tech');
+                    if (d && detail) { d.textContent = String(detail).slice(0, 300); }
+                    var btn = document.getElementById('boot-error-reload');
+                    if (btn) { btn.addEventListener('click', function () { location.reload(); }); }
+                    el.style.display = 'flex';
+                }
+                if (document.body) { paint(); }
+                else { document.addEventListener('DOMContentLoaded', paint); }
+            }
+            // Only a failure to LOAD the app counts here. Once main.js has run,
+            // it installs the real handlers and clears this flag, so ordinary
+            // runtime errors go to the localized error screen instead.
+            window.__ersBooted = false;
+            window.addEventListener('error', function (e) {
+                if (window.__ersBooted) return;
+                var t = e && e.target;
+                var isResource = t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK');
+                reveal(isResource ? ('failed to load ' + (t.src || t.href)) : (e && e.message));
+            }, true);
+            window.addEventListener('unhandledrejection', function (e) {
+                if (window.__ersBooted) return;
+                reveal(e && e.reason && (e.reason.message || e.reason));
+            });
+            // If the module graph never evaluates there is no error event on some
+            // browsers — only silence. So also fail loudly on a timer.
+            setTimeout(function () { if (!window.__ersBooted) reveal('application did not start'); }, 12000);
+        })();
+    </script>
 </head>
 
 <body class="theme-classic menu-screen">
@@ -23,17 +90,23 @@
         </div>
     </div>
 
-    <!-- TOP LEFT CORNER: PROFILE OR USERNAME -->
-    <div id="top-left-corner" style="position: absolute; top: 15px; left: 15px; z-index: 100;">
-        <div id="user-profile-btn" class="profile-btn">
+    <!-- TOP LEFT CORNER: PROFILE, COIN BALANCE, DAILY SPIN -->
+    <div id="top-left-corner" class="player-banner-group" style="position: absolute; top: calc(15px + env(safe-area-inset-top, 0px)); left: calc(15px + env(safe-area-inset-left, 0px)); z-index: 100;">
+        <button id="user-profile-btn" class="profile-btn" aria-label="Account">
             <svg fill="currentColor" viewBox="0 0 24 24">
                 <path
                     d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
             </svg>
-        </div>
-        <div id="display-username"
+        </button>
+        <button id="display-username"
             style="display: none; background: rgba(22, 27, 34, 0.6); padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.1); color: var(--primary); font-weight: bold; backdrop-filter: blur(10px);">
-        </div>
+        </button>
+        <span id="top-banner-coins" class="coin-badge">🪙 <span id="banner-coins">0</span></span>
+        <button id="btn-daily-spin" class="spin-trigger-btn" aria-label="Daily Spin">
+            <span class="spin-icon" aria-hidden="true">☀️</span>
+            <span class="spin-text" data-i18n="spinTrigger">Ra's Spin</span>
+            <span id="spin-badge-indicator" class="spin-badge" aria-hidden="true">!</span>
+        </button>
     </div>
 
     <!-- TOP RIGHT CORNER: SCORE -->
@@ -44,10 +117,18 @@
 
     <!-- MAIN MENU -->
     <div id="main-menu" class="screen active">
-        <div style="flex: 1;"></div> <!-- Spacer to push UI to the lower center -->
+        <!-- v3.9.0 restores the v3.7.x lobby: the artwork carries the title,
+             the interface sits low and centred beneath it, and these spacers
+             are what put it there. v3.8.0 replaced this with a left-aligned
+             grid and a second, text heading over the painted wordmark.
+             The h1 stays for screen readers and for search — the menu had no
+             heading element at all — but is visually hidden, because
+             assets/menu.jpg already draws that exact title in gold. -->
+        <h1 class="visually-hidden">Egyptian Rat Screw</h1>
+        <div class="lobby-spacer-top" aria-hidden="true"></div>
 
         <div class="setting-group" id="main-menu-username-group" style="margin-top: 1rem; margin-bottom: 2rem;">
-            <label data-i18n="enterName"
+            <label for="input-username" data-i18n="enterName"
                 style="color: #fff; text-shadow: 0 0 10px var(--primary); font-weight: bold; font-size: 1.2rem; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Enter
                 Your Name</label>
             <input type="text" id="input-username" data-i18n="phPlayer" placeholder="Player" maxlength="12"
@@ -61,6 +142,8 @@
                 style="background: linear-gradient(135deg, #10b981, #059669); margin-bottom: 15px;">Multiplayer
                 Start</button>
             <div class="secondary-actions">
+                <button id="btn-daily" class="btn secondary sleek-sub" data-i18n="dailyButton" style="border-color: rgba(56, 189, 248, 0.55); color: #7dd3fc;">🗓️ Daily Challenge</button>
+                <button id="btn-slapiq" class="btn secondary sleek-sub" data-i18n="slapIqButton" style="border-color: rgba(52, 211, 153, 0.5); color: #6ee7b7;">🧠 Slap IQ</button>
                 <button id="btn-practice" class="btn secondary sleek-sub" data-i18n="practiceMode" style="border-color: rgba(167, 139, 250, 0.5); color: #d6bbfb;">🎓 Practice Mode</button>
                 <button id="btn-shop" class="btn secondary sleek-sub" data-i18n="shopButton" style="border-color: rgba(255, 215, 0, 0.4); color: #ffd700;">🛍️ Shop</button>
                 <button id="btn-rules" class="btn secondary sleek-sub" data-i18n="rules">Game Rules</button>
@@ -68,9 +151,16 @@
                 <button id="btn-settings" class="btn secondary sleek-sub" data-i18n="settings">Settings</button>
             </div>
         </div>
-        <div style="flex: 0.5;"></div> <!-- Bottom spacer -->
 
-        <div id="game-version">Developer Berk Elmalı - v2.9.0</div>
+        <div class="lobby-spacer-bottom" aria-hidden="true"></div>
+
+        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
+             never on a screen where anything is being timed — see adsConfig.js. -->
+        <div class="ad-slot" aria-hidden="true"></div>
+        <div id="game-version">Berk Elmalı · v3.13.0
+            <button id="btn-about" class="link-btn" data-i18n="aboutButton">About</button>
+            <button id="btn-privacy" class="link-btn" data-i18n="privacyButton">Privacy</button>
+        </div>
     </div>
 
     <!-- PRACTICE / TUTORIAL MODE -->
@@ -86,6 +176,10 @@
 
             <div id="tutorial-table" class="tutorial-table" style="display:none;">
                 <div id="tutorial-progress" class="tutorial-progress"></div>
+                <!-- Which tier the current step belongs to. Filled by
+                     tutorialMode.js::_renderTier — the classic four and the
+                     three opt-in patterns are never presented as one list. -->
+                <div id="tutorial-tier" class="tutorial-tier" style="display:none;"></div>
                 <div id="tutorial-pile" class="tutorial-pile"></div>
                 <div id="tutorial-coach" class="tutorial-coach"></div>
             </div>
@@ -106,7 +200,48 @@
         <div id="shop-grid" class="shop-grid">
             <!-- Dynamically rendered by shopUI.js -->
         </div>
+        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
+             never on a screen where anything is being timed — see adsConfig.js. -->
+        <div class="ad-slot" aria-hidden="true"></div>
         <button id="btn-shop-back" class="btn secondary" data-i18n="back">Back</button>
+    </div>
+
+    <!-- DAILY CHALLENGE PANEL (v3.0.0) -->
+    <div id="daily-panel" class="screen scrollable-screen">
+        <h2 data-i18n="dailyTitle">🗓️ Daily Challenge</h2>
+        <div class="daily-head">
+            <div id="daily-sigil" class="daily-sigil" aria-hidden="true"></div>
+            <div class="daily-meta">
+                <span class="daily-date" id="daily-date">—</span>
+                <span class="daily-seed" id="daily-seed">#—</span>
+            </div>
+            <div id="daily-scenario" class="daily-scenario" style="display:none;"></div>
+            <p class="daily-blurb" data-i18n="dailyBlurbScenario">Every player today inherits this same position, mid-match. Only your reflexes differ.</p>
+            <div class="daily-best">
+                <span data-i18n="dailyYourBest">Your result today</span>:
+                <span id="daily-your-best">—</span>
+            </div>
+            <button id="btn-daily-play" class="btn primary vibrant-play" data-i18n="dailyPlay">Play today's deal</button>
+        </div>
+        <h3 class="daily-sub" data-i18n="dailyBoard">Today's Board</h3>
+        <!-- Filled by DailyChallenge.renderBoardTrust(); hides itself the day
+             DailyChallenge.VERIFIED_BOARD becomes true. -->
+        <div id="daily-board-trust" class="daily-board-trust" role="note" style="display:none;"></div>
+        <div id="daily-leaderboard" class="rules-content" style="text-align:left;"></div>
+        <button id="btn-daily-back" class="btn secondary" data-i18n="back">Back</button>
+    </div>
+
+    <!-- SLAP IQ PANEL (v3.0.0) -->
+    <div id="slapiq-panel" class="screen scrollable-screen">
+        <h2 data-i18n="slapIqTitle">🧠 Slap IQ</h2>
+        <div id="slapiq-body" class="rules-content" style="text-align:left;"></div>
+        <div class="slapiq-actions">
+            <button id="btn-slapiq-reset" class="btn secondary" data-i18n="slapIqReset">Reset stats</button>
+        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
+             never on a screen where anything is being timed — see adsConfig.js. -->
+        <div class="ad-slot" aria-hidden="true"></div>
+            <button id="btn-slapiq-back" class="btn secondary" data-i18n="back">Back</button>
+        </div>
     </div>
 
     <!-- LEADERBOARD PANEL -->
@@ -115,7 +250,101 @@
         <div id="leaderboard-content" class="rules-content" style="text-align: left;">
             <p data-i18n="loading">Loading...</p>
         </div>
+        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
+             never on a screen where anything is being timed — see adsConfig.js. -->
+        <div class="ad-slot" aria-hidden="true"></div>
         <button id="btn-leaderboard-back" class="btn secondary" data-i18n="back">Back</button>
+    </div>
+
+    <!-- ABOUT (v3.6.0) — a publisher-accountability page, and the place the
+         project explains itself. Like the privacy panel, the English text below
+         is the REAL copy, not a placeholder: localization overwrites it for the
+         other three languages, but anything reading this document without
+         running JavaScript sees only what is written here. -->
+    <div id="about-panel" class="screen scrollable-screen">
+        <div class="lobby-content-container rules-container">
+            <h2 data-i18n="aTitle" class="panel-title">About This Game</h2>
+            <div class="rules-content">
+
+                <div class="rules-section">
+                    <h3 data-i18n="aWhatTitle">🃏 What this is</h3>
+                    <p data-i18n="aWhatDesc">Egyptian Rat Screw is a reflex card game: cards go down one at a time, and when the pile makes a pattern, the first hand to slap it takes the whole stack. This version runs in a browser with no download — one click starts a match against three bots. You only need an account if you want your scores on the leaderboard or want to play against real people.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="aBuiltTitle">🛠️ How it is built</h3>
+                    <p data-i18n="aBuiltDesc">Plain JavaScript modules, no framework and no build step: the files your browser downloads are the files that were written. Firebase handles sign-in, the leaderboard and multiplayer rooms. The slap patterns live in one registry that both the browser and the server read, so the two can never disagree about what counts as a slap. A release ships only after the rule engine, the scoring maths and a scripted walkthrough in a real browser all pass.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="aFairTitle">⚖️ How it stays fair</h3>
+                    <p data-i18n="aFairDesc">In multiplayer a contested pile does not go to whoever's message reaches the server first. It goes to the lower reaction time, measured from the moment the card landed on the screen, so a faster connection is not an advantage. Joining a table is checked on the server, never in the page. And the Daily Challenge deals every player in the world the same position from the same seed, with your personal settings overridden while it is scored — otherwise an easier setting would buy a higher score on the same board.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="aDevTitle">👤 Who made it</h3>
+                    <p data-i18n="aDevDesc">Built and maintained by Berk Elmalı as an independent project. There is no publisher behind it and no team — feature requests, bug reports and disagreements about the rules all arrive in the same inbox.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="aContactTitle">✉️ Contact</h3>
+                    <p data-i18n="aContactDesc">Questions, bug reports or a data request: berk9elmali9@gmail.com. If you have found a rules bug, the fastest way to get it fixed is to say which cards were on the pile when it happened.</p>
+                </div>
+
+            </div>
+            <div class="ad-slot" aria-hidden="true"></div>
+            <button id="btn-about-back" class="btn secondary" data-i18n="back">Back</button>
+        </div>
+    </div>
+
+    <!-- PRIVACY POLICY (v3.4.0) — required by AdSense, and the honest thing to
+         have regardless. Content lives in localization.js like every other
+         string, so it exists in all four languages. -->
+    <div id="privacy-panel" class="screen scrollable-screen">
+        <div class="lobby-content-container rules-container">
+            <h2 data-i18n="pTitle" class="panel-title">Privacy Policy</h2>
+            <!-- The English text below is the REAL policy, not a placeholder.
+                 Localization overwrites it at runtime for the other three
+                 languages, but anything that reads this document without
+                 running JavaScript — a crawler, a reviewer using view-source,
+                 a reader with JS disabled — sees only what is written here.
+                 It previously read "Account text", "Ads text", and so on: the
+                 one document an ad network actually checks, served as stubs. -->
+            <div class="rules-content">
+                <p class="privacy-updated" data-i18n="pUpdated">Last updated: 29 August 2026</p>
+
+                <div class="rules-section">
+                    <h3 data-i18n="pAuthTitle">👤 Account</h3>
+                    <p data-i18n="pAuthDesc">Signing in uses Firebase Authentication. We store the account id it gives us and the display name you choose. If you sign in with email, that email is held by Firebase Authentication. You can play offline against bots without an account at all.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="pGameTitle">🎮 Game data</h3>
+                    <p data-i18n="pGameDesc">Your username and scores are stored in Firebase Firestore so leaderboards can exist. Multiplayer matches are coordinated through Firebase Realtime Database and the room data is deleted when the match ends. A Daily Challenge result is written with exactly nine fields: your account id, your username, the score, your reaction time, whether you finished the run, how long it took, the scenario profile you were given, your starting hand size, and the time you submitted it — nothing else.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="pLocalTitle">💾 Stored in your browser</h3>
+                    <p data-i18n="pLocalDesc">Settings, house rules, slap statistics, your Daily Challenge result for the day, coins and card skins are kept in your browser's localStorage. They never leave your device unless you are signed in and a score is submitted. Clearing your browser data removes all of it.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="pAdsTitle">📢 Advertising</h3>
+                    <p data-i18n="pAdsDesc">This game shows Google AdSense ads on menu and information screens only — never during a match, and never on a Daily Challenge run. Google and its partners may use cookies to serve and measure ads. You can review and change your choices at any time through the consent screen, and you can turn off personalised advertising at google.com/settings/ads.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="pChoicesTitle">⚙️ Your choices</h3>
+                    <p data-i18n="pChoicesDesc">You can play without an account, delete your local data by clearing browser storage, reset your slap statistics from the Slap IQ panel, and change your advertising consent at any time. To have an account and its stored scores deleted, contact us below.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="pContactTitle">✉️ Contact</h3>
+                    <p data-i18n="pContactDesc">Questions about this policy or a data request: berk9elmali9@gmail.com</p>
+                </div>
+            </div>
+            <button id="btn-privacy-back" class="btn secondary" data-i18n="back">Back</button>
+        </div>
     </div>
 
     <!-- SETTINGS PANEL -->
@@ -185,7 +414,26 @@
                 <input type="checkbox" id="toggle-fast-anim" style="width: 25px; height: 25px; cursor: pointer; flex-shrink: 0; margin-left: 1rem;">
             </div>
 
+            <h3 data-i18n="houseRulesTitle" style="margin: 0.5rem 0 0.4rem; font-size: 1.05rem; opacity: 0.85; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.2rem;">House Rules</h3>
+            <div data-i18n="houseRulesDesc" style="font-size: 0.78rem; opacity: 0.55; margin-bottom: 0.9rem;">Switch off any pattern you don't play with. Offline this is your table; in multiplayer the host's set is used for the whole room.</div>
+
+            <div id="house-rules-lock" class="house-rules-lock" role="note" style="display:none;"></div>
+            <div class="house-rules-grid">
+                <!-- Rows are rendered by settings.js from RULE_DEFS so the list
+                     can never drift from the rule registry. -->
+            </div>
+            <button id="btn-rules-reset" class="btn secondary" style="margin: 0.2rem 0 1.5rem; padding: 8px 14px; font-size: 0.85rem;" data-i18n="houseRulesReset">Restore classic rules</button>
+
             <h3 data-i18n="comfortSectionTitle" style="margin: 0.5rem 0 1rem; font-size: 1.05rem; opacity: 0.85; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.2rem;">Comfort &amp; Accessibility</h3>
+
+            <div class="setting-group"
+                style="flex-direction: row; justify-content: space-between; align-items: center;">
+                <div>
+                    <label data-i18n="slapCoachLabel" style="margin-bottom: 0;">Slap Coach</label>
+                    <div data-i18n="slapCoachDesc" style="font-size: 0.78rem; opacity: 0.55; margin-top: 2px;">Explains why a slap was valid or not, right on the table</div>
+                </div>
+                <input type="checkbox" id="toggle-slap-coach" checked style="width: 25px; height: 25px; cursor: pointer; flex-shrink: 0; margin-left: 1rem;">
+            </div>
 
             <div class="setting-group"
                 style="flex-direction: row; justify-content: space-between; align-items: center;">
@@ -295,6 +543,11 @@
                             </div>
                         </li>
                     </ul>
+
+                    <!-- Generated from RULE_DEFS by rulesPanel.js — see ruleDoc.js.
+                         Deliberately inside the Slap Rules section rather than a
+                         section of its own: these are more patterns, not a new topic. -->
+                    <div id="optional-rules" class="optional-rules"></div>
                 </div>
 
                 <div class="rules-section">
@@ -348,13 +601,36 @@
                     <p data-i18n="rProfileStatsDesc">Check out your Account Profile to view your complete match history, card win records, and an interactive SVG-rendered reflex speed trend curve showing your reaction improvement over time.</p>
                 </div>
 
+                <div class="rules-section">
+                    <h3 data-i18n="rOriginTitle">📜 Where the game comes from</h3>
+                    <p data-i18n="rOriginDesc">Egyptian Rat Screw is a slapping variant of <strong>Beggar-My-Neighbour</strong>, an old English children's game in which players lay cards down in turn and a face card forces the next player to pay a penalty. The slapping half comes from the Slapjack family. The combination travels under a long list of names — ERS, ERF, Egyptian War, Bloodystump, Ratslap — and there is no documented account of where the "Egyptian" came from. The game spread by being taught at kitchen tables, not by being published, so nobody wrote that part down.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="rHouseVaryTitle">🏠 Why everyone's rules are different</h3>
+                    <p data-i18n="rHouseVaryDesc">Because it spread by word of mouth, almost every group plays a slightly different set. Doubles and sandwiches are close to universal; tens, marriages, top-bottom and four-in-a-row are the ones people argue about. Rather than pick a side, this game makes them switches: the four classic patterns are on by default, three more stay off until you turn them on, and the table you are about to sit at shows which set is live <em>before</em> the first card is dealt — so nobody discovers a house rule by losing a pile to it.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="rStrategyTitle">🎯 What actually makes you better</h3>
+                    <p data-i18n="rStrategyDesc">A wrong slap costs a card off the bottom of your deck, so the cheapest improvement is not slapping <em>faster</em> — it is slapping less often on patterns you are unsure of. Tens are what people miss: the two cards must add to exactly ten and face cards do not count, which is easy to see one beat too late. Watch the pile grow rather than the card being played; a five-card pile is worth several turns of risk, a two-card pile is not. And while a slap streak is shielding you, a wrong slap breaks the shield instead of burning a card — so on a streak, a marginal slap is worth more than it usually is.</p>
+                </div>
+
+                <div class="rules-section">
+                    <h3 data-i18n="rDailyRulesTitle">🗓️ Why the Daily Challenge is the same for everyone</h3>
+                    <p data-i18n="rDailyRulesDesc">The day's deal is generated from the date itself, not from a roll on the server, so every player in the world starts from the same mid-match position with the same cards in the same hands. The scenario shape and the bot difficulty are functions of the date too. While a scored run is going your own settings are overridden — the turn clock, the animation speed and the rule set are the day's, not yours. Otherwise a gentler setting would buy a higher score on an identical board, and the leaderboard would rank preferences instead of reflexes.</p>
+                </div>
+
                 <div class="rules-section" style="border-left: 3px solid #a78bfa; background: rgba(167, 139, 250, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
                     <h3 data-i18n="rPersonalityTitle">🎭 Bot Personalities</h3>
                     <p data-i18n="rPersonalityDesc">Each seat plays differently: <strong>Blitz</strong> is fast and bluffs often, <strong>Chaos</strong> is wildly unpredictable, and <strong>Viper</strong> is patient and rarely wrong. Same difficulty, three different fights.</p>
                 </div>
 
             </div>
-            <button id="btn-rules-back" class="btn secondary" data-i18n="back" style="margin-top: 1rem;">Back</button>
+            <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
+             never on a screen where anything is being timed — see adsConfig.js. -->
+        <div class="ad-slot" aria-hidden="true"></div>
+        <button id="btn-rules-back" class="btn secondary" data-i18n="back" style="margin-top: 1rem;">Back</button>
         </div>
     </div>
 
@@ -406,12 +682,24 @@
                 style="background: rgba(22, 27, 34, 0.6); padding: 14px; border-radius: 10px; margin-bottom: 18px; text-align: center; border: 1px solid rgba(255,255,255,0.1); width: 100%;">
                 <h3 style="color: var(--primary); margin-bottom: 5px;" data-i18n="tableId">Table ID</h3>
                 <div
-                    style="font-size: 2rem; font-weight: bold; letter-spacing: 5px; color: white; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                    style="font-size: 2rem; font-weight: bold; letter-spacing: 5px; color: white; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <span id="display-table-id">------</span>
-                    <button id="btn-copy-id" class="btn-small" style="font-size: 0.9rem; padding: 5px 10px;"
+                </div>
+                <!-- Both buttons carry .btn-small, which is position:absolute
+                     top-right. Left in the flow above they landed in the same
+                     corner, exactly on top of each other, and Copy ID could
+                     never be clicked. .table-id-actions puts them back in
+                     normal flow, side by side under the code. -->
+                <div class="table-id-actions">
+                    <button id="btn-copy-id" class="btn-small"
                         data-i18n="copyId">Copy ID</button>
+                    <button id="btn-share-invite" class="btn-small btn-invite-share"
+                        data-i18n="shareInvite">🔗 Share Invite</button>
                 </div>
             </div>
+
+            <!-- v3.0.0: the host's rule set, so a joiner is never surprised -->
+            <div id="lobby-rules-badge" class="rules-badge lobby" style="display:none; margin-bottom: 16px;"></div>
 
             <div style="text-align: left; width: 100%; margin-bottom: 18px;">
                 <h3 style="color: white; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 5px; margin-bottom: 10px;"
@@ -431,81 +719,114 @@
     </div>
 
     <!-- ACCOUNT PANEL -->
-    <div id="account-panel" class="screen">
+    <div id="account-panel" class="screen scrollable-screen">
         <h2 data-i18n="account">Account</h2>
 
+        <!-- v3.12.0 — THE SIGN-IN CARD IS A REAL FORM.
+             It was a <div> of loose inputs and four buttons whose visibility
+             was juggled by six `style.display` writes in profileUI.js. That
+             cost it the Enter key, the browser's password manager, and any
+             chance of a transition between its two modes. The mode now lives
+             in ONE place — `data-mode` on the form — and CSS reads it. -->
         <div id="account-logged-out" class="account-section">
-            <div class="auth-card">
-                <div class="setting-group" id="auth-username-group" style="display: none;">
+            <form id="auth-form" class="auth-card" data-mode="signin" novalidate>
+                <div class="profile-emblem" aria-hidden="true">♠</div>
+                <p class="profile-intro" data-i18n="profileIntro">Your seat at the table. Keep your score and return to your rivals.</p>
+                <div class="setting-group auth-field" id="auth-username-group">
+                    <label for="auth-username" data-i18n="phUsername">Username</label>
                     <div class="auth-input-wrap">
-                        <span class="auth-input-icon">👤</span>
-                        <input type="text" id="auth-username" data-i18n="phUsername" placeholder="Username"
+                        <span class="auth-input-icon" aria-hidden="true">👤</span>
+                        <input type="text" id="auth-username" name="username" autocomplete="username"
+                            data-i18n="phUsername" placeholder="Username"
                             class="ui-input crisp-dark auth-input" maxlength="15">
                     </div>
                 </div>
-                <div class="setting-group" id="auth-email-group">
+                <div class="setting-group auth-field" id="auth-email-group">
+                    <label for="auth-email" data-i18n="phEmail">Email</label>
                     <div class="auth-input-wrap">
-                        <span class="auth-input-icon">📧</span>
-                        <input type="email" id="auth-email" data-i18n="phEmail" placeholder="Email" class="ui-input crisp-dark auth-input">
+                        <span class="auth-input-icon" aria-hidden="true">📧</span>
+                        <input type="email" id="auth-email" name="email" autocomplete="email"
+                            data-i18n="phEmail" placeholder="Email" class="ui-input crisp-dark auth-input">
                     </div>
                 </div>
-                <div class="setting-group">
+                <div class="setting-group auth-field">
+                    <label for="auth-password" data-i18n="phPassword">Password</label>
                     <div class="auth-input-wrap">
-                        <span class="auth-input-icon">🔒</span>
-                        <input type="password" id="auth-password" data-i18n="phPassword" placeholder="Password"
+                        <span class="auth-input-icon" aria-hidden="true">🔒</span>
+                        <input type="password" id="auth-password" name="password" autocomplete="current-password"
+                            data-i18n="phPassword" placeholder="Password"
                             class="ui-input crisp-dark auth-input">
                     </div>
                 </div>
-                <div id="auth-error" class="error-msg"></div>
-                <div class="menu-buttons sleek-layout" style="margin-top:20px;">
-                    <button id="btn-signin" class="btn primary" data-i18n="signIn">Sign In</button>
-                    <button id="btn-toggle-register" class="btn secondary" data-i18n="needAccount">Need an account?
-                        Register</button>
-                    <div id="register-actions" style="display:none; flex-direction:column; gap:1.2rem;">
-                        <button id="btn-signup" class="btn primary vibrant-play" data-i18n="register">Register</button>
-                        <button id="btn-toggle-login" class="btn secondary" data-i18n="backToLogin">Back to Login</button>
-                    </div>
+                <!-- One line carries every message the card can produce: the
+                     validation refusals, the Firebase errors, and the
+                     reset-link confirmation (`.is-success`). It reserves its
+                     own height, so nothing below it moves when it fills. -->
+                <div id="auth-error" class="error-msg auth-message" role="alert" aria-live="polite"></div>
+                <button type="submit" id="btn-auth-submit" class="btn primary auth-submit">
+                    <span class="auth-mode-signin" data-i18n="signIn">Sign In</span>
+                    <span class="auth-mode-register" data-i18n="register">Register</span>
+                    <span class="auth-mode-busy" data-i18n="authBusy">Working…</span>
+                </button>
+                <div class="auth-switch">
+                    <button type="button" id="btn-forgot" class="auth-link auth-mode-signin"
+                        data-i18n="forgotPassword">Forgot your password?</button>
+                    <p class="auth-switch-line">
+                        <span class="auth-mode-signin" data-i18n="noAccountYet">No account yet?</span>
+                        <span class="auth-mode-register" data-i18n="haveAccount">Already have an account?</span>
+                        <button type="button" id="btn-toggle-register" class="auth-link auth-mode-signin"
+                            data-i18n="register">Register</button>
+                        <button type="button" id="btn-toggle-login" class="auth-link auth-mode-register"
+                            data-i18n="signIn">Sign In</button>
+                    </p>
                 </div>
-            </div>
+            </form>
         </div>
 
         <div id="account-logged-in" class="account-section" style="display: none;">
-            <div
-                style="background: rgba(22, 27, 34, 0.6); padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: left; border: 1px solid rgba(255,255,255,0.1);">
-                <p style="margin: 5px 0;"><strong style="color:var(--primary);"
-                        data-i18n="usernameLabel">Username:</strong> <span id="account-username-display"></span></p>
-                <p style="margin: 5px 0;"><strong style="color:var(--primary);" data-i18n="emailLabel">Email:</strong>
-                    <span id="account-email-display"></span>
-                </p>
-                <p style="margin: 5px 0;"><strong style="color:gold;" data-i18n="scoreLabel">Score:</strong> <span
-                        id="account-score-display">0</span></p>
-                <p style="margin: 5px 0;"><strong style="color:#58a6ff;" data-i18n="bestReflexLabel">Best Reflex:</strong> <span
-                        id="account-reflex-display">---</span></p>
+            <div class="profile-identity">
+                <div id="profile-avatar" class="profile-emblem" aria-hidden="true">♠</div>
+                <div class="profile-identity-text">
+                    <p class="profile-eyebrow" data-i18n="profilePlayerCard">Player card</p>
+                    <h3 id="account-username-display"></h3>
+                    <p id="account-email-display"></p>
+                </div>
+            </div>
+            <div class="profile-stats">
+                <div class="profile-stat"><span data-i18n="scoreLabel">Score</span><strong id="account-score-display">0</strong></div>
+                <div class="profile-stat"><span data-i18n="bestReflexLabel">Best Reflex</span><strong id="account-reflex-display">—</strong></div>
+                <div class="profile-stat"><span data-i18n="profileGames">Games played</span><strong id="account-games-display">0</strong></div>
+                <div class="profile-stat"><span data-i18n="profileWinRate">Win rate</span><strong id="account-winrate-display">—</strong></div>
             </div>
 
-            <!-- MATCH HISTORY & PERFORMANCE GRAPH -->
-            <div id="match-history-container" style="background: rgba(22, 27, 34, 0.45); padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08); text-align: left; max-height: 250px; overflow-y: auto;">
-                <h4 style="margin: 0 0 10px 0; color: var(--primary); display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem; font-weight: 700;">
-                    <span data-i18n="matchHistoryTitle">Match History & Reflex Trend</span>
-                    <span style="font-size: 0.72rem; color: rgba(255,255,255,0.4);" data-i18n="last5matches">Last 5 Matches</span>
+            <!-- MATCH HISTORY & PERFORMANCE GRAPH
+                 v3.10.0: was fourteen inline declarations across these two
+                 panels, including a hardcoded rgba(22,27,34,.45) that looked
+                 identical in all five themes. The classes take their surface
+                 from --panel-bg / --panel-border like every other panel. -->
+            <div id="match-history-container" class="profile-panel profile-panel--scroll">
+                <p class="profile-history-note" data-i18n="profileLocalHistory">Recent matches on this device. Lower reflex times are faster.</p>
+                <h4 class="profile-panel-title">
+                    <span data-i18n="matchHistoryTitle">Match History &amp; Reflex Trend</span>
+                    <span class="profile-panel-meta" data-i18n="last5matches">Last 5 Matches</span>
                 </h4>
-                
+
                 <!-- SVG Trend Curve Graph -->
-                <div id="reflex-graph-wrapper" style="width: 100%; height: 100px; margin-bottom: 12px; position: relative; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
+                <div id="reflex-graph-wrapper" class="profile-graph">
                     <!-- Dynamically rendered SVG will go here -->
                 </div>
 
                 <!-- Match List -->
-                <div id="match-history-list" style="display: flex; flex-direction: column; gap: 8px;">
+                <div id="match-history-list" class="profile-match-list">
                     <!-- Dynamically rendered matches go here -->
                 </div>
             </div>
 
             <!-- BOT NEMESIS TRACKER -->
-            <div id="bot-nemesis-container" style="background: rgba(22, 27, 34, 0.45); padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.08); text-align: left;">
-                <h4 style="margin: 0 0 10px 0; color: var(--primary); font-size: 0.95rem; font-weight: 700;" data-i18n="nemesisTitle">🎭 Bot Rivalry</h4>
-                <div id="bot-nemesis-content" style="font-size: 0.85rem;">
-                    <p style="opacity:0.5; margin:0;" data-i18n="nemesisEmpty">Play some offline matches to build a rivalry record.</p>
+            <div id="bot-nemesis-container" class="profile-panel">
+                <h4 class="profile-panel-title" data-i18n="nemesisTitle">🎭 Bot Rivalry</h4>
+                <div id="bot-nemesis-content" class="profile-nemesis-body">
+                    <p class="profile-empty" data-i18n="nemesisEmpty">Play some offline matches to build a rivalry record.</p>
                 </div>
             </div>
 
@@ -514,6 +835,9 @@
             </div>
         </div>
 
+        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
+             never on a screen where anything is being timed — see adsConfig.js. -->
+        <div class="ad-slot" aria-hidden="true"></div>
         <div class="menu-buttons" style="margin-top: 2rem;">
             <button id="btn-close-account" class="btn secondary" data-i18n="close">Close</button>
         </div>
@@ -523,7 +847,16 @@
     <div id="game-container" class="screen">
         <div id="match-timer-display" style="display:none;"></div>
 
-        <div id="top-player" class="player-zone bot">
+        <!-- v3.0.0: connection quality. Visible only in multiplayer. -->
+        <div id="net-hud" class="net-hud tier-unknown" style="display:none;">
+            <span id="net-hud-dot" class="net-hud-dot"></span>
+            <span id="net-hud-text">—</span>
+        </div>
+
+        <!-- v3.0.0: rule set badge — only shown when the table is NOT classic -->
+        <div id="rules-badge" class="rules-badge" style="display:none;"></div>
+
+        <div id="top-player" class="player-zone">
             <div class="deck bot-deck" id="top-deck"><span id="p2-name">Bot 2</span> <br><span id="p2-count"
                     class="count">13</span></div>
         </div>
@@ -542,7 +875,7 @@
         </div>
 
         <div id="middle-row">
-            <div id="left-player" class="player-zone bot">
+            <div id="left-player" class="player-zone">
                 <div class="deck bot-deck" id="left-deck"><span id="p1-name">Bot 1</span> <br><span id="p1-count"
                         class="count">13</span></div>
             </div>
@@ -554,24 +887,109 @@
                 </div>
                 <div class="pile-label" data-i18n="tapToSlap">TAP TO SLAP</div>
                 <div id="pile-cards"></div>
+                <!-- v3.0.0: Slap Coach verdict chip -->
+                <div id="slap-coach" class="slap-coach" aria-live="polite"></div>
             </div>
 
-            <div id="right-player" class="player-zone bot">
+            <div id="right-player" class="player-zone">
                 <div class="deck bot-deck" id="right-deck"><span id="p3-name">Bot 3</span> <br><span id="p3-count"
                         class="count">13</span></div>
             </div>
         </div>
 
-        <div id="bottom-player" class="player-zone human">
+        <div id="bottom-player" class="player-zone">
             <div class="deck human-deck" id="human-deck"><span id="player-name-display" data-i18n="you">YOU</span>
                 <br><span id="p0-count" class="count">13</span><br><small data-i18n="tapToPlay">TAP TO PLAY</small>
             </div>
         </div>
 
         <div id="action-log"></div>
-        <div id="notifications"></div>
 
         <button id="btn-quit" class="btn-small" data-i18n="quit">Quit</button>
+    </div>
+
+    <!-- TOAST HOST (v3.7.0)
+         This element used to live inside #game-container. Because .screen is
+         display:none unless .active, every notification raised from the lobby,
+         the waiting room, the menu or the reconnect popup was written into a
+         hidden subtree and never seen — a dead "Start Game" button, a join
+         failure and a reconnect failure all looked like nothing happening.
+         style.css v2.9.0 documented the bug and worked around it for the shop
+         panel alone. It is a body-level sibling of #loading-overlay now, so a
+         message raised from any screen renders. Do NOT move it back inside a
+         .screen. -->
+    <div id="notifications"></div>
+
+    <!-- The photo-finish callout: two slaps landed within milliseconds and
+         this says who took the pile, and by how much. Body-level and fixed
+         for the same reason as the toast host above — and, unlike the winner
+         banner that stranded itself over the menu in v3.12.0, it retires
+         itself on a generation-guarded timer AND goes down with the match.
+         It sits AFTER the toast host on purpose: check-error-modal proves
+         the toast is not back inside #game-container by looking for the
+         TOAST HOST comment within 900 characters of it, and putting this
+         block in between pushed that comment out of the window. A source
+         scan tripping over prose, for the fifth time in this project. -->
+    <div id="photo-finish-banner" class="photo-finish-banner" role="status" aria-live="polite"></div>
+
+    <!-- CONNECTION BANNER (v3.7.0)
+         Non-blocking by design: a dropped connection during a hand must be
+         reported without taking the board away from the player. Body-level for
+         the same reason as #notifications above. -->
+    <!-- RA'S WHEEL OF FORTUNE (v3.13.0, ported from ers-revamp) -->
+    <div id="daily-spin-modal" class="modal-backdrop spin-modal-backdrop" style="display:none;">
+        <div class="spin-modal-card">
+            <div class="spin-modal-header">
+                <h3 class="spin-title"><span aria-hidden="true">☀️</span> <span data-i18n="spinTitle">Ra's Wheel of Fortune</span></h3>
+                <button id="btn-close-spin" class="modal-close-btn" aria-label="Close">&times;</button>
+            </div>
+            <p class="spin-desc" data-i18n="spinDesc">One spin a day. Climb the tiers and the rewards climb with you.</p>
+            <div id="spin-tier-indicator" class="spin-tier-indicator">
+                <span class="tier-dot tier-bronze active" data-tier="0"><span aria-hidden="true">🥉</span> <span class="tier-dot-label" data-i18n="spinTierBronze">Bronze</span></span>
+                <span class="tier-arrow" aria-hidden="true">&rarr;</span>
+                <span class="tier-dot tier-silver" data-tier="1"><span aria-hidden="true">🥈</span> <span class="tier-dot-label" data-i18n="spinTierSilver">Silver</span></span>
+                <span class="tier-arrow" aria-hidden="true">&rarr;</span>
+                <span class="tier-dot tier-gold" data-tier="2"><span aria-hidden="true">🥇</span> <span class="tier-dot-label" data-i18n="spinTierGold">Gold</span></span>
+            </div>
+            <div class="wheel-outer-wrapper wheel-outer-lg">
+                <div class="wheel-pointer" aria-hidden="true">&#9660;</div>
+                <canvas id="daily-spin-canvas" width="340" height="340"></canvas>
+            </div>
+            <div id="daily-spin-status" class="daily-spin-status" role="status" aria-live="polite" data-i18n="spinReady">Ra's Wheel is ready. Take your spin!</div>
+            <div id="daily-spin-countdown" class="daily-spin-countdown" style="display: none;"></div>
+            <button id="btn-spin-action" class="btn primary spin-action-btn">
+                <span data-i18n="spinBtnReady">SPIN AND WIN!</span>
+            </button>
+            <button id="btn-close-spin-footer" class="spin-footer-close" data-i18n="spinClose">Close window</button>
+        </div>
+    </div>
+
+    <div id="connection-banner">
+        <span class="cb-dot"></span>
+        <span id="connection-banner-text" data-i18n="connBannerLost">Connection lost — reconnecting…</span>
+    </div>
+
+    <!-- BOOT FAILURE NOTICE — static markup, revealed by the inline <head>
+         script. Both languages are hardcoded because if this element is showing,
+         localization.js is exactly one of the things that may have failed. -->
+    <div id="boot-error">
+        <div style="font-size:2.6rem;line-height:1">⚠️</div>
+        <h2 style="margin:0;font-size:1.25rem;font-weight:800">Uygulama başlatılamadı / Could not start</h2>
+        <p style="margin:0;max-width:30rem;line-height:1.55;color:rgba(255,255,255,0.75)">
+            Bağlantınız kesilmiş veya bazı dosyalar yüklenemedi. Lütfen internet
+            bağlantınızı kontrol edip sayfayı yenileyin.<br>
+            <span style="color:rgba(255,255,255,0.5)">Your connection dropped or some files could not be loaded. Please check your connection and reload.</span>
+        </p>
+        <!-- No onclick= here. script-src blocks an inline handler exactly as it
+             blocks an inline <script>, and a script hash does NOT unblock an
+             attribute (that would need 'unsafe-hashes'). The inline net wires
+             this button up instead, at the moment it reveals the notice. -->
+        <button type="button" id="boot-error-reload"
+            style="margin-top:6px;padding:12px 26px;border:0;border-radius:12px;background:#e11d48;color:#fff;font-size:1rem;font-weight:700;cursor:pointer">
+            Yenile / Reload
+        </button>
+        <code class="boot-error-tech"
+            style="max-width:32rem;font-size:0.72rem;color:rgba(255,255,255,0.35);word-break:break-word"></code>
     </div>
 
     <!-- LOADING OVERLAY -->
@@ -606,7 +1024,7 @@
 
     <!-- CONFIRM MODAL -->
     <div id="confirm-modal" class="screen modal-overlay">
-        <div class="modal-content glassmorphic-card">
+        <div class="modal-content">
             <div class="warning-icon-wrapper">
                 <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
@@ -623,8 +1041,32 @@
         </div>
     </div>
 
+    <!-- INVITE MODAL -->
+    <div id="invite-modal" class="screen modal-overlay">
+        <div class="modal-content invite-card">
+            <div class="invite-header">
+                <h3 data-i18n="inviteModalTitle" class="invite-title">Invite Friends to Table</h3>
+                <button id="btn-close-invite" class="invite-close-btn" aria-label="Close">&times;</button>
+            </div>
+            <div class="invite-code-badge" style="margin: 8px 0 10px; font-size: 1rem; color: var(--primary); letter-spacing: 1px;">
+                <span data-i18n="tableId">Table ID</span>: <strong id="invite-code-display" style="color: #fff; font-size: 1.3rem; letter-spacing: 3px; background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);">------</strong>
+            </div>
+            <p class="modal-subtext" data-i18n="scanQrDesc">Scan the QR code with your camera or copy the direct link below:</p>
+            <div class="qr-wrapper">
+                <canvas id="invite-qr-canvas" width="180" height="180"></canvas>
+            </div>
+            <div class="invite-link-box">
+                <input type="text" id="invite-link-input" class="ui-input invite-input" readonly>
+                <button id="btn-copy-invite-link" class="btn primary btn-copy-link" data-i18n="copyInviteLink">Copy Link</button>
+            </div>
+            <div id="invite-share-native-row" style="margin-top: 12px; display: none;">
+                <button id="btn-native-share" class="btn secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;" data-i18n="shareViaApp">📱 Share Invite Link</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=2.9.0"></script>
+    <script type="module" src="js/main.js?v=3.13.0"></script>
 </body>
 
 </html>

@@ -132,7 +132,9 @@ body.parallax-active #btn-play-multi:hover {
 #parallax-bg.parallax-exit {
     transform: scale(1.15) !important;
     filter: blur(8px) brightness(0.5) !important;
-    transition: transform 0.8s ease-in, filter 0.8s ease-in !important;
+    /* v3.9.0: v3.8.0 kisaltmisti (1000ms -> ~340ms); tek gercek his
+       kazanimi buydu, lobby.css ile birlikte gitmesin diye buraya tasindi. */
+    transition: transform 0.32s ease-in, filter 0.32s ease-in !important;
 }
 
 .parallax-exit-ui {
@@ -478,9 +480,23 @@ body.theme-dark {
 }
 
 #account-panel {
-    justify-content: center;
+    /* v3.10.0 — `justify-content: center` on a flex COLUMN that overflows
+       pushes the overflow out of BOTH ends, and the top end cannot be
+       scrolled back to: scrollTop is already 0 there. Measured before the
+       fix, the <h2> sat at top:-21 on a 1920x914 desktop and top:-138 on a
+       390x844 phone, so the panel's own title was unreachable. It is the
+       only .scrollable-screen that centred, and the only one with the bug.
+
+       Two declarations, deliberately. A browser that does not understand
+       `safe center` drops the second and keeps the first, which is the safe
+       direction to fail in: content starts at the top and every pixel of it
+       can be scrolled to. Where `safe` IS understood, the panel still
+       centres whenever it fits. */
+    justify-content: flex-start;
+    justify-content: safe center;
     align-items: center;
     text-align: center;
+    padding-top: 1.5rem;
 }
 
 .account-section {
@@ -1104,8 +1120,16 @@ select:focus {
     text-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
 }
 
+/* v3.7.0: body-level, so a toast raised from ANY screen is visible. Was
+   position:absolute inside #game-container (display:none unless active), which
+   silently swallowed every lobby/menu/reconnect message. The geometry is
+   unchanged — top/left 50% with a -50%/-50% translate reads the viewport under
+   `fixed` exactly as it read the full-bleed container under `absolute`.
+   z-index 9998 sits above every .screen (max 1000) and below #loading-overlay
+   (9999) and the modals (10000+), so a toast can never cover a spinner or a
+   dialog. pointer-events:none keeps it from eating clicks on any screen. */
 #notifications {
-    position: absolute;
+    position: fixed;
     top: 50%;
     left: 50%;
     width: 90%;
@@ -1119,7 +1143,7 @@ select:focus {
     text-transform: uppercase;
     filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6));
     text-align: center;
-    z-index: 100;
+    z-index: 9998;
     opacity: 0;
     transition: opacity 0.2s ease-out, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     letter-spacing: 1px;
@@ -1710,7 +1734,19 @@ body.fast-animations .fly-in {
     transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-#confirm-modal.active .modal-content {
+/* The reveal for EVERY modal, not one of them.
+ *
+ * .modal-content ships at opacity:0 and scale(0.85) so it can animate in. For a
+ * long time exactly one rule lifted it again and it was scoped to
+ * #confirm-modal. The invite modal reused the .modal-content class for its
+ * styling and inherited the opacity:0 with no rule to undo it — so from v3.5.0
+ * it was laid out, hit-testable, and completely transparent. Clicking "Invite"
+ * dimmed the screen and showed nothing.
+ *
+ * Scoped to .modal-overlay.active instead, so the next modal is revealed by
+ * existing under the same class rather than by someone remembering to add a
+ * second rule. Specificity (0,3,0) still beats .modal-content (0,1,0). */
+.modal-overlay.active .modal-content {
     transform: scale(1) translateY(0);
     opacity: 1;
 }
@@ -2691,14 +2727,8 @@ body.fast-animations .fly-in {
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
 }
 
-#account-logged-in > div:first-child {
-    transition: box-shadow 0.3s ease, border-color 0.3s ease;
-}
-
-#account-logged-in > div:first-child:hover {
-    box-shadow: 0 0 15px var(--panel-glow);
-    border-color: var(--panel-border) !important;
-}
+/* v3.10.0 — a positional hover written when this slot held a different
+   element. `.profile-identity` now carries its own hover, by name. */
 
 /* --- 11. Rules Panel Kompakt & Zengin Animasyonlar --- */
 #rules-panel {
@@ -3764,4 +3794,2460 @@ body.high-legibility .stat-value {
     0%   { transform: scale(0.7); opacity: 0; }
     60%  { transform: scale(1.08); opacity: 1; }
     100% { transform: scale(1); }
+}
+
+/* =====================================================================
+   v3.0.0 — House Rules, Slap Coach, Fair-Slap HUD, Daily Challenge
+   ===================================================================== */
+
+/* ---------- Slap Coach chip (slapForensics.js) ----------------------- */
+/* Anchored above the pile: close enough to the cards that the player's eyes
+   are already there, far enough not to cover the pattern being explained. */
+.slap-coach {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 14px);
+    transform: translate(-50%, 8px);
+    z-index: 60;
+    max-width: min(78vw, 420px);
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--panel-border);
+    background: rgba(22, 27, 34, 0.88);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.slap-coach.visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+.slap-coach.good {
+    color: #7ee2a8;
+    border-color: rgba(63, 185, 80, 0.55);
+    box-shadow: 0 8px 26px rgba(63, 185, 80, 0.25);
+}
+
+.slap-coach.bad {
+    color: #ffb4ad;
+    border-color: rgba(248, 81, 73, 0.5);
+    box-shadow: 0 8px 26px rgba(248, 81, 73, 0.22);
+}
+
+.reduced-motion .slap-coach {
+    transition: opacity 0.12s linear;
+    transform: translate(-50%, 0);
+}
+
+@media (max-width: 560px) {
+    .slap-coach {
+        font-size: 0.8rem;
+        padding: 6px 12px;
+        bottom: calc(100% + 8px);
+    }
+}
+
+/* ---------- Connection quality HUD (netQuality.js) ------------------- */
+/* Bottom-right corner. Deliberately NOT top-right: that is `#btn-quit`
+   (.btn-small) on every screen size and `#top-right-score` on mobile. The
+   bottom-left is `#action-log`, so this corner is the only free one. */
+.net-hud {
+    position: absolute;
+    bottom: 18px;
+    right: 15px;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(22, 27, 34, 0.6);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(10px);
+}
+
+.net-hud-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6e7681;
+    box-shadow: 0 0 8px currentColor;
+}
+
+.net-hud.tier-excellent .net-hud-dot { background: #3fb950; }
+.net-hud.tier-good      .net-hud-dot { background: #58a6ff; }
+.net-hud.tier-fair      .net-hud-dot { background: #d29922; }
+.net-hud.tier-poor      .net-hud-dot { background: #f85149; }
+
+.net-hud.tier-poor {
+    border-color: rgba(248, 81, 73, 0.45);
+}
+
+/* ---------- House Rules badge (rulesBadge.js) ------------------------ */
+.rules-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(22, 27, 34, 0.6);
+    border: 1px solid rgba(210, 153, 34, 0.45);
+    backdrop-filter: blur(10px);
+    /* Stacked directly above the connection HUD in the free bottom-right
+       corner — see the note on .net-hud. */
+    position: absolute;
+    bottom: 52px;
+    right: 15px;
+    z-index: 85;
+    max-width: min(90vw, 320px);
+}
+
+.rules-badge.lobby {
+    position: static;
+    transform: none;
+    width: 100%;
+    font-size: 0.85rem;
+    padding: 10px 14px;
+}
+
+.rules-badge .rb-title { color: #e3b341; }
+.rules-badge .rb-on    { color: #7ee2a8; }
+.rules-badge .rb-off   { color: #ffb4ad; }
+
+/* ---------- House Rules settings grid -------------------------------- */
+.house-rules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 0.9rem;
+}
+
+.rule-row {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+    cursor: pointer;
+    font-size: 0.92rem;
+    transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.rule-row:hover { border-color: rgba(88, 166, 255, 0.4); }
+.rule-row:focus-within { border-color: var(--primary); }
+
+.rule-row input {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.rule-row .rule-name { font-weight: 600; }
+
+/* A switched-off rule reads as switched off at a glance — the whole row dims
+   and its pattern desaturates, so the panel can be scanned rather than read. */
+.rule-row:has(input:not(:checked)) { opacity: 0.44; }
+.rule-row:has(input:not(:checked)) .rule-preview { filter: grayscale(1); }
+
+/* Opt-in rules read as additions to the game, not as defaults someone removed.
+   Dashed edge + a star, so the two tiers are distinguishable at a glance
+   without colour alone carrying the meaning. */
+.rule-row.optional {
+    border-style: dashed;
+}
+
+.rule-row.optional .rule-name::after {
+    content: ' ★';
+    color: #e3b341;
+    font-size: 0.75em;
+}
+
+/* --- miniature pattern cards ------------------------------------------- */
+.rule-preview {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.mini-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 34px;
+    border-radius: 4px;
+    background: #fdfdfb;
+    color: #16202c;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+    line-height: 1;
+    font-family: inherit;
+}
+
+.mini-card b { font-size: 0.72rem; font-weight: 800; }
+.mini-card i { font-size: 0.66rem; font-style: normal; }
+.mini-card.red { color: #c0202a; }
+
+/* The filling in a Sandwich: present in the pattern, not part of the match. */
+.mini-card.filler {
+    opacity: 0.42;
+    transform: scale(0.86);
+}
+
+/* ---------- Daily Challenge panel ------------------------------------ */
+.daily-head {
+    width: 100%;
+    max-width: 560px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 1.4rem;
+    margin-bottom: 1.4rem;
+    text-align: center;
+}
+
+.daily-sigil {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+.daily-sigil svg {
+    border-radius: 10px;
+    padding: 7px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--panel-border);
+}
+
+.daily-meta {
+    display: flex;
+    justify-content: center;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 0.6rem;
+}
+
+.daily-date {
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+}
+
+.daily-seed {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--primary);
+    opacity: 0.85;
+}
+
+.daily-blurb {
+    font-size: 0.85rem;
+    opacity: 0.65;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+
+.daily-best {
+    font-size: 1rem;
+    margin-bottom: 1.1rem;
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.daily-sub {
+    font-size: 1.05rem;
+    opacity: 0.85;
+    margin-bottom: 0.7rem;
+}
+
+/* Honest-board notice. Deliberately not styled as a dismissible toast: it is a
+   property of the board, not an event, so it stays as long as the board is
+   unverified. Amber rather than red — the score is real, the ranking is not
+   trustworthy, and that is a caution, not an error. */
+.daily-board-trust {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    margin-bottom: 0.8rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 186, 8, 0.4);
+    border-left: 3px solid rgba(255, 186, 8, 0.85);
+    background: rgba(255, 186, 8, 0.09);
+    text-align: left;
+}
+
+.daily-board-trust .dbt-badge {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #ffba08;
+}
+
+.daily-board-trust .dbt-body {
+    font-size: 0.82rem;
+    line-height: 1.5;
+    opacity: 0.78;
+}
+
+.daily-board {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.daily-board li {
+    display: grid;
+    grid-template-columns: 2.4rem 1fr auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.daily-board li.me {
+    background: rgba(88, 166, 255, 0.12);
+    border-radius: 8px;
+}
+
+.daily-board .rk { font-weight: 900; }
+.daily-board .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.daily-board .rx { font-size: 0.82rem; opacity: 0.6; }
+.daily-board .sc { font-weight: 900; color: gold; min-width: 3.5rem; text-align: right; }
+
+/* House Rules lock — shown while the Daily Challenge owns the rule set.
+   Same amber language as the unverified-board notice: not an error, a state. */
+.house-rules-lock {
+    font-size: 0.8rem;
+    line-height: 1.5;
+    padding: 9px 12px;
+    margin-bottom: 0.8rem;
+    border-radius: 10px;
+    border-left: 3px solid rgba(255, 186, 8, 0.85);
+    background: rgba(255, 186, 8, 0.09);
+    text-align: left;
+    opacity: 0.9;
+}
+
+.house-rules-grid.locked {
+    opacity: 0.45;
+    /* Clicks still reach the disabled inputs and do nothing; this just stops
+       the rows from inviting one. */
+    cursor: not-allowed;
+}
+
+.house-rules-grid.locked .rule-row {
+    pointer-events: none;
+}
+
+/* ---------- Slap IQ panel -------------------------------------------- */
+.iq-gauge {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    margin: 0 auto 0.6rem;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+.iq-gauge svg { width: 100%; height: 100%; display: block; }
+
+.iq-gauge .iq-track {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.09);
+    stroke-width: 10;
+}
+
+.iq-gauge .iq-arc {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 10;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 6px currentColor);
+    animation: iqSweep 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes iqSweep {
+    from { stroke-dasharray: 0 999; }
+}
+
+.iq-readout {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    pointer-events: none;
+}
+
+.iq-readout .iq-num {
+    font-size: 3rem;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--text-color);
+    font-variant-numeric: tabular-nums;
+}
+
+.iq-readout .iq-grade {
+    font-size: 1.05rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+}
+
+.iq-gauge.grade-S { color: #e3b341; }
+.iq-gauge.grade-A { color: #3fb950; }
+.iq-gauge.grade-B { color: #58a6ff; }
+.iq-gauge.grade-C { color: #d29922; }
+.iq-gauge.grade-D { color: #f85149; }
+
+.iq-gauge.calibrating .iq-arc { filter: none; opacity: 0.5; }
+.iq-gauge.calibrating .iq-readout .iq-grade {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    opacity: 0.75;
+}
+
+.reduced-motion .iq-gauge .iq-arc { animation: none; }
+
+.iq-subtitle {
+    text-align: center;
+    font-size: 0.85rem;
+    opacity: 0.6;
+    margin-bottom: 1.2rem;
+}
+
+.iq-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 1rem;
+}
+
+.iq-metrics div {
+    text-align: center;
+    padding: 12px 6px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+}
+
+.iq-metrics span {
+    display: block;
+    font-size: 0.72rem;
+    opacity: 0.55;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 4px;
+}
+
+.iq-metrics strong { font-size: 1.25rem; font-weight: 900; }
+
+.iq-totals, .iq-advice, .iq-note {
+    font-size: 0.85rem;
+    opacity: 0.75;
+    line-height: 1.5;
+    margin-bottom: 0.8rem;
+}
+
+.iq-note { opacity: 0.45; font-size: 0.78rem; }
+
+.iq-h3 {
+    font-size: 1rem;
+    margin: 1.2rem 0 0.6rem;
+    opacity: 0.85;
+}
+
+.iq-rules { list-style: none; padding: 0; margin: 0; }
+
+.iq-rule {
+    display: grid;
+    grid-template-columns: minmax(84px, 1fr) 2fr 3rem 3.4rem;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 0.86rem;
+}
+
+.iq-rule .bar {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.iq-rule .bar i {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+}
+
+.iq-rule .vl { font-weight: 800; text-align: right; }
+.iq-rule .ct { opacity: 0.45; font-size: 0.78rem; text-align: right; }
+
+.slapiq-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    max-width: 560px;
+}
+
+.slapiq-actions .btn { flex: 1; }
+
+/* Both corner HUDs step aside for the action log on short screens. */
+@media (max-height: 620px) {
+    .net-hud { bottom: 12px; padding: 3px 9px; font-size: 0.72rem; }
+    .rules-badge { bottom: 42px; font-size: 0.7rem; padding: 4px 10px; }
+}
+
+/* ---------- Daily Challenge: the inherited position ------------------- */
+/* Names the day's shape and your own starting hand — and nothing about the
+   bots', which is the information the scenario is actually built around. */
+.daily-scenario {
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+}
+
+.daily-scenario .ds-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.daily-scenario .ds-tag {
+    font-size: 0.82rem;
+    font-weight: 900;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    padding: 4px 11px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+}
+
+/* Each profile gets its own colour so the day is recognisable at a glance,
+   and so two comeback days in a row are visibly the same kind of day. */
+.daily-scenario .ds-comeback  { color: #f87171; }
+.daily-scenario .ds-knifeEdge { color: #fbbf24; }
+.daily-scenario .ds-finisher  { color: #34d399; }
+
+.daily-scenario .ds-cards {
+    font-size: 0.85rem;
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+.daily-scenario .ds-cards strong {
+    font-size: 1.05rem;
+    opacity: 1;
+    color: var(--text-color);
+}
+
+.daily-scenario .ds-desc {
+    font-size: 0.83rem;
+    line-height: 1.5;
+    opacity: 0.7;
+    margin: 0;
+}
+
+/* Today's tier and the fixed rule set. Quieter than the profile tag — these are
+   facts about the table, not the hook. */
+.daily-scenario .ds-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 0.7rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.76rem;
+}
+
+.daily-scenario .ds-diff {
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    opacity: 0.9;
+}
+
+.daily-scenario .ds-diff-medium { color: #58a6ff; }
+.daily-scenario .ds-diff-hard { color: #ff9f43; }
+
+.daily-scenario .ds-rules { opacity: 0.55; }
+
+@media (max-width: 420px) {
+    .daily-scenario .ds-head { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+
+/* ---------- Rules page: opt-in patterns (v3.2.0) ---------------------- */
+/* Generated by rulesPanel.js from RULE_DEFS. Sits INSIDE the Slap Rules
+   section — a quieter, inset block, so it reads as "and these three are
+   optional" rather than as a new topic competing with the core four. */
+
+.optional-rules {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 1px dashed rgba(227, 179, 65, 0.45);
+    border-radius: 10px;
+    background: rgba(227, 179, 65, 0.05);
+}
+
+.optional-rules .opt-rules-title {
+    margin: 0 0 6px 0;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #e3b341;
+    letter-spacing: 0.01em;
+}
+
+.optional-rules .opt-rules-intro,
+.optional-rules .opt-rules-note {
+    margin: 0;
+    font-size: 0.82rem;
+    opacity: 0.72;
+    line-height: 1.5;
+}
+
+.optional-rules .opt-rules-note {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    opacity: 0.55;
+}
+
+.optional-rules .opt-rules-list {
+    list-style: none;
+    margin: 12px 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.optional-rules .opt-rule {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.optional-rules .opt-rule-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.optional-rules .opt-rule-head strong {
+    font-size: 0.88rem;
+}
+
+/* The star marks the same thing it marks in Settings → House Rules: a pattern
+   that is added to the game rather than one someone removed. */
+.optional-rules .opt-rule-head strong::after {
+    content: ' ★';
+    color: #e3b341;
+    font-size: 0.75em;
+}
+
+.optional-rules .opt-rule-desc {
+    font-size: 0.82rem;
+    opacity: 0.78;
+    line-height: 1.5;
+}
+
+/* ---------- Reflex speedometer: personal comparison (v3.2.0) ---------- */
+/* Sits beside the absolute grade (GODLIKE/FAST/GOOD), never replaces it. The
+   grade answers "was that fast"; this answers "was that fast for you", and the
+   two disagree often. Absent entirely below reflexDelta.js's sample floor. */
+
+.reflex-speedometer .reflex-personal {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+    text-transform: none;
+    text-shadow: none;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid currentColor;
+}
+
+.reflex-speedometer .rp-faster { color: #7ee787; }
+.reflex-speedometer .rp-slower { color: #ffa657; }
+
+@media (max-width: 480px) {
+    /* The toast is white-space: nowrap; on a narrow phone the personal chip is
+       the part that can go without losing the reading. */
+    .reflex-speedometer .reflex-personal { display: none; }
+}
+
+/* ---------- Bot personality tell (v3.2.0) ---------------------------- */
+/* An idle halo whose tempo and travel come ONLY from BotPersonalities — a fixed
+   per-seat archetype, identical in every match at every difficulty on every
+   date. See botTell.js for why it must never be driven by anything that varies
+   within a match: a tell fed by the bots' actual slap scheduling would be a
+   perfect oracle for a scored leaderboard, which council ERS-04 rejected.
+
+   Applied once on gameStarted, removed on gameOver, and touched by nothing else.
+
+   On a pseudo-element on purpose: .deck.active and .deck.burn-shake both animate
+   the deck's own transform, so the tell would fight them for it.
+   body.reduced-motion already disables all animations globally, so the
+   accessibility case needs nothing here. */
+
+.deck.bot-tell {
+    --tell-period: 2800ms;
+    --tell-sway: 1;
+}
+
+.deck.bot-tell::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border-radius: inherit;
+    border: 1px solid currentColor;
+    opacity: 0.16;
+    pointer-events: none;
+    z-index: -1;
+    animation: botTellBreathe var(--tell-period) infinite;
+}
+
+@keyframes botTellBreathe {
+    0%   { transform: scale(1);                                        opacity: 0.10; }
+    50%  { transform: scale(calc(1 + 0.055 * var(--tell-sway, 1)));    opacity: 0.30; }
+    100% { transform: scale(1);                                        opacity: 0.10; }
+}
+
+/* Same movement, three temperaments — the easing is the character. Blitz snaps
+   out and settles; Chaos lurches; Viper glides. */
+.deck.bot-tell-blitz::after { animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1); }
+.deck.bot-tell-chaos::after { animation-timing-function: cubic-bezier(0.9, 0.05, 0.1, 0.95); }
+.deck.bot-tell-viper::after { animation-timing-function: ease-in-out; }
+
+/* ---------- Practice mode: which tier a step belongs to (v3.3.0) -------- */
+/* The classic four and the three opt-in patterns are never shown as one list.
+   Gold + a star for opt-in, matching Settings → House Rules and the Rules page,
+   so the same visual language means the same thing in all three places. */
+
+.tutorial-tier {
+    align-self: center;
+    margin: 2px 0 10px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-align: center;
+    max-width: 30rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    opacity: 0.7;
+}
+
+.tutorial-tier.optional {
+    color: #e3b341;
+    border-color: rgba(227, 179, 65, 0.5);
+    background: rgba(227, 179, 65, 0.08);
+    opacity: 1;
+}
+
+/* An opt-in step is marked in the progress row too, so the shape of the lesson
+   is visible before reaching it: four plain dots, then three starred ones. */
+.tutorial-dot.optional {
+    border: 1px solid #e3b341;
+}
+
+.tutorial-dot.optional.done,
+.tutorial-dot.optional.active {
+    background: #e3b341;
+}
+
+/* ---------- Ad slots (v3.4.0) ------------------------------------------ */
+/* Reserved space, so a filled slot never SHIFTS the layout under a click.
+   The reservation is why min-height is set on the empty container too: an ad
+   that arrives late and pushes a button down is the same defect as an ad that
+   janks a slap, just cheaper. An unconfigured build has empty containers with
+   no border and no background — invisible, but still holding their ground. */
+
+.ad-slot {
+    width: 100%;
+    max-width: 728px;
+    margin: 14px auto 4px;
+    min-height: 0;              /* nothing reserved until a slot is actually filled */
+    overflow: hidden;
+}
+
+.ad-slot.filled {
+    min-height: 100px;
+    border-radius: 8px;
+}
+
+.ad-slot .adsbygoogle { display: block; width: 100%; }
+
+@media (max-width: 480px) {
+    .ad-slot.filled { min-height: 60px; }
+}
+
+/* ---------- Privacy policy link and panel ------------------------------ */
+
+#game-version .link-btn {
+    /* #game-version is pointer-events: none so the version text never eats a
+       click meant for the menu behind it. That also disabled this button, which
+       is the one element in there that IS meant to be clicked — caught by the
+       smoke test, not by any structural check. Re-enable it for the button
+       only, so the label stays click-through and the link works. */
+    pointer-events: auto;
+    background: none;
+    border: none;
+    padding: 0 0 0 10px;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    opacity: 0.75;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+#game-version .link-btn:hover,
+#game-version .link-btn:focus-visible { opacity: 1; }
+
+.privacy-updated {
+    opacity: 0.55;
+    font-size: 0.8rem;
+    margin: 0 0 14px;
+}
+
+/* --- INVITE MODAL & SHARE STYLES (v3.4.2) --- */
+#invite-modal {
+    display: none;
+}
+
+#invite-modal.active {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    animation: modalFadeIn 0.25s ease-out;
+}
+
+.invite-card {
+    max-width: 380px;
+    width: 90%;
+    padding: 24px;
+    border-radius: 16px;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(16, 185, 129, 0.15);
+    text-align: center;
+    position: relative;
+}
+
+.invite-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.invite-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.invite-close-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.invite-close-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.qr-wrapper {
+    background: #ffffff;
+    padding: 12px;
+    border-radius: 12px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    margin: 14px auto 16px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+#invite-qr-canvas {
+    display: block;
+    width: 170px;
+    height: 170px;
+    border-radius: 4px;
+}
+
+.invite-link-box {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.invite-input {
+    flex: 1;
+    font-size: 0.85rem;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: #e2e8f0;
+    text-overflow: ellipsis;
+}
+
+.btn-copy-link {
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    border-radius: 8px;
+}
+
+/* The two table actions sit side by side under the code.
+ *
+ * .btn-small is position:absolute / top-right — right for a lone close button,
+ * wrong the moment there are two of them: they stacked in the same corner and
+ * Copy ID was unreachable underneath Share Invite. Scoped override, so every
+ * other .btn-small on the site keeps its corner. */
+.table-id-actions {
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+
+.table-id-actions .btn-small {
+    position: static;
+    top: auto;
+    right: auto;
+    font-size: 0.9rem;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 0 1 auto;
+}
+
+.table-id-actions .btn-invite-share {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff;
+    border: none;
+}
+
+.btn-invite-share {
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.btn-invite-share:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+}
+
+
+/* --- 34. Error Screen + Connection Banner (v3.7.0) ---------------------------
+   DELIBERATELY OUTSIDE the .screen / .modal-overlay system. See errorScreen.js
+   for the full reasoning; the short version is that .modal-overlay supplies no
+   display and no position (those come from .screen), and .screen is bulk-cleared
+   by four unrelated files. This overlay owns its own layout and its own toggle
+   so neither trapdoor applies. tools/check-error-modal.mjs enforces it. */
+.ers-error-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: none;               /* .open flips this to flex */
+    align-items: center;
+    justify-content: center;
+    padding: 1.2rem;
+    background: rgba(2, 4, 10, 0.72);
+    backdrop-filter: blur(18px) saturate(1.25);
+    -webkit-backdrop-filter: blur(18px) saturate(1.25);
+    z-index: 10001;              /* ABOVE #loading-overlay (9999): the error
+                                    screen must be able to rescue a stuck spinner */
+}
+
+.ers-error-overlay.open {
+    display: flex;
+}
+
+.ers-error-card {
+    background: linear-gradient(145deg, rgba(15, 20, 30, 0.95), rgba(10, 14, 22, 0.97));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    padding: 2rem 1.8rem 1.6rem;
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+    color: #fff;
+    /* No opacity/transform animation here on purpose. The invite modal shipped
+       invisible for two versions because its reveal rule was scoped to another
+       modal's id. This card is opaque the moment it is displayed. */
+}
+
+.ers-error-icon {
+    width: 54px;
+    height: 54px;
+    margin: 0 auto 1rem;
+    color: var(--error, #ef4444);
+}
+
+.ers-error-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.ers-error-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.35rem;
+    font-weight: 800;
+    margin: 0 0 0.6rem;
+    line-height: 1.25;
+}
+
+.ers-error-reason {
+    font-size: 1rem;
+    line-height: 1.5;
+    margin: 0 0 1.1rem;
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.ers-error-tech {
+    text-align: left;
+    margin: 0 0 1.2rem;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.ers-error-tech > summary {
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 0;
+}
+
+.ers-error-tech-body {
+    display: block;
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.76rem;
+    word-break: break-word;
+    color: rgba(255, 255, 255, 0.62);
+}
+
+.ers-error-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.ers-error-actions .btn {
+    flex: 1 1 140px;
+    min-width: 130px;
+    padding: 12px 16px;
+    font-size: 0.95rem;
+}
+
+/* Connection banner: non-blocking, because a dropped connection during play
+   must be reported without taking the board away from the player. Body-level
+   for the same reason as #notifications — mounting it inside #game-container
+   would make it invisible everywhere else. */
+#connection-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: linear-gradient(90deg, rgba(180, 40, 40, 0.96), rgba(140, 28, 28, 0.96));
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-align: center;
+    z-index: 10002;              /* above the error screen: connectivity is
+                                    context for whatever else is on screen */
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+}
+
+#connection-banner.open {
+    display: flex;
+}
+
+#connection-banner .cb-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #fff;
+    animation: cbPulse 1.1s ease-in-out infinite;
+    flex: 0 0 auto;
+}
+
+@keyframes cbPulse {
+    0%, 100% { opacity: 0.35; }
+    50%      { opacity: 1; }
+}
+
+/* Pre-boot failure notice. Lives in index.html as static markup and is revealed
+   by an inline script, so it works even when the module graph never evaluates. */
+#boot-error {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 2rem 1.4rem;
+    background: #0b0f18;
+    color: #fff;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    text-align: center;
+    z-index: 10003;
+}
+
+
+/* --- v3.9.0: assistive-only heading ---------------------------------------
+   The lobby had no heading element at all, which is a real gap for screen
+   readers and for search. The title itself is painted into assets/menu.jpg
+   (and the four themed variants), so a VISIBLE h1 would duplicate it — that
+   duplication is what v3.8.0 shipped and what the screen was judged worst for.
+   This is the standard clip-path recipe: read aloud, never drawn, and it stays
+   focusable-safe because nothing here is interactive. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* --- v3.9.0: focus rings --------------------------------------------------
+   Kept from v3.8.0. Keyboard users could not see where they were before it. */
+.btn:focus-visible,
+.link-btn:focus-visible,
+.ui-input:focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 4px;
+}
+
+
+/* --- v3.9.0: the name field must clear the painted logo -------------------
+   The v3.7.x lobby pushed its interface down with a bare `flex: 1` spacer, and
+   at common desktop ratios that put "ENTER YOUR NAME" and its input directly
+   across the wordmark's second line — "THE ULTIMATE CARD BATTLE" reads through
+   the input box. It is the one thing every review of this screen agreed on.
+
+   The layout is otherwise unchanged: same spacers, same centring, same order.
+   The top one simply claims more of the free space, with a floor in `vh` so it
+   still clears the artwork on very wide viewports and a cap so short laptops
+   do not push the buttons off the bottom. Verified by rendering at 1440x900
+   and 390x844. */
+.lobby-spacer-top { flex: 1 1 auto; height: clamp(96px, 26vh, 260px); min-height: 0; }
+.lobby-spacer-bottom { flex: 0.5 1 auto; }
+
+@media (max-height: 760px) {
+    .lobby-spacer-top { height: clamp(40px, 12vh, 110px); min-height: 0; }
+}
+@media (max-width: 768px) {
+    .lobby-spacer-top { height: clamp(56px, 16vh, 150px); min-height: 0; }
+}
+
+
+/* --- v3.9.0: phones need a floor of contrast ------------------------------
+   Desktop gets its depth from #parallax-scene and from body.menu-screen::before.
+   Phones get neither: the parallax layer is `display: none` below 769px, so the
+   artwork is the body's own background and white interface text lands directly
+   on lit sand. Legible in a screenshot only if you already know what it says.
+
+   This scrim rides INSIDE #main-menu at z-index -1 — with the interface, never
+   over a separate artwork layer — so it cannot repeat v3.8.0's mistake of
+   flattening the five themed backgrounds. Bottom-weighted: the painting keeps
+   the top of the screen, the buttons get a readable ground under them. */
+@media (max-width: 768px) {
+    #main-menu { position: relative; }
+    #main-menu::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background: linear-gradient(180deg,
+            rgba(6, 10, 17, .30) 0%,
+            rgba(6, 10, 17, .58) 26%,
+            rgba(6, 10, 17, .74) 62%,
+            rgba(6, 10, 17, .84) 100%);
+    }
+    /* Clear the artwork's own lettering before the first label. */
+    .lobby-spacer-top { height: clamp(150px, 33vh, 300px); min-height: 0; }
+}
+
+
+/* --- v3.9.0: motion is opt-out ---------------------------------------------
+   v3.8.0 introduced this guard and it was the release's clearest accessibility
+   win. It lived in lobby.css, so removing that file would have quietly taken it
+   with it — the parallax scene, the card animations and the screen transitions
+   would all have come back for people who ask their system for less motion.
+   Kept here, where it applies to the whole app rather than one screen.
+
+   Not `* { animation: none }`: transitions that only change colour are
+   harmless and keep the interface feeling responsive. What goes is movement —
+   transforms, the parallax scene, and the ambient loops. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    #parallax-scene,
+    #parallax-glow {
+        display: none !important;
+    }
+
+    .screen {
+        transform: none !important;
+    }
+}
+
+
+/* --- v3.9.0: the lobby must be reachable on a short phone -----------------
+   `.screen` is `position: absolute; inset: 0` with no overflow rule, so on a
+   viewport shorter than the content the bottom of the menu is CLIPPED, not
+   scrollable — on a small phone the Settings button simply cannot be reached.
+   v3.8.0 fixed this with `overflow-y: auto` in lobby.css; that fix left with
+   the file and is restored here.
+
+   The padding is the second half of the same problem: `#game-version` is
+   `position: absolute; bottom: 10px`, so it sits OUTSIDE the flow and the last
+   button lands on top of it. Reserving its height is what stops "Settings"
+   from printing over "Berk Elmalı · v3.9.0". Verified by rendering at
+   390x844. */
+#main-menu {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* v3.10.0 — the footer's own strip, reserved so the last button row can
+       never reach it. #game-version is absolutely positioned at the bottom
+       right of THIS 600px column, so at 1366x768 it landed inside the Settings
+       button (measured: button 736-776, footer 743-758) and its About and
+       Privacy links are pointer-events: auto — a click aimed at Settings could
+       open About. 15px label + its 10px offset + air.
+       This must stay ABOVE the max-width:768px block below, which raises the
+       same property for the safe-area inset; equal specificity, so source
+       order is the whole argument. */
+    padding-bottom: 44px;
+}
+
+@media (max-width: 768px) {
+    #main-menu { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+    #game-version {
+        left: 0;
+        right: 0;
+        text-align: center;
+        bottom: calc(8px + env(safe-area-inset-bottom));
+    }
+    .lobby-spacer-top { height: clamp(120px, 26vh, 240px); min-height: 0; }
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   v3.10.0 — THE PLAYER CARD
+   ═════════════════════════════════════════════════════════════════════════
+   The account panel's logged-in view shipped in v3.8.0 as markup with NO
+   STYLESHEET AT ALL. Seven classes — .profile-identity, .profile-emblem,
+   .profile-eyebrow, .profile-stats, .profile-stat, .profile-intro,
+   .profile-history-note — were named in index.html and defined nowhere, so
+   the browser drew them as bare inline text: the ♠ avatar was a 12px glyph,
+   and every statistic ran its label into its value ("Skor1", "Oynanan maç0").
+   The win-rate line was clipped by the card beneath it.
+
+   This is the mirror image of the defect `check-lobby` was written for.
+   That gate catches CSS that names nothing; nothing caught markup that names
+   no CSS. `tools/check-orphan-classes.mjs` now closes that direction, and it
+   is what keeps this file honest from here on.
+
+   ── Why gold, and why only gold ──────────────────────────────────────────
+   Surfaces come from the theme (`--panel-bg`, `--panel-border`,
+   `--panel-glow`), so the card is blue in the blue theme and red in the red
+   one, like every other panel. The ACCENT is gold in all five, on purpose:
+   gold is the game's identity, not a theme's. Note that `--primary` is
+   defined once at :root and no theme overrides it — so a `var(--primary)`
+   accent here would have been the same blue everywhere, which is exactly
+   the flatness this card exists to avoid.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+:root {
+    --gold-bright: #ffd700;
+    --gold:        #f59e0b;
+    --gold-deep:   #b45309;
+}
+
+/* The logged-in card carries a 2x2 stat grid; 400px squeezes it to one
+   column on desktop for no reason. The sign-in form keeps the old width. */
+#account-logged-in.account-section {
+    max-width: 460px;
+    padding: 1.6rem 1.4rem;
+}
+
+/* --- The banner: avatar, who you are, and the card's gold edge ----------- */
+.profile-identity {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 1rem;
+    text-align: left;
+    padding: 1rem 1.1rem;
+    margin-bottom: 1rem;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--gold) 26%, transparent);
+    background:
+        linear-gradient(135deg,
+            color-mix(in srgb, var(--gold) 13%, transparent) 0%,
+            transparent 58%),
+        var(--panel-bg);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--gold-bright) 22%, transparent);
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.profile-identity:hover {
+    border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+    box-shadow:
+        inset 0 1px 0 color-mix(in srgb, var(--gold-bright) 30%, transparent),
+        0 0 18px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+
+/* The avatar. In the logged-OUT card the same class is a standalone crest
+   above the intro line, so the block-level centring below is not optional. */
+.profile-emblem {
+    display: grid;
+    place-items: center;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    font-size: 1.9rem;
+    line-height: 1;
+    color: var(--gold-bright);
+    background:
+        radial-gradient(circle at 32% 28%,
+            color-mix(in srgb, var(--gold-bright) 34%, transparent) 0%,
+            transparent 62%),
+        linear-gradient(160deg, #2a2110 0%, #120d05 100%);
+    border: 2px solid color-mix(in srgb, var(--gold) 55%, transparent);
+    box-shadow:
+        0 4px 14px rgba(0, 0, 0, 0.45),
+        inset 0 0 12px color-mix(in srgb, var(--gold-deep) 45%, transparent);
+    text-shadow: 0 0 12px color-mix(in srgb, var(--gold-bright) 60%, transparent);
+}
+/* Logged out: no grid parent to sit in, so it centres itself. */
+.auth-card > .profile-emblem {
+    margin: 0 auto 0.9rem;
+}
+
+.profile-identity-text { min-width: 0; }
+
+.profile-eyebrow {
+    margin: 0 0 0.15rem;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+}
+.profile-identity h3 {
+    margin: 0;
+    font-size: 1.32rem;
+    font-weight: 800;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+.profile-identity p:not(.profile-eyebrow) {
+    margin: 0.12rem 0 0;
+    font-size: 0.78rem;
+    opacity: 0.62;
+    overflow-wrap: anywhere;
+}
+
+/* --- The statistics ------------------------------------------------------
+   A grid, and each cell a COLUMN. That column is the whole fix for "Skor1":
+   the label and the value were inline siblings with nothing between them. */
+.profile-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+}
+.profile-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    align-items: flex-start;
+    padding: 0.7rem 0.8rem;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid var(--panel-border);
+    border-left: 2px solid color-mix(in srgb, var(--gold) 55%, transparent);
+}
+.profile-stat span {
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    line-height: 1.2;
+}
+.profile-stat strong {
+    font-size: 1.24rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--gold-bright);
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Supporting copy ----------------------------------------------------- */
+.profile-intro {
+    margin-bottom: 1.2rem;
+    font-size: 0.86rem;
+    line-height: 1.5;
+    opacity: 0.72;
+}
+.profile-history-note {
+    margin: 0 0 0.7rem;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    opacity: 0.55;
+}
+
+/* --- The two panels under the banner -------------------------------------
+   These were two hand-written inline `rgba(22,27,34,.45)` boxes: the same
+   grey in all five themes, and 14 inline declarations between them. As
+   classes they follow the theme like everything else on the screen. */
+.profile-panel {
+    text-align: left;
+    padding: 0.95rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--panel-border);
+}
+.profile-panel--scroll {
+    /* 250px was the inline value this class replaced, and at that height the
+       panel headed "Last 5 Matches" showed one and a half of them — a nested
+       scroller inside a panel that already scrolls. 420px holds the curve plus
+       all five rows, and still bounds the panel on a long history. */
+    max-height: 420px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.profile-panel-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 0 0 0.6rem;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--gold);
+}
+.profile-panel-title .profile-panel-meta {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+}
+.profile-graph {
+    width: 100%;
+    height: 100px;
+    margin-bottom: 0.7rem;
+    position: relative;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+}
+.profile-match-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.profile-nemesis-body { font-size: 0.85rem; }
+.profile-empty {
+    margin: 0;
+    padding: 0.6rem 0;
+    text-align: center;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.4);
+}
+.profile-graph .profile-empty { padding-top: 38px; }
+
+/* --- One match in the history list --------------------------------------
+   Built by profileUI.js, which used to write eleven inline declarations per
+   card on every render. The win/loss hue is the only thing that still
+   varies per row, so it is the only thing left to a modifier class. */
+.profile-match {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+}
+.profile-match--win {
+    background: rgba(46, 204, 113, 0.12);
+    border-color: rgba(46, 204, 113, 0.25);
+}
+.profile-match--loss {
+    background: rgba(231, 76, 60, 0.12);
+    border-color: rgba(231, 76, 60, 0.25);
+}
+.profile-match-result {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+}
+.profile-match--win  .profile-match-result { color: #2ecc71; }
+.profile-match--loss .profile-match-result { color: #e74c3c; }
+.profile-match-mode {
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.6);
+}
+.profile-match-vs {
+    margin-top: 3px;
+    max-width: 140px;
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.profile-match-right { text-align: right; }
+.profile-match-reflex {
+    font-weight: 700;
+    color: var(--gold-bright);
+    font-variant-numeric: tabular-nums;
+}
+.profile-match-cards {
+    margin-top: 3px;
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* Narrow phones: one stat per row beats two clipped ones. */
+@media (max-width: 420px) {
+    .profile-stats { grid-template-columns: minmax(0, 1fr); }
+    .profile-identity { gap: 0.8rem; padding: 0.85rem 0.9rem; }
+    .profile-emblem { width: 52px; height: 52px; font-size: 1.6rem; }
+    .profile-identity h3 { font-size: 1.15rem; }
+}
+
+/* Bot rivalry rows — built by botNemesis.js. */
+.profile-nemesis-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 4px 0;
+}
+.profile-nemesis-count {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.profile-nemesis-count.is-nemesis { color: #ef4444; }
+.profile-nemesis-callout {
+    margin: 0 0 8px;
+    font-size: 0.8rem;
+    color: #ef4444;
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   v3.10.0 — THREE MEASURED LOBBY DEFECTS
+   ═════════════════════════════════════════════════════════════════════════
+   All three were found by rendering the lobby at real viewport sizes and
+   reading the geometry back, not by reading the CSS. Numbers below are from
+   that run, on the blue theme, before these rules existed.
+
+   1. THE WORDMARK WAS CROPPED. Every menu image is 1280x713 (aspect 1.795).
+      A 1920x914 window is aspect 2.10, so `cover` scales by WIDTH: the image
+      becomes 1920x1070 and 156px fall outside. `background-position: center`
+      splits that loss between top and bottom — and the wordmark lives in the
+      top third, so "EGYPTIAN" lost its top edge. Sliding the crop to 15%
+      spends nearly all of the loss on the floor tiles at the bottom, which
+      carry nothing. `center top` was tried first and clears the wordmark
+      too, but it pushes the artwork's own subtitle a further 78px down into
+      the name field; 15% was chosen by rendering all three and looking.
+      On a portrait phone `cover` scales by HEIGHT instead, the
+      vertical axis has no slack to slide, and this rule changes nothing —
+      which is why it is safe to apply to both.
+
+   2. THE FOOTER SAT ON THE SETTINGS BUTTON. `#game-version` is absolutely
+      positioned at the bottom-right of #main-menu — a 600px column, so its
+      corner is exactly where the last button row ends up. Measured at
+      1366x768: Settings occupied 736-776 and the footer 743-758, i.e. fully
+      INSIDE the button. The footer is `pointer-events: none`, but the About
+      and Privacy links inside it are `pointer-events: auto` (v3.7.x fixed
+      that on purpose), so on that very common laptop size a click aimed at
+      Settings could open About instead. Reserving the footer's own strip at
+      the bottom of the column is what stops the two from ever meeting.
+
+   3. A PERMANENT SCROLLBAR BOUGHT BY 4 PIXELS. v3.9.0 gave #main-menu
+      `overflow-y: auto` so that Settings stays reachable on short phones —
+      a real fix. But the top spacer's `min-height` made the column
+      unshrinkable, so at 1920x914 the content came to 918px: four pixels
+      over, and a scrollbar drawn down the middle of the artwork for them.
+      (1440x900 was 9px over; 390x844, 43px.) `min-height` is what blocks
+      flex-shrink, so the floor moves to `height` and `min-height` goes to 0:
+      the spacer still GROWS to hold the interface clear of the wordmark
+      whenever there is room, and now yields instead of buying a scrollbar
+      when there is not. Genuinely short screens still scroll — deliberately.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+body.menu-screen { background-position: center 15% !important; }
+body.menu-screen #parallax-bg { background-position: center 15%; }
+
+/* Defect 3's fix is not here: it is on the five `.lobby-spacer-top` rules
+   themselves, above. Shadowing them from 600 lines away would have left every
+   one of those rules still saying `min-height`, which is the property that
+   caused the bug — and the next reader would have found the wrong one first. */
+
+/* The reflex trend curve, drawn as SVG by profileUI.js. A presentation
+   attribute cannot read a CSS variable, so the SVG carries classes and the
+   colour lives here — which is also what stops it being blue inside a gold
+   card, as it was in every theme up to v3.9.0. */
+.reflex-graph-stop-top    { stop-color: var(--gold-bright); stop-opacity: 0.28; }
+.reflex-graph-stop-bottom { stop-color: var(--gold-bright); stop-opacity: 0; }
+.reflex-graph-line {
+    fill: none;
+    stroke: var(--gold-bright);
+    stroke-width: 2;
+    filter: drop-shadow(0 0 3px color-mix(in srgb, var(--gold) 55%, transparent));
+}
+.reflex-graph-dot {
+    fill: var(--gold-bright);
+    stroke: #fff;
+    stroke-width: 1;
+}
+.reflex-graph-label {
+    fill: rgba(255, 255, 255, 0.85);
+    font-size: 6.5px;
+    font-weight: 700;
+    font-family: sans-serif;
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   v3.10.1 — the footer, once the lobby actually scrolls
+   ═════════════════════════════════════════════════════════════════════════
+   v3.10.0 gave #main-menu a 44px bottom reserve so the last button row could
+   never reach #game-version, and at 1920x914 and 1366x768 that holds: 37px
+   clear, measured on the live site. Below roughly 660px of viewport height it
+   stops holding, and the reason is structural rather than a matter of degree.
+
+   `#game-version` is `position: absolute; bottom: 10px`, so it is pinned to
+   #main-menu's PADDING BOX — a fixed 640px-tall box. The buttons are in
+   normal flow, and once the content outgrows that box they keep going into
+   the scrollable overflow. Padding at the end of the CONTENT cannot separate
+   two things when only one of them is in the content. Measured on the live
+   site at 1366x640: Settings 574-615, footer 613-630 — two pixels of overlap,
+   growing to 40 by 560px tall.
+
+   So at the heights where the menu genuinely scrolls, the footer stops being
+   pinned and joins the flow: it lands after the last button plus its own
+   margin, and is reached by scrolling like everything else. The breakpoint is
+   the one that already exists, and it is comfortably above where overflow
+   begins (~677px of content), so the two can never disagree.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+@media (max-height: 760px) {
+    /* Beats both the base rule and the max-width:768px mobile rule: same
+       specificity as the latter would give, plus the #main-menu ancestor. */
+    #main-menu #game-version {
+        position: static;
+        left: auto;
+        right: auto;
+        bottom: auto;
+        margin: 20px auto 0;
+        text-align: center;
+    }
+    /* The reserve was for a pinned footer. In the flow it needs none — but
+       the safe-area inset must survive, because this block sits after the
+       max-width:768px rule that carries it and beats it on specificity.
+       A short phone (an iPhone in landscape, say) matches BOTH queries. */
+    #main-menu { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   v3.12.0 — THE SIGN-IN CARD
+   ═════════════════════════════════════════════════════════════════════════
+   Three defects, one shape.
+
+   1. TWO CARDS. `#account-logged-out` is `.account-section` — a glass panel
+      with its own background, border, 16px radius and 2rem of padding — and
+      inside it sat `.auth-card`, a SECOND glass panel with its own
+      background, border, 18px radius and 2rem more padding. The user saw a
+      card inside a card: two borders, two blurs, and roughly 70px of dead
+      margin between the outer edge and the first field. `.auth-card` keeps
+      its name (JS and the emblem rule reference it) and gives up its skin.
+      It is now purely the form's layout: a flex column with one gap.
+
+   2. THE MODE LIVED IN SIX PLACES. Sign-in and register were switched by
+      writing `style.display` onto four buttons and a field group from three
+      different functions, so the two modes could — and did — disagree. The
+      mode is now ONE attribute, `data-mode` on `#auth-form`, and every
+      appearance below is derived from it. Inline `display` juggling is gone,
+      which is also what makes a transition possible at all: an element the
+      JS is not touching can be animated by CSS.
+
+   3. GOLD, LIKE THE PLAYER CARD. The logged-IN half became gold in v3.10.0
+      and the logged-OUT half stayed the old blue-on-grey, so the same screen
+      changed identity when you signed in. Labels, icons, links and the focus
+      ring now speak the same language as the card they lead to.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+#account-logged-out.account-section {
+    padding: 1.8rem 1.5rem;
+}
+
+/* Was a panel; is now a layout. Every property here undoes one that the
+   v2.9.0 `.auth-card` rule sets — this block sits later in the file at equal
+   specificity, so it wins without `!important`. */
+.auth-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.auth-card > .profile-emblem {
+    margin: 0 auto;
+}
+
+/* --- The fields ----------------------------------------------------------
+   `.setting-group` is the settings-screen row: centred, 300px wide, 1.5rem
+   of bottom margin and a hover border. In a form that is three kinds of
+   wrong at once, so the shared class supplies only its flex column. */
+.auth-field {
+    max-width: none;
+    margin-bottom: 0;
+    padding: 0;
+    gap: 0.3rem;
+    align-items: stretch;
+    text-align: left;
+    border-color: transparent;
+}
+.auth-field:hover {
+    border-color: transparent;
+    box-shadow: none;
+    background: none;
+}
+/* Deliberately almost empty. The first cut of this card gave the labels a
+   0.68rem gold uppercase treatment of their own, and the result read as a
+   different product from the settings panel, the lobby and every popup in
+   the app — which all use `.setting-group label` exactly as it comes. So it
+   comes as it is: same size, same colour, same casing. Only the margin goes,
+   because the flex `gap` above already spaces the rows. */
+.auth-field label {
+    margin-bottom: 0;
+}
+
+/* The field itself keeps the app's input entirely — its background, border,
+   and its theme-coloured focus glow. Only the box is tightened, because
+   three stacked 1.3rem fields made the card taller than the screen it opens
+   on. Nothing here touches colour. */
+.auth-card .auth-input-icon {
+    left: 15px;
+}
+.auth-card .auth-input.crisp-dark {
+    font-size: 1.1rem;
+    padding: 12px 16px 12px 46px;
+}
+
+/* --- The one line that talks back ---------------------------------------
+   Validation refusals, Firebase errors and the reset-link confirmation all
+   land here. It holds its height whether or not it has something to say, so
+   the button underneath never jumps. */
+.auth-message {
+    margin-top: 0;
+    min-height: 1.15rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    text-align: left;
+}
+/* The app's own success colour, the one the accent token exists for. */
+.auth-message.is-success {
+    color: var(--accent);
+}
+
+.auth-submit {
+    width: 100%;
+    margin-top: 0.1rem;
+}
+.auth-submit:disabled {
+    opacity: 0.55;
+    cursor: progress;
+    filter: saturate(0.6);
+}
+.auth-submit:disabled:hover {
+    transform: none;
+}
+
+/* --- Secondary actions ---------------------------------------------------
+   "Register" used to be a full-width button identical in weight to "Sign
+   In", so the card offered two equal primary actions and neither read as the
+   one you came for. It is a link now; the button is the only button. */
+.auth-switch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.3rem;
+}
+.auth-switch-line {
+    margin: 0;
+    font-size: 0.82rem;
+    opacity: 0.72;
+}
+.auth-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--primary);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: color-mix(in srgb, var(--primary) 45%, transparent);
+    transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+.auth-link:hover {
+    color: var(--text-color);
+    text-decoration-color: currentColor;
+}
+.auth-link:disabled {
+    opacity: 0.5;
+    cursor: default;
+    text-decoration: none;
+}
+
+/* --- The mode, derived rather than written -------------------------------
+   Two id selectors, so the username group's `display: none` beats
+   `.setting-group { display: flex }` in sign-in mode — and in register mode
+   NOTHING hides it, so the class supplies the flex again by itself. No
+   element carries an inline `display` any more, which is precisely why the
+   appearance below can be animated. */
+#auth-form[data-mode="signin"]   .auth-mode-register  { display: none; }
+#auth-form[data-mode="register"] .auth-mode-signin    { display: none; }
+#auth-form[data-mode="signin"]   #auth-username-group { display: none; }
+
+#auth-form[data-mode="register"] #auth-username-group {
+    animation: authFieldIn 0.28s cubic-bezier(0.25, 1, 0.5, 1);
+}
+@keyframes authFieldIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #auth-form[data-mode="register"] #auth-username-group { animation: none; }
+}
+
+/* --- Busy -----------------------------------------------------------------
+   A second tap while the first request is in flight creates a second account,
+   or burns a second reset email. The lock is `data-busy` on the same form
+   element that carries the mode, so both states are read from one place —
+   and the label is swapped by CSS rather than by writing text into a button
+   whose own translation would overwrite it on the next language change. */
+.auth-submit .auth-mode-busy { display: none; }
+#auth-form[data-busy="1"] .auth-submit .auth-mode-busy    { display: inline; }
+#auth-form[data-busy="1"] .auth-submit .auth-mode-signin,
+#auth-form[data-busy="1"] .auth-submit .auth-mode-register { display: none; }
+
+/* --- Focus, visibly ------------------------------------------------------
+   `.auth-link` is a <button> that is neither `.btn` nor `.link-btn`, so the
+   v3.9.0 focus-ring rule did not reach it: the reset and mode-switch controls
+   were invisible to a keyboard. Same ring, same token as everywhere else. */
+.auth-link:focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 4px;
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   v3.13.0 — RA'S WHEEL, THE ARCADE BUTTONS, AND TWO RULES THE SOURCE
+   NEVER WROTE
+   ═════════════════════════════════════════════════════════════════════════
+   Ported from ers-revamp. The wheel, the tier ladder and the chunky menu
+   buttons are that branch's work and arrive largely unchanged. Three things
+   did not come across as they were:
+
+   1. `.vibrant-play { animation: vibrantGlow ... }` is NOT here. This
+      stylesheet already styles `.btn.vibrant-play`, and `check-lobby` pins
+      that button's glow as a rule. A second, lower-specificity opinion on
+      the same button is how two stylesheets start disagreeing.
+
+   2. `@keyframes spinBadgePulse` and `tierUpPulse` came WITH the rules that
+      name them. An `animation:` pointing at keyframes that do not exist is
+      the same defect as a class that styles nothing — silent, and invisible
+      in the source forever.
+
+   3. `.photo-finish-banner` and `.on-fire` had NO rule at all in the branch
+      they came from. `ui.js` there sets `display:block` on the banner and
+      adds `.on-fire` at a three-slap streak, and neither had a single
+      declaration anywhere — except, remarkably, a `@media
+      (prefers-reduced-motion)` block switching OFF an animation `.on-fire`
+      never had. `check-orphan-classes` would have refused the build over
+      the banner. Both are written below, properly.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.player-banner-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 100;
+}
+.coin-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 36px;
+    padding: 8px 14px;
+    box-sizing: border-box;
+    border-radius: 20px;
+    background: rgba(22, 27, 34, 0.6);
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    color: gold;
+    font-weight: bold;
+    font-size: 0.95rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+}
+.spin-trigger-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 8px 14px;
+    box-sizing: border-box;
+    border-radius: 20px;
+    background: rgba(22, 27, 34, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    position: relative;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.spin-trigger-btn:hover {
+    border-color: rgba(255, 215, 0, 0.45);
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.18);
+}
+.spin-icon {
+    font-size: 1rem;
+    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.4));
+}
+.spin-text {
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+.spin-badge {
+    background: #ef4444;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 900;
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 2px;
+    box-shadow: 0 0 8px #ef4444;
+    animation: spinBadgePulse 1.5s infinite;
+}
+
+
+
+
+
+
+
+
+
+
+.spin-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    max-width: 100vw;
+    padding: 12px;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow-x: hidden;
+    overflow-y: auto;
+    z-index: 10000;
+}
+.spin-modal-card {
+    position: relative;
+    width: 94%;
+    max-width: min(420px, calc(100vw - 24px));
+    box-sizing: border-box;
+    padding: 1.6rem 1.4rem 1rem;
+    text-align: center;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    box-shadow: 0 16px 40px var(--panel-shadow), 0 0 20px var(--panel-glow);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    animation: modalFadeIn 0.25s ease-out;
+}
+.spin-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.spin-title {
+    font-size: 1.4rem;
+    font-weight: 900;
+    color: #fde68a;
+    text-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+    margin-bottom: 4px;
+}
+.spin-desc {
+    font-size: 0.85rem;
+    color: #d1d5db;
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+.spin-tier-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.tier-dot {
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.4);
+    transition: all 0.4s ease;
+    letter-spacing: 0.5px;
+}
+.tier-dot.active {
+    transform: scale(1.1);
+}
+.tier-dot.completed {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+.tier-dot.tier-bronze.active {
+    background: rgba(205, 127, 50, 0.2);
+    border-color: #cd7f32;
+    color: #cd7f32;
+    box-shadow: 0 0 12px rgba(205, 127, 50, 0.3);
+}
+.tier-dot.tier-silver.active {
+    background: rgba(192, 192, 192, 0.2);
+    border-color: #c0c0c0;
+    color: #c0c0c0;
+    box-shadow: 0 0 12px rgba(192, 192, 192, 0.3);
+}
+.tier-dot.tier-gold.active {
+    background: rgba(255, 215, 0, 0.2);
+    border-color: #ffd700;
+    color: #ffd700;
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
+}
+.tier-arrow {
+    color: rgba(255, 255, 255, 0.25);
+    font-size: 0.8rem;
+}
+.wheel-outer-wrapper {
+    position: relative;
+    margin: 0 auto 12px;
+}
+.wheel-outer-lg {
+    width: 340px;
+    height: 340px;
+}
+.wheel-pointer {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 26px;
+    color: #ffd700;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+    z-index: 10;
+}
+.daily-spin-status {
+    font-size: 0.95rem;
+    font-weight: 700;
+    min-height: 26px;
+    margin-bottom: 8px;
+    color: #ffd700;
+    transition: color 0.3s;
+}
+.daily-spin-countdown {
+    font-size: 0.88rem;
+    color: #fbbf24;
+    margin-bottom: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    background: rgba(251, 191, 36, 0.1);
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(251, 191, 36, 0.25);
+    display: inline-block;
+}
+.spin-action-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.05rem;
+    border-radius: 12px;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+.spin-btn-spinning {
+    opacity: 0.85;
+    cursor: wait !important;
+}
+.spin-tier-up-btn {
+    animation: tierUpPulse 0.8s ease-in-out infinite alternate;
+}
+.spin-claimed-btn {
+    background: rgba(255, 255, 255, 0.12) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    color: #e5e7eb !important;
+    font-size: 1rem;
+}
+.spin-claimed-btn:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+    color: #ffffff !important;
+    transform: translateY(-2px);
+}
+.spin-footer-close {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.85rem;
+    margin-top: 10px;
+    cursor: pointer;
+    padding: 6px 14px;
+    border-radius: 6px;
+    transition: color 0.2s, background 0.2s;
+    display: inline-block;
+}
+.spin-footer-close:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+}
+.modal-close-btn {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 50%;
+    color: #ffd700;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 20;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+}
+.modal-close-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 215, 0, 0.25);
+    border-color: #ffd700;
+    transform: scale(1.08);
+}
+.modal-close-btn:active {
+    transform: scale(0.95);
+}
+@keyframes spinBadgePulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.25); }
+}
+@keyframes tierUpPulse {
+    0%  { box-shadow: 0 6px 0 #064e3b, 0 10px 25px rgba(16, 185, 129, 0.45); }
+    100% { box-shadow: 0 6px 0 #064e3b, 0 10px 35px rgba(16, 185, 129, 0.8), 0 0 50px rgba(16, 185, 129, 0.3); }
+}
+
+/* --- The tier labels ------------------------------------------------------
+   Their own element so `Localization.apply()` can rewrite the word without
+   touching the medal glyph beside it, and so the JS can refresh them on a
+   language change without rebuilding the dot. */
+.tier-dot-label { font: inherit; }
+
+/* --- Photo finish ---------------------------------------------------------
+   Two slaps landed within milliseconds of each other; this says who took the
+   pile and by how much. It sits above the screen layer like every other
+   overlay, and it retires ITSELF after 2.4s — the v3.12.0 winner banner is
+   the cautionary tale, and the smoke gate that caught that one covers this
+   element too, by construction. */
+.photo-finish-banner {
+    position: fixed;
+    top: 24%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.86);
+    z-index: 9997;
+    display: none;
+    max-width: min(90vw, 460px);
+    padding: 0.6rem 1.4rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(22, 27, 34, 0.94), rgba(12, 16, 22, 0.94));
+    border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55), 0 0 26px color-mix(in srgb, var(--primary) 28%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--text-color);
+    font-size: 0.98rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.22s ease-out, transform 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.photo-finish-banner.active {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+.photo-finish-banner strong { color: var(--primary); }
+
+/* --- On fire --------------------------------------------------------------
+   Three slaps in a row. `.combustion-glow` already marks two; this is the
+   step above it, and it has to read as MORE, not as different — same hue
+   family, more of it, plus movement. */
+.deck.on-fire {
+    border-color: #f59e0b;
+    box-shadow:
+        0 0 18px rgba(245, 158, 11, 0.75),
+        0 0 42px rgba(245, 158, 11, 0.4),
+        inset 0 0 16px rgba(245, 158, 11, 0.28);
+    animation: onFirePulse 1.1s ease-in-out infinite alternate;
+}
+@keyframes onFirePulse {
+    from {
+        box-shadow:
+            0 0 18px rgba(245, 158, 11, 0.75),
+            0 0 42px rgba(245, 158, 11, 0.4),
+            inset 0 0 16px rgba(245, 158, 11, 0.28);
+    }
+    to {
+        box-shadow:
+            0 0 26px rgba(255, 215, 0, 0.95),
+            0 0 60px rgba(245, 158, 11, 0.6),
+            inset 0 0 22px rgba(255, 215, 0, 0.4);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .deck.on-fire { animation: none; }
+    .photo-finish-banner { transition: opacity 0.22s ease-out; }
+    .photo-finish-banner.active { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* --- The wheel has to fit the phone it is drawn on ------------------------
+   Ported as `width: 340px; height: 340px`, with a canvas carrying
+   `width="340"` as an attribute. Measured: open the wheel on a desktop
+   window and then narrow it, and the page gains 4px of horizontal scroll
+   that survives closing the modal — the card is `width: 94%`, so below
+   ~362px it is NARROWER THAN ITS OWN WHEEL, and a fixed-position overlay
+   whose content sticks out still lengthens the document.
+
+   The canvas keeps its 340x340 backing store — that is the drawing
+   resolution and the wheel is rendered at it — while CSS scales the
+   ELEMENT down to whatever the card can give it. `aspect-ratio` keeps it
+   round without a second magic number to drift out of step. */
+.wheel-outer-lg {
+    width: min(340px, 74vw);
+    height: auto;
+    aspect-ratio: 1 / 1;
+}
+.wheel-outer-wrapper canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+/* Belt and braces: an overlay may never be the reason the PAGE scrolls
+   sideways, whatever its contents decide to be. */
+.spin-modal-backdrop {
+    max-width: 100vw;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 12px;
+    box-sizing: border-box;
+}
+.spin-modal-card {
+    max-width: min(420px, calc(100vw - 24px));
+    box-sizing: border-box;
+}
+
+/* --- The page never scrolls sideways, at either level ---------------------
+   `body` has carried `overflow-x: hidden` for a long time: this app is a
+   single column and a horizontal scrollbar is always a bug. `html` was
+   simply the half nobody set, and the gap is reachable — narrow a DESKTOP
+   window to phone width while an overlay is open and the document keeps 4px
+   of horizontal scroll afterwards, from a layout pass that body's own clip
+   cannot reach.
+
+   Measured honestly, so the comment does not overclaim: loading at 414px or
+   360px produces 0px of overflow with or without this rule, and so does
+   opening the wheel AT those widths — the only path that reproduces it is
+   resizing down from a wide window, which is a desktop gesture, not a phone
+   one. `clip` rather than `hidden` on purpose: `hidden` would make <html> a
+   scroll container and change how `position: fixed` resolves, and this file
+   has eleven fixed overlays that depend on it not changing. */
+html { overflow-x: clip; }
+
+
+
+
+
+
+
+
+/* --- The corner is a ROW now, so its first item has to join it ------------
+   `.profile-btn` is `position: absolute` with its own top/left, because for
+   most of this app's life it WAS the corner. Now it is the first of three
+   items in `.player-banner-group`, and an absolutely positioned flex child
+   is not a flex item at all — it stayed pinned to 20/20 and the coin badge
+   and spin trigger were drawn straight over it. Measured on the menu at
+   1280x900 before this rule: the avatar sat underneath both of them.
+
+   The safe-area inset it used to carry moves to the group, in index.html,
+   so a notched phone loses nothing in the handover. */
+.player-banner-group > .profile-btn {
+    position: static;
+    top: auto;
+    left: auto;
+    flex: 0 0 auto;
+}
+.player-banner-group { flex-wrap: wrap; max-width: calc(100vw - 30px); }
+
+/* On a narrow phone the corner has to give something up, and the word is
+   the cheapest thing to lose: the sun glyph and the red dot still say
+   "there is a spin waiting". */
+@media (max-width: 480px) {
+    .spin-trigger-btn .spin-text { display: none; }
+    .spin-trigger-btn { padding: 6px 10px; }
+    .coin-badge { font-size: 0.85rem; padding: 6px 10px; }
 }

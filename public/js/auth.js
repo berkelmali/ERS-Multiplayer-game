@@ -1,4 +1,4 @@
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { app } from "./firebaseConfig.js";
 import EventBus from "./eventbus.js";
@@ -27,8 +27,8 @@ export const AuthSystem = {
             await signInWithEmailAndPassword(auth, email, password);
             return { success: true };
         } catch (error) {
-            console.error("Sign-in error:", error);
-            return { success: false, message: this.getFriendlyErrorMessage(error.code) };
+            console.error("Sign-in error:", error.code);
+            return { success: false, messageKey: authErrorKey(error.code) };
         }
     },
 
@@ -55,8 +55,8 @@ export const AuthSystem = {
 
             return { success: true };
         } catch (error) {
-            console.error("Register error:", error.code, error.message);
-            return { success: false, message: this.getFriendlyErrorMessage(error.code, error.message) };
+            console.error("Register error:", error.code);
+            return { success: false, messageKey: authErrorKey(error.code) };
         }
     },
 
@@ -69,15 +69,53 @@ export const AuthSystem = {
         }
     },
 
-    getFriendlyErrorMessage(code, defaultMessage = "An error occurred. Please try again.") {
-        switch (code) {
-            case 'auth/invalid-email': return 'Invalid email format.';
-            case 'auth/user-not-found': return 'No account found with this email.';
-            case 'auth/wrong-password': return 'Incorrect password.';
-            case 'auth/email-already-in-use': return 'Email is already taken.';
-            case 'auth/weak-password': return 'Password should be at least 6 characters.';
-            case 'auth/invalid-credential': return 'Invalid credentials. Please try again.';
-            default: return `Error [${code}]: ${defaultMessage}`;
+    /**
+     * v3.12.0 — the password reset the rules screen never had.
+     *
+     * The result is deliberately the SAME whether or not the address has an
+     * account: `auth/user-not-found` is reported as success. Telling a
+     * stranger which emails are registered here is an account-enumeration
+     * oracle, and it buys the honest user nothing they cannot learn by
+     * checking their inbox.
+     */
+    async resetPassword(email) {
+        try {
+            await sendPasswordResetEmail(auth, email);
+            return { success: true, messageKey: 'resetSent' };
+        } catch (error) {
+            console.error("Password reset error:", error.code);
+            if (error.code === 'auth/user-not-found') {
+                return { success: true, messageKey: 'resetSent' };
+            }
+            return { success: false, messageKey: authErrorKey(error.code) };
         }
     }
 };
+
+/**
+ * v3.12.0 — a Firebase error code becomes a localization KEY, never a
+ * sentence.
+ *
+ * What this replaces: six hardcoded English strings, and a `default` branch
+ * that printed `Error [auth/network-request-failed]: ...` straight into the
+ * card. A Turkish player was shown an English sentence on the six known
+ * paths and a raw SDK identifier on every other one — the identifier being
+ * the case that fires when the network is down, which is exactly when a
+ * player is least able to guess what it means.
+ *
+ * Exported and pure, so the mapping is testable without a browser: the test
+ * suite asserts that every key this returns exists in all four languages.
+ */
+export function authErrorKey(code) {
+    switch (code) {
+        case 'auth/invalid-email':           return 'authErrInvalidEmail';
+        case 'auth/user-not-found':          return 'authErrUserNotFound';
+        case 'auth/wrong-password':          return 'authErrWrongPassword';
+        case 'auth/email-already-in-use':    return 'authErrEmailInUse';
+        case 'auth/weak-password':           return 'authErrWeakPassword';
+        case 'auth/invalid-credential':      return 'authErrInvalidCredential';
+        case 'auth/too-many-requests':       return 'authErrTooManyRequests';
+        case 'auth/network-request-failed':  return 'authErrNetwork';
+        default:                             return 'authErrGeneric';
+    }
+}

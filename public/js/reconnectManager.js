@@ -3,6 +3,9 @@ import { app } from "./firebaseConfig.js";
 import { TableManager } from "./tableManager.js?v=3";
 import { LobbyUI } from "./lobbyUI.js";
 import { UIManager } from "./ui.js";
+import { Localization } from "./localization.js?v=3";
+import { ERR, classifyError, readOnline, withDeadline, createOperationToken, DEFAULT_DEADLINE_MS } from "./errorCodes.js";
+import { ErrorScreen } from "./errorScreen.js";
 
 const db = getFirestore(app);
 
@@ -63,7 +66,16 @@ export const ReconnectManager = {
             // If me is found but status is 'online', they're already in — no popup needed
 
         } catch (error) {
+            // Silent before v3.7.0: the reconnect prompt simply never appeared
+            // and the player lost a match they were still entitled to rejoin,
+            // with nothing on screen to say why. A toast rather than the error
+            // screen — this runs unprompted on the menu, so an interruption
+            // would be disproportionate, but it must not be nothing.
             console.error("Failed to check active session", error);
+            const code = classifyError(error, { online: readOnline() });
+            if (code === ERR.OFFLINE || code === ERR.NETWORK || code === ERR.TIMEOUT) {
+                UIManager.showNotification(Localization.get('errReconnectCheckFailed'), "var(--error)");
+            }
         }
     },
 
@@ -92,15 +104,31 @@ export const ReconnectManager = {
         btnReconnect.onclick = async () => {
             btnReconnect.disabled = true;
             this.closePopup();
+            const token = createOperationToken();
             try {
-                UIManager.showLoading("Reconnecting to Game...");
+                UIManager.showLoading(Localization.get('reconnecting'));
                 const tid = tableId.toUpperCase();
-                await TableManager.joinTable(tid);
+                // Without a deadline this await could never settle: Firestore
+                // queues a read across a transport failure and retries forever,
+                // so "Reconnecting to Game..." became a permanent full-screen
+                // spinner with no way out but a page reload.
+                await withDeadline(TableManager.joinTable(tid), DEFAULT_DEADLINE_MS, token);
+                if (token.cancelled) return;
                 LobbyUI.openLobby();
                 LobbyUI.enterWaitingRoom(tid, false);
             } catch (error) {
-                UIManager.showNotification("Reconnect failed: " + error.message, "var(--error)");
-                localStorage.removeItem('ers_active_table');
+                console.error("Reconnect Error:", error);
+                const code = classifyError(error, { online: readOnline() });
+                // Keep the saved table when the failure was transport-level —
+                // the match may still be there once the connection returns.
+                const transient = (code === ERR.OFFLINE || code === ERR.NETWORK || code === ERR.TIMEOUT);
+                if (!transient) localStorage.removeItem('ers_active_table');
+                ErrorScreen.show({
+                    code,
+                    titleKey: 'errTitleReconnect',
+                    technical: error && error.message,
+                    onRetry: transient ? () => btnReconnect.onclick() : undefined
+                });
             } finally {
                 btnReconnect.disabled = false;
                 UIManager.hideLoading();

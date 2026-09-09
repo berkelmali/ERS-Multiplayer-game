@@ -1,4 +1,8 @@
 import { Localization } from './localization.js?v=3';
+import { HouseRules } from './houseRules.js';
+import { RULE_DEFS, DEFAULT_RULES, normalizeRules } from './slapRules.js';
+import { getRankName, getSuitSymbol } from './game.js';
+import EventBus from './eventbus.js';
 
 export const Settings = {
     config: {
@@ -13,11 +17,14 @@ export const Settings = {
         highLegibility: false,
         largerText: false,
         matchLength: 'full', // 'full' | 'blitz' — see matchTimer.js / CLAUDE.md §6.22
-        equippedCardSkin: 'classic' // see cardSkins.js / CLAUDE.md §6.28
+        equippedCardSkin: 'classic', // see cardSkins.js / CLAUDE.md §6.28
+        slapCoach: true,             // see slapForensics.js / CLAUDE.md §6.34
+        houseRules: { ...DEFAULT_RULES } // see houseRules.js / CLAUDE.md §6.33
     },
 
     init() {
         this.load();
+        this.renderHouseRuleRows(); // must precede applyAll/bindEvents — they query these inputs
         this.applyAll();
         this.bindEvents();
     },
@@ -84,7 +91,89 @@ export const Settings = {
         document.getElementById('toggle-larger-text').checked = this.config.largerText;
         document.documentElement.style.fontSize = this.config.largerText ? '112.5%' : '';
 
+        // --- v3.0.0 ---
+        const coachToggle = document.getElementById('toggle-slap-coach');
+        if (coachToggle) coachToggle.checked = this.config.slapCoach !== false;
+
+        // Settings OWNS the local rule preference and pushes it into HouseRules.
+        // The reverse direction would put settings.js → localization.js → ui.js
+        // into an import cycle with the rule engine.
+        this.config.houseRules = normalizeRules(this.config.houseRules);
+        HouseRules.setLocal(this.config.houseRules);
+        this.syncHouseRuleInputs();
+
         this.updateDifficultyDesc();
+    },
+
+    /**
+     * Builds one row per rule, straight from the registry — the settings screen
+     * can never list a rule the engine does not have, or miss one it does.
+     *
+     * Each row shows the pattern as actual miniature cards rather than a text
+     * hint like "7 · 7". A slap rule is a shape you recognise at speed; showing
+     * the shape is closer to what the player has to do at the table than
+     * describing it in words, and it needs no translation.
+     */
+    renderHouseRuleRows() {
+        const grid = document.querySelector('.house-rules-grid');
+        if (!grid || grid.dataset.built === '1') return;
+
+        grid.innerHTML = RULE_DEFS.map(def => {
+            const cards = (def.preview || []).map(c => {
+                const red = (c.suit === 'hearts' || c.suit === 'diamonds');
+                return `<span class="mini-card${red ? ' red' : ''}${c.key ? '' : ' filler'}">`
+                    + `<b>${getRankName(c.rank)}</b><i>${getSuitSymbol(c.suit)}</i></span>`;
+            }).join('');
+
+            return `<label class="rule-row${def.optional ? ' optional' : ''}" for="rule-${def.id}">
+                <input type="checkbox" id="rule-${def.id}">
+                <span class="rule-name" data-i18n="ruleName_${def.id}">${def.id}</span>
+                <span class="rule-preview">${cards}</span>
+            </label>`;
+        }).join('');
+
+        grid.dataset.built = '1';
+    },
+
+    /**
+     * Rebuilds the House Rules checkbox states from config, and reflects the
+     * lock.
+     *
+     * Reading `HouseRules.local` rather than `this.config.houseRules` while
+     * locked is deliberate: during a Daily Challenge run the LIVE set is the
+     * classic one, and showing the player their own saved preferences next to
+     * dead switches would be a small lie about what they are playing. Their
+     * preference is not lost — `DailyChallenge.stop()` puts it back.
+     */
+    syncHouseRuleInputs() {
+        const locked = HouseRules.isLocked();
+        const shown = locked ? HouseRules.local : this.config.houseRules;
+
+        for (const def of RULE_DEFS) {
+            const el = document.getElementById('rule-' + def.id);
+            if (!el) continue;
+            el.checked = shown[def.id] === true;
+            el.disabled = locked;
+        }
+
+        const grid = document.querySelector('.house-rules-grid');
+        if (grid) grid.classList.toggle('locked', locked);
+
+        const reset = document.getElementById('btn-rules-reset');
+        if (reset) reset.disabled = locked;
+
+        // Say WHY the switches are dead. A disabled control with no explanation
+        // reads as a bug.
+        const note = document.getElementById('house-rules-lock');
+        if (note) {
+            if (locked) {
+                note.innerText = Localization.get('houseRulesLocked')
+                    || 'Locked during the Daily Challenge — everyone plays the classic rules.';
+                note.style.display = 'block';
+            } else {
+                note.style.display = 'none';
+            }
+        }
     },
 
     updateDifficultyDesc() {
@@ -97,6 +186,10 @@ export const Settings = {
     },
 
     bindEvents() {
+        // The lock can flip while this panel is open (start a daily, quit a
+        // daily), so the switches re-render instead of going stale.
+        EventBus.on('houseRulesLockChanged', () => this.syncHouseRuleInputs());
+
         document.getElementById('select-theme').addEventListener('change', (e) => {
             document.body.className = document.body.className.replace(/\btheme-\S+/g, '').trim();
             this.config.theme = e.target.value;
@@ -185,5 +278,38 @@ export const Settings = {
             document.documentElement.style.fontSize = this.config.largerText ? '112.5%' : '';
             this.save();
         });
+
+        // --- v3.0.0: Slap Coach ---
+        const coachToggle = document.getElementById('toggle-slap-coach');
+        if (coachToggle) {
+            coachToggle.addEventListener('change', (e) => {
+                this.config.slapCoach = e.target.checked;
+                this.save();
+            });
+        }
+
+        // --- v3.0.0: House Rules ---
+        for (const def of RULE_DEFS) {
+            const el = document.getElementById('rule-' + def.id);
+            if (!el) continue;
+            el.addEventListener('change', (e) => {
+                const next = { ...this.config.houseRules, [def.id]: e.target.checked };
+                // normalizeRules() enforces the "at least one rule" invariant, so
+                // the checkboxes are re-synced from the RESULT rather than from
+                // the click — a switch that was refused must visibly bounce back.
+                this.config.houseRules = HouseRules.setLocal(next);
+                this.syncHouseRuleInputs();
+                this.save();
+            });
+        }
+
+        const resetRules = document.getElementById('btn-rules-reset');
+        if (resetRules) {
+            resetRules.addEventListener('click', () => {
+                this.config.houseRules = HouseRules.setLocal({ ...DEFAULT_RULES });
+                this.syncHouseRuleInputs();
+                this.save();
+            });
+        }
     }
 };

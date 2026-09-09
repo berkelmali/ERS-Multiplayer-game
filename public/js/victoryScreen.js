@@ -28,8 +28,20 @@ export const VictoryScreen = {
             this.lastCoinDelta = amount;
         });
 
+        // v3.12.0 — the 1500ms pause is deliberate (the last slap should land
+        // before the screen changes), but until now the timer had no handle
+        // and no owner. Anything the player did inside that window — and
+        // `#btn-quit` is live on the game screen for the whole of it — was
+        // overwritten when the timer fired and pushed a full-viewport
+        // `z-index: 1000` victory screen over the main menu.
+        //
+        // Found by the overlay walk in `npm run smoke`, not by hand: it is the
+        // same defect class as the winner banner that survived the menu, and
+        // that is exactly the class that gate was written to catch.
         EventBus.on('gameOver', (winnerId) => {
-            setTimeout(() => {
+            if (this.showTimeout) clearTimeout(this.showTimeout);
+            this.showTimeout = setTimeout(() => {
+                this.showTimeout = null;
                 this.show(winnerId);
             }, 1500);
         });
@@ -47,12 +59,23 @@ export const VictoryScreen = {
 
             if (this.lastWinnerId === 99) {
                 this.screenVictory.classList.remove('active');
-                this.screenVictory.classList.remove('defeat-mode');
-                document.body.classList.remove('defeat-screen');
+                this.clearDefeatVisuals();
                 this.screenGame.classList.add('active');
                 this.stopParticles();
                 
-                // Spectator Mode UI Locks
+                // Spectator Mode UI Locks.
+                //
+                // The DECK is locked, and correctly: a seat holding nothing has
+                // no card to play, and its turn is skipped by getNextPlayer.
+                //
+                // The PILE is NOT locked, and this is the whole feature. The
+                // slap is a `pointerdown` on #center-pile (ui.js), so the line
+                // that used to sit here — `pile.style.pointerEvents = 'none'`
+                // — was the single statement that made "Spectator Mode & Slap
+                // Back" unreachable no matter what the game logic allowed. The
+                // rules panel promises, in four languages: "You can still slap
+                // the pile even with 0 cards — a successful slap resurrects you
+                // with the pile!" It is the pile you slap.
                 const humanDeck = document.getElementById('human-deck');
                 if (humanDeck) {
                     humanDeck.style.pointerEvents = 'none';
@@ -60,7 +83,7 @@ export const VictoryScreen = {
                 }
                 const pile = document.getElementById('center-pile');
                 if (pile) {
-                    pile.style.pointerEvents = 'none';
+                    pile.style.pointerEvents = 'auto';
                 }
                 return;
             }
@@ -71,8 +94,7 @@ export const VictoryScreen = {
                     return;
                 }
                 this.screenVictory.classList.remove('active');
-                this.screenVictory.classList.remove('defeat-mode');
-                document.body.classList.remove('defeat-screen');
+                this.clearDefeatVisuals();
                 this.screenGame.classList.add('active');
                 this.stopParticles();
                 
@@ -127,13 +149,52 @@ export const VictoryScreen = {
                 if (oldPanel) oldPanel.remove();
 
                 this.screenVictory.classList.remove('active');
-                this.screenVictory.classList.remove('defeat-mode');
-                document.body.classList.remove('defeat-screen');
+                this.clearDefeatVisuals();
                 this.stopParticles();
+
+                // Undo the spectator lock. clearDefeatVisuals() only removes a
+                // CSS class; the deck was disabled with inline styles above and
+                // nothing on this path put them back — so without these four
+                // lines a resurrected player returns holding cards they cannot
+                // play. (resetOfflineUI does this, but only on the way out to
+                // the menu, which is the opposite of coming back.)
+                const humanDeck = document.getElementById('human-deck');
+                if (humanDeck) {
+                    humanDeck.style.pointerEvents = 'auto';
+                    humanDeck.style.opacity = '1';
+                }
+                const pile = document.getElementById('center-pile');
+                if (pile) pile.style.pointerEvents = 'auto';
+
+                this.screenGame.classList.add('active');
             }
+        });
+
+        // Offline elimination. Multiplayer has raised screen 99 since v2.x via
+        // multiplayerMode.checkElimination(); offline never did, because
+        // checkGameOver ended the match instead of eliminating anybody. Now
+        // that it does not, the same screen — "eliminated, the match is still
+        // ongoing" — is what puts the player into Spectator Mode.
+        EventBus.on('humanEliminated', (playerId) => {
+            if (playerId !== 0) return;
+            import('./gameManager.js').then(gm => {
+                if (gm.GameManager.activeMode === 'multiplayer') return;
+                this.show(99);
+            });
         });
     },
 
+
+    /**
+     * Abandon a victory screen that has been scheduled but not yet shown.
+     * Called from GameManager.quitGame(), which is the one teardown both
+     * modes go through.
+     */
+    cancelPendingShow() {
+        if (this.showTimeout) { clearTimeout(this.showTimeout); this.showTimeout = null; }
+        if (this.redirectTimeout) { clearTimeout(this.redirectTimeout); this.redirectTimeout = null; }
+        this.screenVictory.classList.remove('active');
+    },
 
     show(winnerId) {
         if (this.redirectTimeout) clearTimeout(this.redirectTimeout);
@@ -179,8 +240,7 @@ export const VictoryScreen = {
 
             if (winnerId === 0) {
                 // === WIN ===
-                this.screenVictory.classList.remove('defeat-mode');
-                document.body.classList.remove('defeat-screen');
+                this.clearDefeatVisuals();
                 this.victoryTitle.innerText = Localization.get('win') || '🏆 Victory!';
                 this.victoryTitle.style.color = 'gold';
                 this.victoryTitle.style.textShadow = '0 0 30px gold, 0 0 60px rgba(255,200,0,0.4)';
@@ -204,7 +264,6 @@ export const VictoryScreen = {
             } else {
                 // === DEFEAT / ELIMINATION ===
                 this.screenVictory.classList.add('defeat-mode');
-                document.body.classList.add('defeat-screen');
                 
                 // Add Crimson Blood Vignette
                 const bloodGlow = document.createElement('div');
@@ -363,8 +422,7 @@ export const VictoryScreen = {
     returnToWaitingRoom() {
         if (this.redirectTimeout) clearTimeout(this.redirectTimeout);
         this.stopParticles();
-        this.screenVictory.classList.remove('defeat-mode');
-        document.body.classList.remove('defeat-screen');
+        this.clearDefeatVisuals();
         import('./gameManager.js').then(gm => gm.GameManager.quitGame());
 
         document.body.classList.remove('game-screen');
@@ -381,6 +439,18 @@ export const VictoryScreen = {
         EventBus.emit('gameStateChanged', 'menu');
     },
 
+    /**
+     * Clear the defeat paint. v3.7.3 — this used to be five scattered
+     * `classList.remove('defeat-mode')` calls shadowed by a sixth marker,
+     * `body.defeat-screen`, which had no CSS rule and no reader at all. The two
+     * had already drifted: returnToMainMenuUI() cleared the marker that did
+     * nothing and left the one that paints, benign only because the win branch
+     * happened to re-clear it. One state, one place to clear it.
+     */
+    clearDefeatVisuals() {
+        if (this.screenVictory) this.screenVictory.classList.remove('defeat-mode');
+    },
+
     returnToMainMenuUI() {
         if (this.redirectTimeout) clearTimeout(this.redirectTimeout);
         this.stopParticles();
@@ -395,7 +465,12 @@ export const VictoryScreen = {
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         
         // Reset body classes
-        document.body.classList.remove('game-screen', 'defeat-screen', 'lobby-screen', 'waiting-screen');
+        document.body.classList.remove('game-screen');
+        // v3.7.3: defeat-screen / lobby-screen / waiting-screen were toggled here for
+        // months with no CSS rule and no JS reader — pure no-ops. The class that
+        // actually paints the defeat state is #victory-screen.defeat-mode
+        // (style.css), and THAT is what this path forgot to clear.
+        this.clearDefeatVisuals();
         document.body.classList.add('menu-screen');
         
         // Activate main menu

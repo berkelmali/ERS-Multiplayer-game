@@ -1,0 +1,11 @@
+# ers-card-game.web.app
+#
+# This file exists because of what happens WITHOUT it. Firebase Hosting rewrites
+# every unmatched path to /index.html, so a missing robots.txt is not a 404 — it
+# is the whole game page, served as 200 text/html. A crawler that asks for the
+# rules and receives an HTML document has to guess, and the crawler that checks
+# ads.txt is not the same fetcher as the one that indexes pages.
+#
+# Nothing here is hidden. The game is a single page; there is nothing to exclude.
+User-agent: *
+Allow: /

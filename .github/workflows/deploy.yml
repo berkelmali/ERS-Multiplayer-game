@@ -1,0 +1,99 @@
+# Production deploy. Hosting only — database and Firestore rules go out through
+# deploy-rules.yml, deliberately, because they change live data access and a
+# wrong rule file can lock the whole game out.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'deploy.bat'
+      - 'deploy.sh'
+      - '.github/workflows/deploy-rules.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a deploy in flight, and never let two overlap.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+
+  deploy:
+    name: Firebase Hosting
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://ers-card-game.web.app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci --omit=dev
+
+      # public/js/firebaseConfig.js is gitignored and untracked, so a fresh
+      # checkout does not have it — and every module imports it. Without this
+      # step the deploy would succeed and the site would render nothing.
+      - name: Write the Firebase web config
+        env:
+          FIREBASE_WEB_CONFIG: ${{ secrets.FIREBASE_WEB_CONFIG }}
+        run: npm run config:write
+
+      - name: Refuse to deploy without it
+        run: |
+          test -s public/js/firebaseConfig.js || {
+            echo "::error::public/js/firebaseConfig.js was not produced. Check the FIREBASE_WEB_CONFIG secret."
+            exit 1
+          }
+          if grep -q 'YOUR_' public/js/firebaseConfig.js; then
+            echo "::error::Firebase config still contains template placeholders."
+            exit 1
+          fi
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ers-card-game
+          channelId: live
+
+      # A green deploy step only proves the upload worked. This proves the site
+      # people actually load is the build we just shipped.
+      - name: Verify the live site serves this version
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          echo "Expecting $VERSION at https://ers-card-game.web.app"
+          for attempt in 1 2 3 4 5; do
+            BODY=$(curl -fsSL --max-time 20 https://ers-card-game.web.app || true)
+            if printf '%s' "$BODY" | grep -q "$VERSION"; then
+              echo "Live site is serving $VERSION."
+              exit 0
+            fi
+            echo "Attempt $attempt: not visible yet, retrying in 10s…"
+            sleep 10
+          done
+          echo "::error::Deploy reported success but https://ers-card-game.web.app is not serving $VERSION."
+          exit 1
+
+      - name: Summary
+        run: |
+          {
+            echo "### Deployed"
+            echo ""
+            echo "**https://ers-card-game.web.app** — \`v$(node -p "require('./package.json').version")\` (\`${GITHUB_SHA::7}\`)"
+            echo ""
+            echo "Hosting only. Security rules were not touched — use the **Deploy rules** workflow for those."
+          } >> "$GITHUB_STEP_SUMMARY"

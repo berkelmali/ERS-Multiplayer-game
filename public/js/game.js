@@ -1,25 +1,18 @@
 import EventBus from './eventbus.js';
 import { Settings } from './settings.js';
+import { Rng } from './rng.js';
+import { matchSlap } from './slapRules.js';
+import { HouseRules } from './houseRules.js';
+import { MatchContext, difficultyInForce, turnTimeoutMs, transitionDelayMs } from './matchContext.js';
 const RANKS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; // 11=J, 12=Q, 13=K, 14=A
 const SUITS = ['hearts', 'diamonds', 'clubs', 'spades'];
 const FACE_CHANCES = { 11: 1, 12: 2, 13: 3, 14: 4 };
 
-export function getRankName(rank) {
-    if (rank <= 10) return rank.toString();
-    if (rank === 11) return 'J';
-    if (rank === 12) return 'Q';
-    if (rank === 13) return 'K';
-    if (rank === 14) return 'A';
-}
-
-export function getSuitSymbol(suit) {
-    switch (suit) {
-        case 'hearts': return '♥';
-        case 'diamonds': return '♦';
-        case 'clubs': return '♣';
-        case 'spades': return '♠';
-    }
-}
+// Card formatting lives in ruleDoc.js so the Rules page can generate its pattern
+// previews without importing game.js (and Settings, and the event bus) to do it.
+// Re-exported here because settings.js and ui.js already import them from this
+// module — same arrangement as ai.js re-exporting BotConfig from botConfig.js.
+export { getRankName, getSuitSymbol } from './ruleDoc.js';
 
 export function createDeck() {
     let deck = [];
@@ -28,13 +21,26 @@ export function createDeck() {
             deck.push({ rank: r, suit: s });
         }
     }
-    // Shuffle
+    // Fisher-Yates. `Rng.random()` IS `Math.random()` unless something has
+    // deliberately seeded it (only the Daily Challenge does), so normal matches
+    // shuffle exactly as they always have.
     for (let i = deck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(Rng.random() * (i + 1));
         [deck[i], deck[j]] = [deck[j], deck[i]];
     }
     return deck;
 }
+
+/**
+ * How long a Combustion Shield lasts, in milliseconds.
+ *
+ * Single source of truth. This value used to be written out as a bare `30000`
+ * in three separate files (game.js, firebaseSync.js, ui.js) — one for the
+ * offline timer, one for the multiplayer timer, one for the on-screen
+ * countdown. Three copies of a number that must agree is a drift waiting to
+ * happen, and the rules page promises "30 seconds" in four languages.
+ */
+export const SHIELD_DURATION_MS = 30000;
 
 export const GameState = {
     players: [[], [], [], []], // 0: Human, 1: Left Bot, 2: Top Bot, 3: Right Bot
@@ -53,12 +59,17 @@ export const GameState = {
     turnTimeoutId: null,
     turnTransitionTimeout: null,
 
+    /**
+     * The clock the ACTIVE MATCH runs on.
+     *
+     * This used to read `Settings.config.difficulty` straight, while the Daily
+     * Challenge set the bots' tier through a different variable the timer never
+     * saw — so two players on the same scored seed had 20 000 ms and 10 000 ms
+     * to play a card. See matchContext.js for the measured cost.
+     */
     getTimeoutDuration() {
-        if (this.isMultiplayer) return 15000; // Competitive standard
-        const diff = Settings.config.difficulty;
-        if (diff === 'easy') return 20000;
-        if (diff === 'hard') return 10000;
-        return 15000; // Medium/Default
+        const diff = difficultyInForce(MatchContext.difficultyOverride, Settings.config.difficulty);
+        return turnTimeoutMs(diff, this.isMultiplayer);
     },
 
     resetTurnTimer() {
@@ -128,23 +139,47 @@ export const GameState = {
         }
     },
 
-    init() {
-        const deck = createDeck();
+    /**
+     * @param {object|null} scenario Optional pre-built position (Daily Challenge,
+     *   see dailyScenario.js): hands already uneven, cards already on the pile.
+     *   Passing nothing deals a fresh 13/13/13/13 game exactly as before.
+     *
+     * Deliberately ONE method rather than a separate `initFromScenario()`: every
+     * line below the deal — stats, flags, the turn listener, the events other
+     * modules key off — must be identical for both entry points, and the surest
+     * way to keep them identical is to have only one copy of them.
+     */
+    init(scenario = null) {
         this.players = [[], [], [], []];
         this.streaks = [0, 0, 0, 0]; // BUG-01 FIX: Reset streaks on new game
-        let p = 0;
-        while (deck.length > 0) {
-            this.players[p].push(deck.pop());
-            p = (p + 1) % 4;
+
+        if (scenario) {
+            // Copy, never alias: the scenario object is rebuilt from the seed on
+            // every visit to the panel, and gameplay mutates these arrays.
+            this.players = scenario.hands.map(h => h.map(c => ({ ...c })));
+            this.pile = scenario.pile.map(c => ({ ...c }));
+            this.burnPile = (scenario.burnPile || []).map(c => ({ ...c }));
+            this.activePlayerId = scenario.activePlayerId ?? 0;
+            this.challenge = { ...scenario.challenge };
+            this.streaks = [...(scenario.streaks || [0, 0, 0, 0])];
+        } else {
+            const deck = createDeck();
+            let p = 0;
+            while (deck.length > 0) {
+                this.players[p].push(deck.pop());
+                p = (p + 1) % 4;
+            }
+            this.activePlayerId = 0;
+            this.pile = [];
+            this.burnPile = [];
+            this.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
         }
-        this.activePlayerId = 0;
-        this.pile = [];
-        this.burnPile = [];
-        this.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
+
         this.challengeResolverActive = false;
         this.gameStarted = true;
         this.gameOver = false;
         this.humanEliminated = false;
+        this.playCount = 0;
         this.lastPlayTime = Date.now();
         this.lastSlapWinTime = 0;
         this.stats = {
@@ -181,6 +216,23 @@ export const GameState = {
         this.challengeResolverActive = false;
     },
 
+    /**
+     * Arm (or re-arm) the shield's real expiry clock.
+     *
+     * v3.7.1 — this function now also announces itself. Before, the shield had
+     * TWO independent 30-second clocks: this one, and the countdown drawn on the
+     * deck (ui.js `shieldExpireTimestamps`). The drawn one was armed ONLY by the
+     * `shieldEarned` event, which fires on the 0 -> 3 streak transition. A
+     * renewing slap keeps the streak at 3, so no event fired and the drawn clock
+     * was never refreshed — while this one was. The two then diverged: the
+     * number on the shield counted to zero and vanished, and the shield itself
+     * kept protecting the player for up to another full 30 seconds. The player
+     * saw a shield that had "expired" but was still there, and an expiry message
+     * that arrived long after the counter had run out.
+     *
+     * Emitting from inside the arming function is what makes divergence
+     * structurally impossible: exactly one condition now starts both clocks.
+     */
     startShieldTimer(playerId) {
         if (!this.shieldDecayTimers) this.shieldDecayTimers = [null, null, null, null];
         if (this.shieldDecayTimers[playerId]) {
@@ -188,7 +240,8 @@ export const GameState = {
         }
         this.shieldDecayTimers[playerId] = setTimeout(() => {
             this.expireShield(playerId);
-        }, 30000);
+        }, SHIELD_DURATION_MS);
+        EventBus.emit('shieldRenewed', playerId);
     },
 
     expireShield(playerId) {
@@ -237,20 +290,29 @@ export const GameState = {
 
         if (!humanHasCards && !this.humanEliminated) {
             this.humanEliminated = true;
-            if (!this.isMultiplayer) {
-                this.gameOver = true;
-                this.gameStarted = false;
-                let maxCards = -1;
-                let winnerBotId = 1;
-                for (let i = 1; i < 4; i++) {
-                    if (this.players[i].length > maxCards) {
-                        maxCards = this.players[i].length;
-                        winnerBotId = i;
-                    }
-                }
-                EventBus.emit('gameOver', winnerBotId);
-            }
-            // else: Multiplayer mode handles its own instant defeat screen via checkElimination in multiplayerMode.js
+            // SLAP BACK IN — this branch used to end the offline match on the
+            // spot and crown whichever bot held the most cards.
+            //
+            // That is not what this game tells the player. The rules panel has
+            // a section headed "👁️ Spectator Mode & Slap Back" which says, in
+            // four languages: "Eliminated? Don't leave yet! You enter Spectator
+            // Mode where you can watch the match ... and still attempt to Slap
+            // Back In at any time. A successful slap resurrects you with the
+            // pile!" Ending the match here made that unreachable by half a
+            // second.
+            //
+            // Nothing has to replace it. `activePlayers <= 1` twelve lines
+            // above is the real terminal condition and it was already correct;
+            // this branch was an EXTRA ending layered on top of it, and only
+            // for the human seat. Removing it lets the match run on exactly as
+            // it does when a bot runs dry, which is what the spectator screen
+            // and the resurrection handlers in victoryScreen.js and ui.js were
+            // written for.
+            //
+            // 99 is the "eliminated, match still ongoing" screen — the same one
+            // multiplayer has raised since v2.x through checkElimination().
+            // Offline never reached it, because offline never survived to.
+            EventBus.emit('humanEliminated', 0);
         }
     },
 
@@ -316,6 +378,10 @@ export const GameState = {
 
         const card = this.players[playerId].shift(); // Draw from top
         this.pile.push(card);
+        // Monotonic index of every card played this match. The Daily Challenge
+        // keys its deterministic bot rolls off this, so the same decision point
+        // produces the same roll on every machine (see rng.js::hashRandom).
+        this.playCount = (this.playCount || 0) + 1;
         this.lastPlayTime = Date.now();
         EventBus.emit('cardPlayed', { playerId, card });
 
@@ -410,36 +476,35 @@ export const GameState = {
         }
     },
 
+    /**
+     * v3.0.0: this used to be a hand-written second copy of the slap rules,
+     * living a long way from `firebaseSync.js`'s third copy. Both are gone —
+     * offline and multiplayer now evaluate the SAME registry with the SAME
+     * active rule set, so a rule can no longer be added to one and forgotten in
+     * the other (COUNCIL.md, Engineer, `[Kesin]`).
+     *
+     * Return shape is unchanged (`{label, indices}` or `false`), so `slap()`,
+     * `playCard()`'s dead-game check and `ai.js` need no changes.
+     */
     isValidSlap() {
-        const p = this.pile;
-        if (p.length === 0 || p.length < 2) return false;
-        
-        const top = p[p.length - 1];
-        const prev = p[p.length - 2];
-
-        // Doubles
-        if (top.rank === prev.rank) return { label: 'double', indices: [p.length - 1, p.length - 2] };
-
-        // Tens (only number cards summing to 10)
-        if (top.rank <= 10 && prev.rank <= 10 && top.rank + prev.rank === 10) return { label: 'tens', indices: [p.length - 1, p.length - 2] };
-
-        // Marriage (K and Q)
-        if ((top.rank === 12 && prev.rank === 13) || (top.rank === 13 && prev.rank === 12)) return { label: 'marriage', indices: [p.length - 1, p.length - 2] };
-
-        // Sandwich
-        if (p.length >= 3) {
-            const prev2 = p[p.length - 3];
-            if (top.rank === prev2.rank) return { label: 'sandwich', indices: [p.length - 1, p.length - 3] };
-        }
-
-        return false;
+        const m = matchSlap(this.pile, HouseRules.active());
+        return m ? { label: m.id, indices: m.indices } : false;
     },
 
     slap(playerId) {
         if (this.gameOver || !this.gameStarted) return;
         
-        // Anti-Ghost Slap for Offline Matches
-        if (!this.isMultiplayer && playerId === 0 && this.humanEliminated) return;
+        // No anti-ghost guard on the human seat any more. It used to read
+        //   if (!this.isMultiplayer && playerId === 0 && this.humanEliminated) return;
+        // and it is the second of the two locks that made "Slap Back In"
+        // impossible — a seat with no cards was refused the one action the
+        // rules panel says it still has.
+        //
+        // Nothing is at risk without it. An invalid slap burns a card only
+        // `if (this.players[playerId].length > 0)` below, so a seat holding
+        // nothing pays nothing; getNextPlayer already skips empty seats, so an
+        // eliminated player still never gets a TURN. They can slap. That is
+        // the whole of what elimination now means offline.
 
         // Slap Grace Period to prevent double-slap race conditions penalty
         if (Date.now() - this.lastSlapWinTime < 500) return;
@@ -521,7 +586,15 @@ export const GameState = {
             }
             this.stats.cardsWon += (this.burnPile.length + this.pile.length);
             if (this.humanEliminated) {
+                // The comeback. This counter has existed since v2.9.0 and could
+                // never once be reached: checkGameOver ended the match the
+                // moment humanEliminated became true, and slap() refused the
+                // seat anyway. The victory screen has been printing "Slap
+                // Backs: 0" and withholding the mvpComeback badge ever since,
+                // in four languages.
+                this.humanEliminated = false;
                 this.stats.resurrections++;
+                EventBus.emit('resurrected', 0);
             }
         }
 
@@ -591,13 +664,12 @@ export const GameState = {
         this.checkGameOver();
         if (this.gameOver) return;
 
-        // Dynamic delay before next turn to sync with UI clearing the table
-        let transitionDelay = 1000;
-        if (reason === 'slap') {
-            transitionDelay = Settings.config.fastAnimations ? 700 : 1000;
-        } else if (reason === 'challenge') {
-            transitionDelay = 400; // Fast sweep for challenges matches animation time
-        }
+        // Delay before the next turn, so the table finishes clearing. `fastAnimations`
+        // is the player's own preference everywhere EXCEPT a scored run, where the
+        // 300 ms it saves per pile is paid out as score (see matchContext.js).
+        const transitionDelay = transitionDelayMs(
+            reason, Settings.config.fastAnimations, MatchContext.scored
+        );
 
         if (this.turnTransitionTimeout) clearTimeout(this.turnTransitionTimeout);
         EventBus.emit('turnChanged', -1);

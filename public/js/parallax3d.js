@@ -20,7 +20,7 @@ import { Settings } from './settings.js';
 const BG_SHIFT  = 15;   // Arka plan kayma miktarı (px)
 const UI_SHIFT  = 5;    // UI katmanı kayma miktarı (px, ters yön)
 const TILT_MAX  = 8;    // Buton 3D eğilme açısı (derece)
-const EXIT_MS   = 1000; // Exit animasyonu süresi (ms)
+const EXIT_MS   = 340; // Match the short lobby transition.
 
 function motionReduced() {
     return !!(Settings.config && Settings.config.reducedMotion);
@@ -39,9 +39,11 @@ export const Parallax3D = {
     // Event listener referansları (cleanup için)
     _boundMouseMove: null,
     _tiltButtons: [],
+    _frame: null,
 
     // ─── INIT ───────────────────────────────────
     init() {
+        if (this.isActive) return;
         // Mobil koruma
         this.isMobile = window.innerWidth < 769;
         if (this.isMobile || motionReduced()) {
@@ -75,7 +77,12 @@ export const Parallax3D = {
 
     // ─── MOUSE PARALLAX ─────────────────────────
     _onMouseMove(e) {
-        if (!this.isActive) return;
+        if (!this.isActive || motionReduced()) return;
+        // Coalesce high-frequency pointer events into one paint per frame.
+        if (this._frame !== null) cancelAnimationFrame(this._frame);
+        this._frame = requestAnimationFrame(() => {
+        this._frame = null;
+        if (!this.isActive || motionReduced()) return;
 
         // Normalize mouse: -1 → +1
         const cx = (e.clientX / window.innerWidth  - 0.5) * 2;
@@ -92,6 +99,7 @@ export const Parallax3D = {
             this.uiLayer.style.transform =
                 `translate3d(${cx * -UI_SHIFT}px, ${cy * -UI_SHIFT}px, 0)`;
         }
+        });
     },
 
     // ─── BUTON 3D TILT ──────────────────────────
@@ -103,6 +111,7 @@ export const Parallax3D = {
             if (!btn) return;
 
             const onMove = (e) => {
+                if (motionReduced()) return;
                 const rect = btn.getBoundingClientRect();
                 const cx = (e.clientX - rect.left) / rect.width  - 0.5; // -0.5 → +0.5
                 const cy = (e.clientY - rect.top)  / rect.height - 0.5;
@@ -145,7 +154,7 @@ export const Parallax3D = {
 
     // ─── EXIT ANİMASYONU (1sn) ──────────────────
     onPlayClicked() {
-        if (!this.isActive) return Promise.resolve();
+        if (!this.isActive || motionReduced()) return Promise.resolve();
 
         return new Promise(resolve => {
             // Arka plan: zoom-in + blur + karart
@@ -170,7 +179,9 @@ export const Parallax3D = {
 
     // ─── YAŞAM DÖNGÜSÜ: DISPOSE ─────────────────
     dispose() {
-        if (this.isMobile || !this.isActive) return;
+        if (this._frame !== null) cancelAnimationFrame(this._frame);
+        this._frame = null;
+        if (!this.isActive) return;
 
         // Mouse listener kaldır
         if (this._boundMouseMove) {
@@ -205,6 +216,11 @@ export const Parallax3D = {
 
     // ─── YAŞAM DÖNGÜSÜ: RESUME ──────────────────
     async resume() {
+        this.isMobile = window.innerWidth < 769;
+        if (!this.scene && !this.isMobile && !motionReduced()) {
+            this.init();
+            return;
+        }
         if (this.isMobile || motionReduced()) return;
         if (this.isActive) return; // Zaten çalışıyor
 

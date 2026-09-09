@@ -2,8 +2,16 @@ import { getFirestore, doc, getDoc, updateDoc, increment, deleteDoc } from "http
 import { ref as dbRef, onValue, off, update as rtdbUpdate, remove as rtdbRemove, onDisconnect, serverTimestamp as rtdbServerTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { app, rtdb, functions } from "./firebaseConfig.js";
-import { GameState } from "./game.js";
+import { GameState, SHIELD_DURATION_MS } from "./game.js";
 import EventBus from "./eventbus.js";
+import { matchSlap } from "./slapRules.js";
+import { HouseRules } from "./houseRules.js";
+import { NetQuality } from "./netQuality.js";
+import { ConnectionBanner } from "./connectionBanner.js";
+import { Localization } from "./localization.js?v=3";
+import { AuthSystem } from "./auth.js";
+import { applySlapWin, applySlapBurn } from "./slapOutcome.js";
+import * as FairSlap from "./fairSlap.js";
 
 const db = getFirestore(app);
 
@@ -34,28 +42,27 @@ export const FirebaseSync = {
     lastActivePlayerId: null, // Track the last active player ID to prevent turn timer UI flicker
 
 
-    evaluateSlap(pile) {
-        if (!pile || pile.length < 2) return false;
-        const top = pile[pile.length - 1];
-        const prev = pile[pile.length - 2];
+    /** Timer that closes an open fair-slap contest. */
+    contestTimer: null,
 
-        // Doubles
-        if (top.rank === prev.rank) return true;
-        // Tens
-        if (top.rank <= 10 && prev.rank <= 10 && top.rank + prev.rank === 10) return true;
-        // Marriage (K & Q)
-        if ((top.rank === 12 && prev.rank === 13) || (top.rank === 13 && prev.rank === 12)) return true;
-        // Sandwich
-        if (pile.length >= 3) {
-            const prev2 = pile[pile.length - 3];
-            if (top.rank === prev2.rank) return true;
-        }
-        return false;
+    /**
+     * v3.0.0: was a third hand-written copy of the slap rules. Now a thin
+     * adapter over the single registry, evaluated against the ROOM's rule set
+     * (`gameRooms/{id}/houseRules`) rather than whatever this client happens to
+     * prefer — every seat must reach the same verdict for the transaction to be
+     * safe. Still returns a boolean, so the call site below is unchanged.
+     */
+    evaluateSlap(pile) {
+        return matchSlap(pile, HouseRules.active()) !== null;
     },
 
     listenToRoom(roomId, playerIndex) {
         this.roomId = roomId;
         this.localPlayerIndex = playerIndex;
+        NetQuality.init();
+        import('./auth.js')
+            .then(({ AuthSystem }) => NetQuality.start(AuthSystem.currentUser?.uid))
+            .catch(() => { /* signed-out spectator: clock still works, no RTT probe */ });
         this.lastActivePlayerId = null; // Reset tracker for the new game session
         this.lastEmojiT = {}; // Reset emoji trackers for the new game session
         this.lastShieldShatterTime = 0;
@@ -76,7 +83,29 @@ export const FirebaseSync = {
 
                     // Explicitly mark as online
                     rtdbUpdate(myPlayerRef, { status: 'online', disconnectedAt: null }).catch(console.warn);
+                    ConnectionBanner.clear();
+                } else {
+                    // v3.7.0. There was no `else` here before, which is the most
+                    // literal version of the problem this release exists to fix:
+                    // the SDK hands us the fact that the connection dropped, and
+                    // the app threw it away. The player's cards simply stopped
+                    // responding and nothing on screen said why.
+                    //
+                    // A banner rather than a modal — taking the board away from
+                    // someone mid-hand over a blip they may not even notice is
+                    // worse than the silence. The grace period keeps ordinary
+                    // socket churn from flashing it.
+                    ConnectionBanner.armLost();
                 }
+            }, (err) => {
+                // v3.7.3 — without this, a failure of the connectivity listener
+                // itself was silent, and the v3.7.0 connection banner simply
+                // never armed: the app would be back to saying nothing at all
+                // about a dropped connection, which is the defect that release
+                // existed to end. Treat a broken connectivity probe as a
+                // connection problem, because from the player's side it is one.
+                console.error("Connectivity listener failed:", err);
+                ConnectionBanner.armLost(0);
             });
         }
 
@@ -97,6 +126,19 @@ export const FirebaseSync = {
 
             this.roomData = data;
             this.syncToLocal(data);
+        }, (error) => {
+            // v3.7.0. This second argument did not exist. onValue() without an
+            // error callback swallows the failure entirely: on a permission
+            // change, a CSP block or a dropped socket the board simply stopped
+            // updating, with no exception, no console line and no message. The
+            // player saw a frozen table and their own hand. This is the highest
+            // severity defect the ERS-08 review found, because it happens during
+            // a live match.
+            console.error("Game room sync error:", error);
+            ConnectionBanner.armLost(0);
+            import('./ui.js').then(ui => ui.UIManager.showNotification(
+                Localization.get('errReasonSyncLost'), "var(--error)", true
+            )).catch(() => {});
         });
     },
 
@@ -190,6 +232,35 @@ export const FirebaseSync = {
                 if (winnerId !== -1) {
                     const visualId = (winnerId - this.localPlayerIndex + 4) % 4;
                     EventBus.emit('pileWon', { winnerId: visualId, reason: data.lastWinReason || 'slap', totalAwarded });
+
+                    // Photo finish: the pile was actually contested and decided
+                    // on reaction time. Surfacing the margin is what makes the
+                    // fairness change visible instead of merely true.
+                    if (data.lastWinReason === 'slap' && (data.lastSlapClaims || 0) >= 2) {
+                        EventBus.emit('slapPhotoFinish', {
+                            winnerId: visualId,
+                            reactionMs: data.lastSlapReaction || null,
+                            marginMs: data.lastSlapMargin,
+                            contenders: data.lastSlapClaims
+                        });
+                    }
+
+                    // The comeback. `applySlapWin` stamps the room with the
+                    // seat it just brought back, so every client learns it from
+                    // the transaction that caused it instead of inferring it
+                    // from a diff of the eliminated flags — which is exactly
+                    // the kind of guess that goes wrong when two updates land
+                    // together.
+                    //
+                    // This is the emitter that never existed. `resurrected`
+                    // has had listeners in ui.js, victoryScreen.js and
+                    // multiplayerMode.js — a notification, a defeat-screen
+                    // teardown and a statistic — and nothing in the codebase
+                    // ever fired it.
+                    if (typeof data.lastResurrectedId === 'number') {
+                        const backId = (data.lastResurrectedId - this.localPlayerIndex + 4) % 4;
+                        EventBus.emit('resurrected', backId);
+                    }
                 }
             }
         }
@@ -274,7 +345,23 @@ export const FirebaseSync = {
 
         GameState.gameStarted = data.gameStarted;
         GameState.gameOver = data.gameOver;
-        GameState.lastPlayTime = data.lastPlayTime;
+        // `data.lastPlayTime` is on the SERVER clock; everything downstream
+        // (reflex readouts, `Date.now() - lastPlayTime`, animations) is on the
+        // local one. Convert exactly once, here at the boundary.
+        GameState.lastPlayTime = NetQuality.toLocal(data.lastPlayTime);
+
+        // The table's rule set is authoritative for as long as the room lives.
+        // Read on EVERY snapshot, not just the first, so a client that joined
+        // late or reconnected can never evaluate slaps under its own local
+        // preferences while everyone else uses the host's.
+        HouseRules.applyRoom(data.houseRules || '');
+
+        // Keep the fair-slap window armed. This is what guarantees a contest
+        // always closes even if the client that opened it goes silent.
+        this.scheduleContestClose(data.slapContest || null);
+        if (data.slapContest && FairSlap.isStale(data.slapContest, NetQuality.serverNow())) {
+            this.closeSlapContest();
+        }
 
         if (!previouslyStarted && data.gameStarted) {
             EventBus.emit('gameStarted');
@@ -342,6 +429,15 @@ export const FirebaseSync = {
 
 
     stopListening() {
+        if (this.contestTimer) {
+            clearTimeout(this.contestTimer);
+            this.contestTimer = null;
+        }
+        NetQuality.stop();
+        // Hand rule authority back to the player's own preference. Without this
+        // a table that had Tens switched off would keep it off in the next
+        // offline match.
+        HouseRules.clearRoom();
         if (this.unsubRoom) {
             this.unsubRoom();
             this.unsubRoom = null;
@@ -416,6 +512,40 @@ export const FirebaseSync = {
         }
     },
 
+    // -----------------------------------------------------------------------
+    // Slap outcome application
+    //
+    // These two blocks used to live inline inside pushSlapAttempt's transaction.
+    // They were lifted out verbatim (only the seat variable is now a parameter)
+    // so that fair-slap arbitration can apply the SAME outcome when a contest
+    // closes, instead of a second, subtly different copy of the award logic.
+    // Both mutate `data` in place and are called only from inside a transaction.
+    // -----------------------------------------------------------------------
+
+    /** Awards the pile (+ burn pile) to `seatIndex`. */
+    /**
+     * The outcome of a slap now lives in ONE place: slapOutcome.js.
+     *
+     * This method used to hold a full copy of it, and functions/gameLogic.js
+     * held a second, hand-written "faithful port". Because
+     * USE_SERVER_VALIDATION is false, THIS copy is the one that runs in every
+     * live multiplayer match — and every slap assertion in the suite targeted
+     * the other one. The most consequential code in the game (card ownership,
+     * burn penalties, permanent elimination, host migration, the winner) was
+     * executed by no test at all, while 1,200+ assertions certified its dormant
+     * twin. The two were held together by a sentence in a comment.
+     *
+     * Delegating makes the tested code and the live code the same code.
+     */
+    _applySlapWin(data, seatIndex) {
+        return applySlapWin(data, seatIndex);
+    },
+
+    /** Applies the invalid-slap penalty (shield shatter, or burn a card). */
+    _applySlapBurn(data, seatIndex) {
+        return applySlapBurn(data, seatIndex);
+    },
+
     async pushSlapAttempt({ playerIndex }) {
         if (!this.roomId) return;
         if (this.USE_SERVER_VALIDATION) return this._pushSlapAttemptSecure(playerIndex);
@@ -429,191 +559,126 @@ export const FirebaseSync = {
                 // If they are already eliminated, they can't slap
                 if (data.players[playerIndex].eliminated) return;
 
+                const serverNow = NetQuality.serverNow();
                 const pile = data.pile || [];
-                const burnPile = data.burnPile || [];
                 const isValid = this.evaluateSlap(pile);
 
-                const players = [...data.players];
-                if (isValid) {
-                    const winnerId = playerIndex;
-                    const playerCards = players[winnerId].cards || [];
-                    playerCards.push(...burnPile, ...pile);
-
-                    players[winnerId].cards = playerCards;
-
-                    // Update streaks (with RENEWAL and ACTIVE SHIELD PERSISTENCE)
-                    players.forEach((p, i) => {
-                        if (i === winnerId) {
-                            if (p.streak >= 3) {
-                                p.streak = 3; // Keep shield/renew
-                            } else {
-                                p.streak = (p.streak || 0) + 1;
-                            }
-                        } else {
-                            if (p.streak < 3) {
-                                p.streak = 0;
-                            }
-                        }
-                    });
-
-                    // NEW: Elimination Logic - Mark anyone with 0 cards who didn't win as eliminated
-                    players.forEach((p, i) => {
-                        if (i !== winnerId && (!p.cards || p.cards.length === 0)) {
-                            // If it's a real player or if we want to mark bots as well for UI
-                            p.eliminated = true;
-                        }
-                    });
-
-                    data.players = players;
-                    data.pile = [];
-                    data.burnPile = [];
-                    data.activePlayerId = winnerId;
-                    data.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
-                    data.lastWinReason = 'slap';
-
-                    // NEW: Persistent Win Condition - End if 1 left OR no HUMANS left
-                    const nonEliminated = players.filter(p => !p.eliminated);
-                    const humansLeft = nonEliminated.filter(p => !p.uid.startsWith('bot_')).length;
-
-                    if (playerCards.length === 52 || nonEliminated.length <= 1) {
-                        data.gameOver = true;
-                        data.status = 'finished';
-                        // Set explicit winner
-                        if (nonEliminated.length === 1) {
-                            data.winnerId = players.findIndex(p => !p.eliminated);
-                        } else if (playerCards.length === 52) {
-                            data.winnerId = winnerId;
-                        } else {
-                            data.winnerId = -1; // No winner (all humans out)
-                        }
-                    }
-
-                    // Robust Host Migration: If current host is now eliminated or disconnected, find a new one
-                    const currentHost = players.find(p => p.uid === data.hostId);
-                    if (!currentHost || currentHost.eliminated || currentHost.status === 'disconnected') {
-                        const nextHost = players.find(p => !p.uid.startsWith('bot_') && !p.eliminated && p.status !== 'disconnected');
-                        if (nextHost) {
-                            data.hostId = nextHost.uid;
-                            data.hostUsername = nextHost.name;
-                        }
-                    }
-
-                } else {
-                    const burnerId = playerIndex;
-                    const p = players[burnerId];
-                    if (p.streak && p.streak >= 3) {
-                        p.streak = 0;
-                        data.players = players;
-                        data.lastShieldShatterId = burnerId;
-                        data.lastShieldShatterTime = Date.now();
-                    } else if (p.cards && p.cards.length > 0) {
-                        const cards = [...p.cards];
-                        const burned = cards.shift();
-                        const currentBurnPile = [...(data.burnPile || [])];
-                        currentBurnPile.push(burned);
-
-                        players[burnerId].cards = cards;
-                        p.streak = 0; // Reset streak
-                        data.players = players;
-                        data.burnPile = currentBurnPile;
-
-                        // If they just burned their last card, handle challenge failure!
-                        if (cards.length === 0) {
-                            let challenge = data.challenge || { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
-                            if (challenge.active && challenge.defenderId === burnerId) {
-                                const winnerId = challenge.attackerId;
-                                players[winnerId].cards = players[winnerId].cards || [];
-                                players[winnerId].cards.push(...currentBurnPile, ...(data.pile || []));
-
-                                players.forEach((px, i) => {
-                                    if (i === winnerId) {
-                                        px.streak = px.streak || 0;
-                                    } else {
-                                        if (px.streak < 3) px.streak = 0;
-                                    }
-                                });
-
-                                players.forEach((px, i) => {
-                                    if (i !== winnerId && (!px.cards || px.cards.length === 0)) {
-                                        px.eliminated = true;
-                                    }
-                                });
-
-                                data.pile = [];
-                                data.burnPile = [];
-                                data.players = players;
-                                data.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
-                                data.activePlayerId = winnerId;
-                                data.lastWinReason = 'challenge';
-
-                                const nonEliminated = players.filter(px => !px.eliminated);
-                                if (players[winnerId].cards.length === 52 || nonEliminated.length <= 1) {
-                                    data.gameOver = true;
-                                    data.status = 'finished';
-                                    if (nonEliminated.length === 1) {
-                                        data.winnerId = players.findIndex(px => !px.eliminated);
-                                    } else {
-                                        data.winnerId = winnerId;
-                                    }
-                                }
-                            } else if (data.activePlayerId === burnerId) {
-                                let next = (burnerId + 1) % 4;
-                                let count = 0;
-                                while ((!players[next].cards || players[next].cards.length === 0 || players[next].eliminated) && count < 4) {
-                                    next = (next + 1) % 4;
-                                    count++;
-                                }
-                                data.activePlayerId = count < 4 ? next : null;
-                                data.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
-                            }
-                        }
-                    } else {
-                        // DEAD SLAP: 0 cards and failed slap = ELIMINATED
-                        p.eliminated = true;
-                        p.streak = 0; // Reset streak
-                        data.players = players;
-
-                        // Check if game ends now (no humans left or only 1 total left)
-                        const nonEliminated = players.filter(px => !px.eliminated);
-                        if (nonEliminated.length <= 1) {
-                            data.gameOver = true;
-                            data.status = 'finished';
-                            if (nonEliminated.length === 1) {
-                                data.winnerId = players.findIndex(p => !p.eliminated);
-                            } else {
-                                data.winnerId = -1;
-                            }
-                        } else {
-                            // If the eliminated player was active, pass turn
-                            if (data.activePlayerId === burnerId) {
-                                let next = (burnerId + 1) % 4;
-                                let count = 0;
-                                while ((!players[next].cards || players[next].cards.length === 0 || players[next].eliminated) && count < 4) {
-                                    next = (next + 1) % 4;
-                                    count++;
-                                }
-                                data.activePlayerId = count < 4 ? next : null;
-                                data.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
-                            }
-                        }
-
-                        // NEW: Host Migration if Host was Dead-Slap Eliminated
-                        const currentHost = players.find(px => px.uid === data.hostId);
-                        if (!currentHost || currentHost.eliminated || currentHost.status === 'disconnected') {
-                            const nextHost = players.find(px => !px.uid.startsWith('bot_') && !px.eliminated && px.status !== 'disconnected');
-                            if (nextHost) {
-                                data.hostId = nextHost.uid;
-                                data.hostUsername = nextHost.name;
-                            }
-                        }
-                    }
+                // --- 1. A WRONG slap is not a race. Burn it immediately. ---
+                // Holding invalid slaps for the contest window would add a
+                // visible delay to the punishment and, worse, would let a
+                // player fish for a pattern that has not appeared yet.
+                if (!isValid) {
+                    this._applySlapBurn(data, playerIndex);
+                    return data;
                 }
+
+                // --- 2. No possible race → keep the old zero-latency path. ---
+                // With fewer than two live humans nobody can be beaten by a
+                // better connection, so this room pays nothing for fairness.
+                if (!FairSlap.needsContest(data.players)) {
+                    this._applySlapWin(data, playerIndex);
+                    return data;
+                }
+
+                // --- 3. Contested. Arbitrate on reaction, not on arrival. ---
+                const reactionMs = serverNow - (data.lastPlayTime || serverNow);
+                const contest = data.slapContest;
+
+                if (!contest) {
+                    data.slapContest = FairSlap.openContest(serverNow, { index: playerIndex, reactionMs });
+                    return data;
+                }
+                if (!FairSlap.isExpired(contest, serverNow)) {
+                    data.slapContest = FairSlap.addClaim(contest, serverNow, { index: playerIndex, reactionMs });
+                    return data;
+                }
+
+                // The window already closed and nobody settled it yet (a client
+                // went quiet). Settle it now; this late claim is dropped,
+                // because the pile it was aimed at is about to be awarded.
+                this._settleContest(data, serverNow);
                 return data;
             });
         } catch (error) {
             console.error("Slap transaction failed:", error);
         }
     },
+
+    /**
+     * Closes an open contest and awards the pile to the lowest reaction time.
+     * Mutates `data`; only ever called from inside a transaction.
+     * @returns {boolean} true when a pile was actually awarded.
+     */
+    _settleContest(data, serverNow) {
+        const contest = data.slapContest;
+        if (!contest) return false;
+
+        const winner = FairSlap.resolveContest(contest);
+        data.slapContest = null;
+        if (!winner) return false;
+
+        // Publish the race result so the UI can show "won by 12ms". Written
+        // even when the winner turns out to be unavailable, so the log is honest.
+        data.lastSlapReaction = winner.reactionMs;
+        data.lastSlapMargin = FairSlap.winningMargin(contest);
+        data.lastSlapClaims = FairSlap.claimCount(contest);
+
+        // A seat that no longer exists cannot be awarded a pile. An ELIMINATED
+        // seat can, and that is the point: the rules panel's "Spectator Mode &
+        // Slap Back" section says a player with no cards may still slap, and a
+        // successful slap brings them back with the pile. `p.eliminated` used
+        // to be part of this refusal, so an eliminated player could win the
+        // race on reaction time and have the win silently thrown away — the
+        // third of four locks on a feature the game documents in four languages.
+        // `applySlapWin` clears the flag when the pile lands.
+        //
+        // The v3.7.4 product rule is untouched. When the LAST live human is
+        // eliminated, resolveEndOfMatch ends the match at that same slap
+        // outcome, so no later pile exists for them to slap at. This only
+        // reaches the case that rule never covered: somebody else is still in.
+        const p = data.players && data.players[winner.index];
+        if (!p) return false;
+
+        this._applySlapWin(data, winner.index);
+        return true;
+    },
+
+    /**
+     * Every client races to close the window; the transaction is idempotent, so
+     * whoever gets there first wins and the rest abort harmlessly. Running it
+     * on all clients — rather than only the host — means a host whose tab is
+     * throttled cannot freeze the table.
+     */
+    async closeSlapContest() {
+        if (!this.roomId) return;
+        const roomRef = dbRef(rtdb, `gameRooms/${this.roomId}`);
+        try {
+            await runTransaction(roomRef, (data) => {
+                if (!data || !data.slapContest) return;
+                const now = NetQuality.serverNow();
+                if (!FairSlap.isExpired(data.slapContest, now)) return;
+                this._settleContest(data, now);
+                return data;
+            });
+        } catch (e) {
+            console.warn("Slap contest close failed", e);
+        }
+    },
+
+    /** Arms (or re-arms) the local timer that closes the current contest. */
+    scheduleContestClose(contest) {
+        if (this.contestTimer) {
+            clearTimeout(this.contestTimer);
+            this.contestTimer = null;
+        }
+        if (!contest) return;
+        const delay = Math.max(0, Number(contest.deadline || 0) - NetQuality.serverNow());
+        this.contestTimer = setTimeout(() => {
+            this.contestTimer = null;
+            this.closeSlapContest();
+        }, delay + 10); // +10ms so the deadline is unambiguously in the past
+    },
+
 
     async pushPlayCard({ playerIndex }) {
         if (!this.roomId) return;
@@ -624,6 +689,19 @@ export const FirebaseSync = {
             await runTransaction(roomRef, (data) => {
                 if (!data || data.gameOver || !data.gameStarted) return;
                 if (!data.players || !data.players[playerIndex]) return;
+
+                // The pile is under dispute for the length of an open contest
+                // window. Letting a card land on top of it mid-arbitration
+                // would change what the claimants were slapping at. Aborting
+                // costs at most one dropped tap: a human can tap again a
+                // fraction of a second later, and a bot is re-scheduled by
+                // `checkBotTurn()` on the very next snapshot (closing the
+                // contest produces one), with `checkTurnTimeouts()` behind that
+                // as a second safety net.
+                if (data.slapContest && !FairSlap.isExpired(data.slapContest, NetQuality.serverNow())) {
+                    return;
+                }
+
                 if (data.activePlayerId !== playerIndex) return data;
                 if (data.players[playerIndex].eliminated) return data;
 
@@ -787,7 +865,7 @@ export const FirebaseSync = {
                 }
 
                 data.challenge = challenge;
-                data.lastPlayTime = Date.now();
+                data.lastPlayTime = NetQuality.serverNow(); // shared clock — see netQuality.js
                 return data;
             });
         } catch (error) {
@@ -967,12 +1045,41 @@ export const FirebaseSync = {
                     data.activePlayerId = count < 4 ? next : null;
                 }
 
-                data.lastPlayTime = Date.now();
+                data.lastPlayTime = NetQuality.serverNow(); // shared clock — see netQuality.js
                 return data;
             });
         } catch (error) {
             console.error("Timeout transaction failed:", error);
         }
+    },
+
+    /**
+     * Which seats may this client expire?
+     *
+     * Nobody may reset another human's streak — their own client owns that. Bot
+     * seats are the host's responsibility, because otherwise every client would
+     * race to expire the same bot.
+     *
+     * v3.7.2 — this used to read `window.AuthSystem`, which is **never assigned
+     * anywhere in the app**. main.js exposes window.GameState, window.HouseRules
+     * and window.UI, but never AuthSystem, so `isHost` was `undefined && ...`,
+     * i.e. permanently false. The consequence was not cosmetic: a bot that
+     * reached a 3-slap streak in multiplayer kept its Combustion Shield for the
+     * REST OF THE MATCH, because the only time-based decay path in multiplayer
+     * is expireDbShield and no client would ever run it for a bot. The server
+     * never expires it either — functions/gameLogic.js keeps a non-winner's
+     * streak when it is already at 3. A real import cannot be silently
+     * undefined, which is why this no longer goes through a global.
+     */
+    isShieldAuthorityFor(dbIndex) {
+        const players = (this.roomData && this.roomData.players) || [];
+        const target = players[dbIndex];
+        if (!target) return false;
+        if (dbIndex === this.localPlayerIndex) return true;          // my own shield
+        const isBot = !!(target.uid && target.uid.startsWith('bot_'));
+        if (!isBot) return false;                                     // another human owns theirs
+        const me = AuthSystem && AuthSystem.currentUser;
+        return !!(me && this.roomData && this.roomData.hostId && me.uid === this.roomData.hostId);
     },
 
     manageMultiplayerShieldDecay(data) {
@@ -1000,17 +1107,55 @@ export const FirebaseSync = {
                     this.lastManagedShieldWinKey = lastWinKey;
                 }
 
-                if (!this.dbShieldDecayTimers[dbIndex] || justWonSlap) {
+                const authoritative = this.isShieldAuthorityFor(dbIndex);
+                const armed = !!this.dbShieldDecayTimers[dbIndex];
+
+                // v3.7.2 — the drawn countdown and the real expiry are now
+                // decided separately, because they answer to different things.
+                //
+                // The countdown belongs to EVERY seat with a live shield: a
+                // player watching an opponent's shield needs to see it running
+                // down. The expiry timer belongs only to the seat this client is
+                // allowed to write. Arming them together (v3.7.1) meant a
+                // non-authoritative seat got neither — so an opponent's or a
+                // bot's shield drew as a bare icon with no number, which is the
+                // very symptom this whole line of work started from.
+                const shieldStarts = !armed || justWonSlap;
+
+                if (authoritative && shieldStarts) {
                     if (this.dbShieldDecayTimers[dbIndex]) {
                         clearTimeout(this.dbShieldDecayTimers[dbIndex]);
                     }
                     this.dbShieldDecayTimers[dbIndex] = setTimeout(() => {
+                        // Release the slot BEFORE the attempt. Left set, a fired
+                        // timer reads as "already armed" forever and the seat can
+                        // never be re-armed — a shield that outlived one failed
+                        // expiry would then never be retried.
+                        this.dbShieldDecayTimers[dbIndex] = null;
                         this.expireDbShield(dbIndex);
-                    }, 30000);
+                    }, SHIELD_DURATION_MS);
+                }
+
+                // v3.7.1 — announce every start, not just the first. The drawn
+                // countdown used to be armed only by 'shieldEarned', which fires
+                // on the 0 -> 3 streak transition. A renewing slap holds the
+                // streak at 3, so no event fired and the drawn clock was never
+                // refreshed while the real one was: the number ran to zero and
+                // vanished while the shield kept protecting for up to another 30
+                // seconds. One condition now starts both.
+                if (shieldStarts) {
+                    EventBus.emit('shieldRenewed', (dbIndex - this.localPlayerIndex + 4) % 4);
+                    // Mark non-authoritative seats as observed too, so a renewal
+                    // is detected by justWonSlap rather than re-firing every sync.
+                    if (!authoritative && !armed) this.dbShieldDecayTimers[dbIndex] = 'observed';
                 }
             } else {
                 if (this.dbShieldDecayTimers[dbIndex]) {
-                    clearTimeout(this.dbShieldDecayTimers[dbIndex]);
+                    // 'observed' is a marker, not a handle — clearTimeout on it
+                    // is harmless, but only a real handle needs cancelling.
+                    if (this.dbShieldDecayTimers[dbIndex] !== 'observed') {
+                        clearTimeout(this.dbShieldDecayTimers[dbIndex]);
+                    }
                     this.dbShieldDecayTimers[dbIndex] = null;
                 }
             }
@@ -1023,14 +1168,8 @@ export const FirebaseSync = {
         const targetPlayer = players[dbIndex];
         if (!targetPlayer) return;
 
-        // Check authoritative role:
-        // 1. If it is the local player themselves
-        // 2. If it is a bot and the local player is the host
-        const isSelf = (dbIndex === this.localPlayerIndex);
-        const isBot = targetPlayer.uid && targetPlayer.uid.startsWith('bot_');
-        const isHost = this.roomData.hostId && window.AuthSystem && window.AuthSystem.currentUser && (window.AuthSystem.currentUser.uid === this.roomData.hostId);
-
-        if (isSelf || (isBot && isHost)) {
+        // One rule, stated once — see isShieldAuthorityFor.
+        if (this.isShieldAuthorityFor(dbIndex)) {
             const roomRef = dbRef(rtdb, `gameRooms/${this.roomId}`);
             try {
                 await runTransaction(roomRef, (currentData) => {

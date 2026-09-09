@@ -95,17 +95,19 @@ export const CardSkins = {
         return winnerId === 0 ? 40 : -15;
     },
 
-    // Mid-game quit penalty — same magnitude as a normal loss so quitting
-    // is never "free". Exposed as a constant so the confirm modal can show
-    // the exact number before the player commits.
-    QUIT_PENALTY: -15,
-
+    // Quitting mid-match used to be a free way to dodge the loss penalty
+    // above — closes that loophole by applying the exact same loss amount.
+    // Reuses the gameProcessed guard so this can't double-penalize a game
+    // that already ended normally (gameOver fired first) right before the
+    // quit click registers, and so a real gameOver right after a quit can't
+    // re-penalize either.
     applyQuitPenalty() {
-        if (this.gameProcessed) return; // already handled by gameOver
+        if (this.gameProcessed) return 0;
         this.gameProcessed = true;
-        const penalty = this.QUIT_PENALTY;
+        const penalty = this.computeReward(1); // Same value a real loss uses.
         this.addCoins(penalty);
-        EventBus.emit('coinsAwarded', { winnerId: -1, amount: penalty });
+        EventBus.emit('coinsAwarded', { winnerId: -2, amount: penalty }); // -2 = quit, distinguishable from a real loss/draw if anything downstream ever cares.
+        return penalty;
     },
 
     getCoins() {

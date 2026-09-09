@@ -9,10 +9,14 @@
  * onCall + a real RTDB transaction.
  */
 
-import { evaluateSlap } from "./slapRules.js";
+import { evaluateSlap, keyToRules } from "./slapRules.js";
+import { EMPTY_CHALLENGE, getNextPlayer, migrateHostIfNeeded,
+         applySlapWin, applySlapBurn } from "./slapOutcome.js";
 
 export const FACE_CHANCES = { 11: 1, 12: 2, 13: 3, 14: 4 };
-export const EMPTY_CHALLENGE = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
+// Re-exported from the shared outcome module so this file stays the single
+// import surface for functions/index.js and the test suite.
+export { EMPTY_CHALLENGE, getNextPlayer, migrateHostIfNeeded };
 
 /**
  * Resolves which seat the calling user is actually allowed to act for.
@@ -34,29 +38,22 @@ export function resolveActingSeat(room, callerUid, actingForBotSeat) {
     return actingForBotSeat;
 }
 
-export function getNextPlayer(players, currentId) {
-    let next = (currentId + 1) % 4;
-    let count = 0;
-    while ((!players[next].cards || players[next].cards.length === 0 || players[next].eliminated) && count < 4) {
-        next = (next + 1) % 4;
-        count++;
-    }
-    return count < 4 ? next : null;
-}
 
-export function migrateHostIfNeeded(data, players) {
-    const currentHost = players.find((p) => p.uid === data.hostId);
-    if (!currentHost || currentHost.eliminated || currentHost.status === "disconnected") {
-        const nextHost = players.find((p) => !p.uid.startsWith("bot_") && !p.eliminated && p.status !== "disconnected");
-        if (nextHost) {
-            data.hostId = nextHost.uid;
-            data.hostUsername = nextHost.name;
-        }
-    }
-}
 
 /**
- * Faithful port of firebaseSync.js::pushSlapAttempt's transaction body.
+ * The Cloud Function's slap entry point: authority, then rules, then outcome.
+ *
+ * This used to be a hand-written "faithful port" of firebaseSync.js's
+ * transaction body — two copies of the game's most consequential logic kept in
+ * agreement by that sentence in a comment, with every test pointing at THIS one
+ * while `USE_SERVER_VALIDATION: false` meant the OTHER one was what ran. The
+ * outcome now lives in slapOutcome.js and both callers delegate to it, so the
+ * tested code and the live code are the same code.
+ *
+ * What stays here is what genuinely differs between the two callers: this one
+ * must establish WHO is allowed to act (resolveActingSeat), because it is
+ * reachable by any signed-in client.
+ *
  * @returns {object|undefined} new data, or undefined to abort (no write).
  */
 export function applySlapAttempt(data, callerUid, actingForBotSeat) {
@@ -69,130 +66,18 @@ export function applySlapAttempt(data, callerUid, actingForBotSeat) {
 
     const pile = data.pile || [];
     const burnPile = data.burnPile || [];
-    const isValid = evaluateSlap(pile) !== false;
+    // v3.0.0: the room carries its own House Rules (`gameRooms/{id}/houseRules`,
+    // written once by the host at deal time). The server must judge by the
+    // TABLE's rules, not by the classic default, or a table playing with Tens
+    // switched off would have its slaps validated differently here than on the
+    // clients. Missing/empty falls back to the classic set.
+    const rules = keyToRules(data.houseRules || '');
+    const isValid = evaluateSlap(pile, rules) !== false;
 
-    const players = [...data.players];
     if (isValid) {
-        const winnerId = playerIndex;
-        const playerCards = players[winnerId].cards || [];
-        playerCards.push(...burnPile, ...pile);
-        players[winnerId].cards = playerCards;
-
-        players.forEach((p, i) => {
-            if (i === winnerId) {
-                p.streak = p.streak >= 3 ? 3 : (p.streak || 0) + 1;
-            } else if (p.streak < 3) {
-                p.streak = 0;
-            }
-        });
-
-        players.forEach((p, i) => {
-            if (i !== winnerId && (!p.cards || p.cards.length === 0)) {
-                p.eliminated = true;
-            }
-        });
-
-        data.players = players;
-        data.pile = [];
-        data.burnPile = [];
-        data.activePlayerId = winnerId;
-        data.challenge = { ...EMPTY_CHALLENGE };
-        data.lastWinReason = "slap";
-
-        const nonEliminated = players.filter((p) => !p.eliminated);
-        if (playerCards.length === 52 || nonEliminated.length <= 1) {
-            data.gameOver = true;
-            data.status = "finished";
-            if (nonEliminated.length === 1) {
-                data.winnerId = players.findIndex((p) => !p.eliminated);
-            } else if (playerCards.length === 52) {
-                data.winnerId = winnerId;
-            } else {
-                data.winnerId = -1;
-            }
-        }
-
-        migrateHostIfNeeded(data, players);
+        applySlapWin(data, playerIndex);
     } else {
-        const burnerId = playerIndex;
-        const p = players[burnerId];
-        if (p.streak && p.streak >= 3) {
-            p.streak = 0;
-            data.players = players;
-            data.lastShieldShatterId = burnerId;
-            data.lastShieldShatterTime = Date.now();
-        } else if (p.cards && p.cards.length > 0) {
-            const cards = [...p.cards];
-            const burned = cards.shift();
-            const currentBurnPile = [...(data.burnPile || []), burned];
-
-            players[burnerId].cards = cards;
-            p.streak = 0;
-            data.players = players;
-            data.burnPile = currentBurnPile;
-
-            if (cards.length === 0) {
-                const challenge = data.challenge || { ...EMPTY_CHALLENGE };
-                if (challenge.active && challenge.defenderId === burnerId) {
-                    const winnerId = challenge.attackerId;
-                    players[winnerId].cards = players[winnerId].cards || [];
-                    players[winnerId].cards.push(...currentBurnPile, ...(data.pile || []));
-
-                    players.forEach((px, i) => {
-                        if (i === winnerId) {
-                            px.streak = px.streak || 0;
-                        } else if (px.streak < 3) {
-                            px.streak = 0;
-                        }
-                    });
-                    players.forEach((px, i) => {
-                        if (i !== winnerId && (!px.cards || px.cards.length === 0)) {
-                            px.eliminated = true;
-                        }
-                    });
-
-                    data.pile = [];
-                    data.burnPile = [];
-                    data.players = players;
-                    data.challenge = { ...EMPTY_CHALLENGE };
-                    data.activePlayerId = winnerId;
-                    data.lastWinReason = "challenge";
-
-                    const nonEliminated = players.filter((px) => !px.eliminated);
-                    if (players[winnerId].cards.length === 52 || nonEliminated.length <= 1) {
-                        data.gameOver = true;
-                        data.status = "finished";
-                        data.winnerId = nonEliminated.length === 1
-                            ? players.findIndex((px) => !px.eliminated)
-                            : winnerId;
-                    }
-                } else if (data.activePlayerId === burnerId) {
-                    const next = getNextPlayer(players, burnerId);
-                    data.activePlayerId = next;
-                    data.challenge = { ...EMPTY_CHALLENGE };
-                }
-            }
-        } else {
-            // Dead slap: 0 cards and failed slap = eliminated.
-            p.eliminated = true;
-            p.streak = 0;
-            data.players = players;
-
-            const nonEliminated = players.filter((px) => !px.eliminated);
-            if (nonEliminated.length <= 1) {
-                data.gameOver = true;
-                data.status = "finished";
-                data.winnerId = nonEliminated.length === 1
-                    ? players.findIndex((px) => !px.eliminated)
-                    : -1;
-            } else if (data.activePlayerId === burnerId) {
-                const next = getNextPlayer(players, burnerId);
-                data.activePlayerId = next;
-                data.challenge = { ...EMPTY_CHALLENGE };
-            }
-
-            migrateHostIfNeeded(data, players);
-        }
+        applySlapBurn(data, playerIndex);
     }
     return data;
 }

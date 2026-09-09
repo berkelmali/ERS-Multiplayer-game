@@ -1,0 +1,111 @@
+// firestore.rules — deployable form of FIRESTORE_RULES.md.
+//
+// ⚠️ REVIEW BEFORE YOUR FIRST DEPLOY OF THIS FILE.
+//    Until v3.0.0 the project had no firestore.rules; the live rules were
+//    edited by hand in the Firebase console, and this file is reconstructed
+//    from FIRESTORE_RULES.md. If anything was changed in the console and never
+//    written back to that document, deploying this WILL overwrite it.
+//    Open the console (Firestore Database → Rules), compare, and merge any
+//    difference into this file first. Once they match, this file becomes the
+//    source of truth and the console stops being a place changes get lost.
+//
+//    `deploy.bat` / `deploy.sh` deploy HOSTING ONLY for exactly this reason.
+//    Rules go out separately, on purpose:
+//        firebase deploy --only firestore:rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Users: public read (global leaderboard), private write.
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 2. Multiplayer tables: host controls creation and deletion.
+    match /multiplayer_tables/{tableId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.hostId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.hostId == request.auth.uid;
+      // Any signed-in player may update, so joining and leaving work.
+      allow update: if request.auth != null;
+    }
+
+    // 3. Daily Challenge boards (v3.0.0, hardened v3.1.1).
+    //
+    //    ⚠️ READ THIS BEFORE TRUSTING THE BOARD. The score is computed in the
+    //    browser and written here directly. NOTHING below verifies that a
+    //    submitted score corresponds to a match that was actually played. A
+    //    client that sends a well-formed lie — won:true with a plausible reflex
+    //    and duration — passes every rule in this block. That is why the panel
+    //    carries an "unverified board" notice and why
+    //    DailyChallenge.VERIFIED_BOARD is false. Turning these rules into a
+    //    real boundary needs a Cloud Function that recomputes the score from a
+    //    server-held match log; until then, do not describe this board as
+    //    verified anywhere in the UI or the docs.
+    //
+    //    WHAT THIS BLOCK DOES BUY, precisely:
+    //      · the one-line console attack (setDoc(ref, {score: 5000})) now fails
+    //        on shape — every field is required, typed and bounded;
+    //      · scores can never be downgraded or deleted, only improved;
+    //      · a write cannot be backdated or replayed (`at` must sit within five
+    //        minutes of server time);
+    //      · no attacker-chosen extra fields can be smuggled into the document
+    //        (hasOnly), so the board renderer only ever sees known keys.
+    //
+    //    MIRRORED IN public/js/dailyScore.js (SCORE_BOUNDS / SCORE_FIELDS).
+    //    `npm run check:score-bounds` fails the build if the two drift apart.
+    //    If you change a bound here, change it there in the same commit.
+    match /daily_challenges/{dateKey}/scores/{userId} {
+      allow read: if true;
+
+      function validScore(d) {
+        return d.keys().hasOnly(['uid', 'username', 'score', 'reflex', 'won',
+                                 'durationMs', 'profile', 'startingCards', 'at'])
+               && d.keys().hasAll(['uid', 'username', 'score', 'reflex', 'won',
+                                   'durationMs', 'profile', 'startingCards', 'at'])
+               && d.uid == userId
+               && d.username is string && d.username.size() > 0 && d.username.size() <= 24
+               && d.won is bool
+               && d.score is int && d.score >= 0 && d.score <= 5000
+               && d.reflex is int && d.reflex >= 80 && d.reflex <= 60000
+               && d.durationMs is int && d.durationMs >= 0 && d.durationMs <= 3600000
+               && d.startingCards is int && d.startingCards >= 1 && d.startingCards <= 52
+               && (d.profile == null || d.profile in ['comeback', 'knifeEdge', 'finisher'])
+               && d.at is int
+               // Not backdated, not replayed from an old capture.
+               && d.at <= request.time.toMillis() + 300000
+               && d.at >= request.time.toMillis() - 300000;
+      }
+
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && validScore(request.resource.data);
+
+      // Improvements only. A later run may raise your entry; nothing may lower
+      // it, and nothing may rewrite the identity on it.
+      allow update: if request.auth != null
+                    && request.auth.uid == userId
+                    && validScore(request.resource.data)
+                    && request.resource.data.score > resource.data.score;
+
+      allow delete: if false;
+    }
+
+    // 4. Game rooms. NOTE: live match state runs on the Realtime Database
+    //    (see database.rules.json); this block is the Firestore-side mirror
+    //    kept from the original rule set.
+    match /gameRooms/{roomId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid in request.resource.data.playerIds;
+      allow update: if request.auth != null && request.auth.uid in resource.data.playerIds;
+
+      match /slapAttempts/{attemptId} {
+        allow create: if request.auth != null &&
+                      request.auth.uid in get(/databases/$(database)/documents/gameRooms/$(roomId)).data.playerIds;
+        allow read: if request.auth != null;
+      }
+    }
+  }
+}

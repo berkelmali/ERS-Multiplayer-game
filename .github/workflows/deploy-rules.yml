@@ -1,0 +1,86 @@
+# Security rules deploy — manual, and deliberately awkward.
+#
+# Rules control live data access. A wrong file locks every player out of their
+# own profile, or opens the database to anyone. This is never automatic, never
+# part of a push, and requires typing a confirmation phrase.
+name: Deploy rules
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which rules to deploy
+        type: choice
+        options: [firestore, database, both]
+        default: firestore
+        required: true
+      confirm:
+        description: 'Type DEPLOY-RULES to confirm'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-rules
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.target }} rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production-rules
+    steps:
+      - name: Confirmation gate
+        run: |
+          if [ "${{ inputs.confirm }}" != "DEPLOY-RULES" ]; then
+            echo "::error::Confirmation phrase not matched. Nothing was deployed."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      # Show exactly what is about to replace the live rules, in the log, before
+      # it happens — so the run record answers "what changed?" on its own.
+      - name: Print the rules being deployed
+        run: |
+          {
+            echo "### Rules about to go live"
+            echo ""
+            if [ "${{ inputs.target }}" != "database" ]; then
+              echo "<details><summary>firestore.rules</summary>"
+              echo ""; echo '```'; cat firestore.rules; echo '```'; echo "</details>"
+            fi
+            if [ "${{ inputs.target }}" != "firestore" ]; then
+              echo "<details><summary>database.rules.json</summary>"
+              echo ""; echo '```json'; cat database.rules.json; echo '```'; echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Authenticate
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          test -n "$SA" || { echo "::error::FIREBASE_SERVICE_ACCOUNT secret is empty."; exit 1; }
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+
+      - name: Deploy
+        run: |
+          case "${{ inputs.target }}" in
+            firestore) ONLY="firestore:rules" ;;
+            database)  ONLY="database" ;;
+            both)      ONLY="firestore:rules,database" ;;
+          esac
+          npx --yes firebase-tools@15.28.2 deploy --only "$ONLY" --project ers-card-game --non-interactive
+
+      - name: Clean up credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"
