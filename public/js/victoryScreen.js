@@ -129,6 +129,42 @@ export const VictoryScreen = {
             this.returnToMainMenuUI();
         });
 
+        // ── Share the match (v3.13.0) ───────────────────────────────────────
+        //
+        // ers-revamp shipped this button reading `ers_high_score` — a
+        // localStorage key NOTHING in this codebase writes, so every share
+        // read "beat my score of 0". It shares the match instead: won or
+        // lost, cards taken, fastest slap. Those three are already computed
+        // and already on the screen behind this button.
+        //
+        // The clipboard path is LobbyUI.copyToClipboard, not a second copy of
+        // the same logic. That function exists because `navigator.clipboard`
+        // is `undefined` in an insecure context, so the member access throws
+        // SYNCHRONOUSLY and a trailing .catch() has nothing to attach to —
+        // and because a failed copy has to offer the manual path rather than
+        // leaving a button that did nothing. The version this was ported from
+        // had a bare `.catch(() => {})`, which is both mistakes at once.
+        const btnShare = document.getElementById('btn-challenge-share');
+        if (btnShare) {
+            btnShare.addEventListener('click', async () => {
+                const text = this.buildShareText();
+                try {
+                    if (navigator.share) {
+                        await navigator.share({ title: 'Egyptian Rat Screw', text });
+                        return;
+                    }
+                } catch (err) {
+                    // A dismissed share sheet rejects. That is the player
+                    // changing their mind, not a failure — and falling through
+                    // to the clipboard would copy something they just declined
+                    // to send.
+                    if (err && err.name === 'AbortError') return;
+                }
+                const { LobbyUI } = await import('./lobbyUI.js');
+                await LobbyUI.copyToClipboard(text, btnShare, 'shareCopied', null);
+            });
+        }
+
         this.lastWinnerId = -1;
         EventBus.on('languageChanged', () => {
             if (this.screenVictory.classList.contains('active') && this.lastWinnerId !== -1) {
@@ -194,6 +230,27 @@ export const VictoryScreen = {
         if (this.showTimeout) { clearTimeout(this.showTimeout); this.showTimeout = null; }
         if (this.redirectTimeout) { clearTimeout(this.redirectTimeout); this.redirectTimeout = null; }
         this.screenVictory.classList.remove('active');
+    },
+
+    /**
+     * The three facts already on the victory screen, in one sentence.
+     * `bestReflex === 9999` is this codebase's "no reading taken" sentinel,
+     * so that case gets its own string rather than sharing "9999ms" or a
+     * dash dropped into the middle of a sentence.
+     */
+    buildShareText() {
+        const stats = (GameState && GameState.stats) ? GameState.stats : {};
+        const cards = Number(stats.cardsWon) || 0;
+        const reflex = (typeof stats.bestReflex === 'number' && stats.bestReflex < 9999)
+            ? stats.bestReflex : null;
+        const won = this.lastWinnerId === 0;
+        const key = reflex === null
+            ? (won ? 'shareTextWinNoReflex' : 'shareTextLossNoReflex')
+            : (won ? 'shareTextWin' : 'shareTextLoss');
+        return Localization.get(key)
+            .replace('{cards}', String(cards))
+            .replace('{reflex}', String(reflex))
+            .replace('{url}', window.location.origin);
     },
 
     show(winnerId) {
