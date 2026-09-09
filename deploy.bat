@@ -819,6 +819,40 @@ echo   1965 test, 8 kaynak kapisi, smoke yesil.
 echo   23/23 kaynak mutanti + 4/4 smoke mutanti yakalandi.
 echo ================================================================
 echo.
+echo ================================================================
+echo v3.14.1 -- REKLAMLAR CANLIDA CSP'YE TAKILDI:
+echo.
+echo  90) Ilk gercek reklam servis edildigi anda tarayici sunu reddetti:
+echo      ep2.adtrafficquality.google/sodar/sodar2.js -- Google'in KENDI
+echo      gecersiz-trafik denetimi. Ardindan show_ads_impl icinden
+echo      "Uncaught ^(in promise^) undefined" geldi: dolum onun arkasindan
+echo      devrildi. Oyuncu canlida buldu, kapi degil.
+echo  91) SEBEP: o alan adi connect-src'de VARDI ^(ep1 ve ep2, acikca^),
+echo      script-src, script-src-elem ve frame-src'de YOKTU. Yani bir
+echo      ucuncu taraf betigi YUKLENMESINE izin verilmemis ama GERI
+echo      KONUSMASINA izin verilmisti. Bu dosyadaki her CSP testi
+echo      "X direktifi Y'yi iceriyor mu" diye TEK TEK soruyordu;
+echo      direktifleri BIRBIRIYLE karsilastiran hicbir test yoktu.
+echo  92) Duzeltme alt alan adi joker karakteri: *.adtrafficquality.google
+echo      ep1 + ep2 degil. Google'in kendi CSP sayfasi alan adi listesini
+echo      HIC desteklemedigini soyluyor ve yerine nonce + https: oneriyor
+echo      -- ki o, 'unsafe-inline' ve 'unsafe-eval' de gerektirir ve boot
+echo      net'in hash disiplinini bitirirdi. Joker karakter ortasi:
+echo      tek bir Google alan adi, tek isi reklam kalite denetimi.
+echo  93) YENI TEST: bir ucuncu taraf ana bilgisayari, YAPTIGI HER SEYIN
+echo      direktifinde bulunmali -- script, frame ve connect birlikte --
+echo      ve DORT direktifte de AYNI yazimla. ep1+ep2'yi bir yerde,
+echo      joker karakteri baska yerde tutmak, tek bir kume gibi davranan
+echo      iki kumedir; yarilarinin ayrilmasi tam da boyle basladi.
+echo      10 mutasyonun 10'u yakalandi.
+echo.
+echo DURUST SINIR: bu bir ALAN ADI LISTESI ve Google listeyi
+echo desteklemedigini soyluyor. Ileride yeni bir Google reklam alan
+echo adi cikarsa konsolda yine bir CSP satiri gorebilirsin. O zaman
+echo bana ihlal satirini oldugu gibi getir -- tahmin etmiyoruz,
+echo tarayicinin adini verdigi ana bilgisayari ekliyoruz.
+echo ================================================================
+echo.
 echo ADSENSE PANELINDE YAPILMASI GEREKEN -- KODLA ZORLANAMAZ:
 echo   Otomatik reklamlar ^(Auto ads^) bu site icin KAPALI kalmali.
 echo   Acik oldugunda Google birimi sayfanin ISTEDIGI yerine koyar --
@@ -848,7 +882,7 @@ echo   AD_RAIL_SLOT = '' sadece raylari kapatir. Iki durumu da olcen
 echo   testler hala calisiyor.
 echo.
 echo DEPLOY SONRASI KONTROL (bunlar sadece tarayicida dogrulanabilir):
-echo   - Ana menude surum yazisi v3.14.0 olmali
+echo   - Ana menude surum yazisi v3.14.1 olmali
 echo   - / yanitinda Cache-Control: no-store olmali
 echo   - HESAP PANELI ^(bu surumun ana isi^): giris yap, sonra bak --
 echo     amblem ALTIN HALKALI YUVARLAK olmali, 12px bir maca isareti degil
@@ -887,6 +921,10 @@ echo     kalkan cikmali. 4. saplakta sayac 30'a GERI DONMELI.
 echo   - Masa kur, "Kodu Kopyala" ve "Davet Et" yan yana ve ikisi de calismali
 echo   - REKLAMLAR ^(bu surumun ana isi^): Network sekmesini ac,
 echo     googlesyndication adresine TEK bir script istegi olmali
+echo   - KONSOLDA "adtrafficquality" iceren bir CSP ihlali OLMAMALI
+echo     ^(v3.14.0'da vardi; sodar2.js engellenince dolum deviriliyordu^)
+echo   - Reklam engelleyicini KAPAT: net::ERR_BLOCKED_BY_CLIENT satiri
+echo     eklentiden gelir, siteden degil -- ikisini karistirma
 echo   - YAN RAYLAR: pencereyi 1366px genislige getir -- menunun iki
 echo     yaninda 160x600 reklamlar GORUNMELI, kartlarin ustunde ama
 echo     menu sutununa DEGMEDEN. Pencereyi 1199px'e daralt: raylar
