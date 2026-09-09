@@ -853,6 +853,46 @@ echo bana ihlal satirini oldugu gibi getir -- tahmin etmiyoruz,
 echo tarayicinin adini verdigi ana bilgisayari ekliyoruz.
 echo ================================================================
 echo.
+echo ================================================================
+echo v3.14.2 -- SIFIR GENISLIKTEKI KUTU, TEK HAKKINI YAKIYORDU:
+echo.
+echo  94) Canlida olculdu ^(senin tarayicinda, sifir genisliginde bir
+echo      panelde^): lobi banneri 0 x 60 yerlesti -- min-height ona
+echo      YUKSEKLIK veriyor, yani getClientRects^(^) BIR dikdortgen
+echo      donduruyor -- ve genisligi 0'di. AdSense cevabi:
+echo        TagError: No slot size for availableWidth=0
+echo  95) Hata ucuz olan kisim. PAHALI kisim su: _filled, birimler
+echo      olusturulmadan ONCE isaretleniyor ^(bir slot iki kez
+echo      istenemesin diye, bilerek^). Yani ekran, tek ve biricik
+echo      dolum hakkini reklam agenin REDDETTIGI bir istege harcamis
+echo      oluyordu ve hicbir sonraki yerlesim onu geri kazanamiyordu.
+echo      Onyuklemede sifir genislikte bir sekme yeter: arka planda
+echo      geri yuklenen bir sekme, henuz yerlesmemis bir panel.
+echo  96) Eski yuklem "bu display:none mi" diye soruyordu. AdSense'in
+echo      sordugu soru "bu kutu KAC PIKSEL GENIS". Bunlar ayni soru
+echo      degil ve alti surum boyunca yalnizca ilki soruldu.
+echo      Yeni yuklem ikisini birden istiyor, ve genisligi ISTENEN
+echo      SEKLE karsi olcuyor: ray kendi 160'ini, responsive banner
+echo      en dar standart birimi ^(120px^) gecmek zorunda.
+echo  97) REDDEDILEN DOLUM ARTIK HAK YAKMIYOR: bos-is cikisi
+echo      _filled.add'den ONCE, ve _watchForWidth ile ekrana bir kez
+echo      borclu kalinan dolum tamamlaniyor. Bu bir resize dinleyicisi
+echo      DEGIL: kutulari izler ^(pencereyi degil^), tek ekran icin iki
+echo      kez kurulmaz, basarinca baglantisini keser, ResizeObserver
+echo      yoksa sessizce vazgecer. Pencere resize dinleyicisi ya da
+echo      zamanlayici olsaydi bu, dosyanin bastan reddettigi gosterim
+echo      sismesi olurdu -- iki mutasyon tam da bunu deniyor.
+echo.
+echo Olculdu ^(gercek tarayici^): 0px'te kutu REDDEDILDI, hicbir birim
+echo olusmadi, /pagead/ads istegi GITMEDI, ekran isaretlenmedi ve bir
+echo tamamlayici bekliyordu. Genislik geri gelince 358px'te TEK bir
+echo birimle doldu ve gozlemci birakildi. Korluk kaniti da testin
+echo icinde: o anda getClientRects^(^) BIR dikdortgen donduruyordu --
+echo yani eski yuklem "evet" derdi.
+echo   2060 test, 8 kaynak kapisi, smoke yesil.
+echo   14/14 mutant yakalandi.
+echo ================================================================
+echo.
 echo ADSENSE PANELINDE YAPILMASI GEREKEN -- KODLA ZORLANAMAZ:
 echo   Otomatik reklamlar ^(Auto ads^) bu site icin KAPALI kalmali.
 echo   Acik oldugunda Google birimi sayfanin ISTEDIGI yerine koyar --
@@ -882,7 +922,7 @@ echo   AD_RAIL_SLOT = '' sadece raylari kapatir. Iki durumu da olcen
 echo   testler hala calisiyor.
 echo.
 echo DEPLOY SONRASI KONTROL (bunlar sadece tarayicida dogrulanabilir):
-echo   - Ana menude surum yazisi v3.14.1 olmali
+echo   - Ana menude surum yazisi v3.14.2 olmali
 echo   - / yanitinda Cache-Control: no-store olmali
 echo   - HESAP PANELI ^(bu surumun ana isi^): giris yap, sonra bak --
 echo     amblem ALTIN HALKALI YUVARLAK olmali, 12px bir maca isareti degil
@@ -925,6 +965,11 @@ echo   - KONSOLDA "adtrafficquality" iceren bir CSP ihlali OLMAMALI
 echo     ^(v3.14.0'da vardi; sodar2.js engellenince dolum deviriliyordu^)
 echo   - Reklam engelleyicini KAPAT: net::ERR_BLOCKED_BY_CLIENT satiri
 echo     eklentiden gelir, siteden degil -- ikisini karistirma
+echo   - KONSOLDA "No slot size for availableWidth=0" OLMAMALI
+echo   - REKLAM KUTUSU CIKIYOR AMA BOS ISE: ^<ins^> uzerinde
+echo     data-ad-status="unfilled" var mi diye bak. Varsa bizim
+echo     tarafta yapilacak bir sey YOK -- istek gitti, Google reklam
+echo     DONDURMEDI. Yeni sitede saatler/gunler surebilir.
 echo   - YAN RAYLAR: pencereyi 1366px genislige getir -- menunun iki
 echo     yaninda 160x600 reklamlar GORUNMELI, kartlarin ustunde ama
 echo     menu sutununa DEGMEDEN. Pencereyi 1199px'e daralt: raylar

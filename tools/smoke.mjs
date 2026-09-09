@@ -1748,6 +1748,85 @@ await step('a phone gets the lobby banner, and no rails', async () => {
     }
 });
 
+await step('a zero-width lobby does not burn its one fill', async () => {
+    // Found on the live site, not here: a browser pane with no width laid the
+    // lobby banner out at 0 x 60 — one client rect, because min-height gives it
+    // height — and AdSense answered "No slot size for availableWidth=0". The
+    // screen was already marked filled by then, so the fill was gone for good.
+    //
+    // Reproduced by squeezing the container rather than the window, because it
+    // is the BOX's width that decides, and that is what the fix measures.
+    const narrow = await ctx.newPage();
+    const narrowAds = [];
+    narrow.on('request', r => { if (AD_HOST.test(r.url())) narrowAds.push(r.url()); });
+    try {
+        await narrow.setViewportSize({ width: 390, height: 844 });
+        // Collapse the box in the STYLESHEET rather than from a script, so the
+        // rule is in force at the very first layout — the moment that matters,
+        // and the one a script injected afterwards would already have missed.
+        await narrow.route('**/style.css*', async (route) => {
+            const res = await route.fetch();
+            const body = await res.text();
+            await route.fulfill({ response: res, body: body +
+                '\n#main-menu .ad-slot { width: 0 !important; max-width: 0 !important; }' });
+        });
+        await narrow.goto(base + '/', { waitUntil: 'domcontentloaded' });
+        await narrow.waitForSelector('#main-menu.active', { timeout: 20000 });
+        await narrow.waitForTimeout(2500);
+
+        const collapsed = await narrow.evaluate(async () => {
+            const { Ads } = await import('./js/ads.js');
+            const slot = document.querySelector('#main-menu .ad-slot');
+            return {
+                width: Math.round(slot.getBoundingClientRect().width),
+                rects: slot.getClientRects().length,     // the old predicate's answer
+                filled: slot.classList.contains('filled'),
+                units: slot.querySelectorAll('ins.adsbygoogle').length,
+                screenMarked: [...Ads._filled].includes('main-menu'),
+                waiting: Ads._pendingWidth.has('main-menu')
+            };
+        });
+
+        // The blindness proof: the OLD predicate would have said yes here.
+        if (collapsed.rects === 0)
+            throw new Error('the box is display:none, so this proves nothing about width');
+        if (collapsed.width !== 0) throw new Error('the box was not collapsed: ' + collapsed.width + 'px');
+        if (collapsed.units) throw new Error('a unit was created in a zero-width box');
+        if (collapsed.filled) throw new Error('a zero-width box was marked filled');
+        if (collapsed.screenMarked) throw new Error('the screen spent its fill on a zero-width box');
+        if (narrowAds.some(u => /\/pagead\/ads/.test(u)))
+            throw new Error('an ad was requested for a zero-width box');
+        if (!collapsed.waiting) throw new Error('nothing is waiting to complete the fill');
+
+        // ...and the fill it was owed arrives when the box becomes real.
+        // Give the box its width back with a later rule of equal specificity —
+        // source order decides, and a runtime <style> comes after style.css.
+        await narrow.evaluate(() => {
+            const css = document.createElement('style');
+            css.textContent = '#main-menu .ad-slot { width: 100% !important; max-width: 728px !important; }';
+            document.head.appendChild(css);
+        });
+        await narrow.waitForTimeout(1200);
+        const after = await narrow.evaluate(async () => {
+            const { Ads } = await import('./js/ads.js');
+            const slot = document.querySelector('#main-menu .ad-slot');
+            return {
+                width: Math.round(slot.getBoundingClientRect().width),
+                filled: slot.classList.contains('filled'),
+                units: slot.querySelectorAll('ins.adsbygoogle').length,
+                stillWaiting: Ads._pendingWidth.has('main-menu')
+            };
+        });
+        if (!after.width) throw new Error('the box never got a width back');
+        if (!after.filled || after.units !== 1)
+            throw new Error(`the owed fill never arrived (filled=${after.filled}, units=${after.units})`);
+        if (after.stillWaiting) throw new Error('the completer did not stand down after filling');
+        console.log(`         0px: refused and remembered; ${after.width}px: filled once, observer released`);
+    } finally {
+        await narrow.close();
+    }
+});
+
 await step('a live match asks for nothing', async () => {
     // The whole reason adsConfig.js exists. Measured on the real scoring
     // function, 50ms of jank during a slap is worth 72 points, and in
