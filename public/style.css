@@ -4685,10 +4685,23 @@ body.high-legibility .stat-value {
     box-shadow: 0 10px 30px var(--panel-shadow);
 }
 
-.ad-rail-slot .adsbygoogle { display: block; width: 160px; height: 600px; }
+/* `vertical-align: top` is load-bearing, not tidiness. ads.js gives the unit
+   `display: inline-block` (the fixed-size tag), and an inline-block sits on the
+   text baseline — which left 4px of descender space under it and made a 600px
+   rail measure 604. Measured, not guessed: the smoke walk caught it. Width and
+   height here are a fallback for the case where the tag's inline style is
+   stripped; RAIL_SIZE in adsConfig.js is the source of both numbers. */
+.ad-rail-slot .adsbygoogle { vertical-align: top; width: 160px; height: 600px; }
 
 @media (min-width: 1200px) {
     #main-menu.active ~ .ad-rail { display: block; }
+    /* One lobby ad at any width. Above the breakpoint the rails are the
+       lobby's ad, so its in-column banner steps aside — two units around the
+       artwork is exactly what the rails were placed in the gutter to avoid.
+       Below it, the rails are gone and the banner is the only one left.
+       ads.js never fills a box with no client rects, so whichever one is
+       hidden here is not merely invisible: it is never requested. */
+    #main-menu .ad-slot { display: none; }
 }
 
 /* ---------- Privacy policy link and panel ------------------------------ */
