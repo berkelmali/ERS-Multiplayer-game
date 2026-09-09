@@ -1,5 +1,5 @@
 import { getRankName, getSuitSymbol } from './game.js';
-import { evaluateSlap } from './slapRules.js';
+import { evaluateSlap, DEFAULT_RULES, normalizeRules } from './slapRules.js';
 import { Localization } from './localization.js?v=3';
 import { AudioManager } from './audioManager.js';
 import EventBus from './eventbus.js';
@@ -17,12 +17,40 @@ import EventBus from './eventbus.js';
 // what it teaches is accurate and it still feels like the real game.
 const C = (rank, suit) => ({ rank, suit });
 
+// TWO TIERS, KEPT APART ON PURPOSE.
+//
+// The first four are the game: on at every default table, on in every Daily
+// Challenge, and what "the rules" means without qualification. The last three
+// are opt-in — a table can switch them on in Settings -> House Rules, and most
+// never will.
+//
+// Teaching them in one undifferentiated list would be the worst outcome: a
+// learner leaves practice believing Four-in-a-Row is a slap, then burns a card
+// on their first real table. So each opt-in step carries `optional: true`, is
+// announced by its own divider, and is EVALUATED AGAINST A RULE SET WITH THAT
+// RULE SWITCHED ON — because under the classic set it simply is not a slap, and
+// a practice step that fails its own check would be a lie in the other
+// direction.
+//
+// `rules` is deliberately per-step rather than a mode switch: it makes the
+// answer to "which rules is this step judged by?" visible at the step.
+const CLASSIC = DEFAULT_RULES;
+const withRule = (id) => normalizeRules({ ...DEFAULT_RULES, [id]: true });
+
 const STEPS = [
-    { cards: [C(5, 'spades'), C(5, 'hearts')], expected: 'doubles', logKey: 'tutorialDoublesLog' },
-    { cards: [C(4, 'clubs'), C(6, 'diamonds')], expected: 'tens', logKey: 'tutorialTensLog' },
-    { cards: [C(13, 'spades'), C(12, 'hearts')], expected: 'marriage', logKey: 'tutorialMarriageLog' },
-    { cards: [C(9, 'clubs'), C(3, 'hearts'), C(9, 'diamonds')], expected: 'sandwich', logKey: 'tutorialSandwichLog' }
+    { cards: [C(5, 'spades'), C(5, 'hearts')], expected: 'doubles', logKey: 'tutorialDoublesLog', rules: CLASSIC },
+    { cards: [C(4, 'clubs'), C(6, 'diamonds')], expected: 'tens', logKey: 'tutorialTensLog', rules: CLASSIC },
+    { cards: [C(13, 'spades'), C(12, 'hearts')], expected: 'marriage', logKey: 'tutorialMarriageLog', rules: CLASSIC },
+    { cards: [C(9, 'clubs'), C(3, 'hearts'), C(9, 'diamonds')], expected: 'sandwich', logKey: 'tutorialSandwichLog', rules: CLASSIC },
+
+    // --- opt-in from here down ---
+    { cards: [C(9, 'clubs'), C(9, 'hearts'), C(9, 'diamonds')], expected: 'triple', logKey: 'tutorialTripleLog', rules: withRule('triple'), optional: true },
+    { cards: [C(2, 'clubs'), C(3, 'hearts'), C(4, 'spades'), C(5, 'diamonds')], expected: 'fourInRow', logKey: 'tutorialFourInRowLog', rules: withRule('fourInRow'), optional: true },
+    { cards: [C(14, 'spades'), C(7, 'clubs'), C(5, 'hearts'), C(14, 'diamonds')], expected: 'topBottom', logKey: 'tutorialTopBottomLog', rules: withRule('topBottom'), optional: true }
 ];
+
+/** Index of the first opt-in step, so the divider appears exactly once. */
+const FIRST_OPTIONAL = STEPS.findIndex(s => s.optional);
 const TOTAL_STEPS = STEPS.length + 1; // +1 for the closing challenge demo
 
 export const TutorialMode = {
@@ -67,6 +95,7 @@ export const TutorialMode = {
         this.pileEl.innerHTML = '';
         this.coachEl.textContent = '';
         this.coachEl.classList.remove('visible');
+        this._renderTier(null);
         this._renderProgress();
     },
 
@@ -86,6 +115,14 @@ export const TutorialMode = {
         this.tapEnabled = false;
         this.pileEl.innerHTML = '';
         this.coachEl.classList.remove('visible');
+        this._renderTier(step);
+
+        // The divider is a full stop, not a label: the classic set is over and
+        // what follows is a different category. Worth its own pause.
+        if (this.stepIndex === FIRST_OPTIONAL) {
+            await this._wait(900);
+            if (myToken !== this._dealToken) return;
+        }
 
         for (const card of step.cards) {
             await this._wait(650);
@@ -111,7 +148,10 @@ export const TutorialMode = {
             return;
         }
         const step = STEPS[this.stepIndex];
-        const result = evaluateSlap(this.pile);
+        // The step's OWN rule set, not the player's and not the table's. An
+        // opt-in pattern is not a slap under the classic four, so judging it by
+        // the classic four would make the step unpassable.
+        const result = evaluateSlap(this.pile, step.rules);
         if (result === step.expected) {
             this.tapEnabled = false;
             AudioManager.playSFX('slap');
@@ -133,6 +173,7 @@ export const TutorialMode = {
         this.pileEl.innerHTML = '';
         this.tapEnabled = false;
         this.coachEl.classList.remove('visible');
+        this._renderTier(null);
         this._renderProgress();
 
         await this._wait(650);
@@ -158,13 +199,39 @@ export const TutorialMode = {
         this.finish();
     },
 
+    /**
+     * Says which tier the current step belongs to, and for an opt-in pattern
+     * says where it is switched on. A player who never opens House Rules should
+     * still leave practice knowing these three are not part of the game by
+     * default — that is the whole reason the tiers are shown at all.
+     */
+    _renderTier(step) {
+        if (!this.tierEl) this.tierEl = document.getElementById('tutorial-tier');
+        if (!this.tierEl) return;
+
+        if (!step) {
+            this.tierEl.textContent = '';
+            this.tierEl.className = 'tutorial-tier';
+            this.tierEl.style.display = 'none';
+            return;
+        }
+        const optional = step.optional === true;
+        this.tierEl.className = 'tutorial-tier' + (optional ? ' optional' : '');
+        this.tierEl.textContent = optional
+            ? '\u2605 ' + (Localization.get('tutorialTierOptional') || 'Extra pattern — off by default, switched on in Settings → House Rules')
+            : (Localization.get('tutorialTierClassic') || 'Classic rules — always on');
+        this.tierEl.style.display = '';
+    },
+
     _renderProgress() {
         if (!this.progressEl) return;
         this.progressEl.innerHTML = '';
         const current = Math.min(this.stepIndex, TOTAL_STEPS - 1);
         for (let i = 0; i < TOTAL_STEPS; i++) {
             const dot = document.createElement('span');
-            dot.className = 'tutorial-dot' + (i < current ? ' done' : i === current ? ' active' : '');
+            dot.className = 'tutorial-dot'
+                + (i < current ? ' done' : i === current ? ' active' : '')
+                + (STEPS[i] && STEPS[i].optional ? ' optional' : '');
             this.progressEl.appendChild(dot);
         }
     },
@@ -174,7 +241,7 @@ export const TutorialMode = {
         this.pile.forEach((card, i) => {
             const div = document.createElement('div');
             const isRed = card.suit === 'hearts' || card.suit === 'diamonds';
-            div.className = `card ${isRed ? 'red' : 'black'} tutorial-card`;
+            div.className = `card ${isRed ? 'red' : 'black'}`;
             div.style.zIndex = String(i);
             div.style.transform = `translate(${i * 4}px, ${-i * 3}px) rotate(${(i % 2 === 0 ? -1 : 1) * (2 + i)}deg)`;
             const rankStr = getRankName(card.rank);

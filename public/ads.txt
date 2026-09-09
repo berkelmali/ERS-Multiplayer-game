@@ -1,0 +1,4 @@
+# Authorized Digital Sellers for ers-card-game.web.app
+# Without this file AdSense reports the site as an unauthorised seller and
+# many buyers refuse to bid, which shows up as lost revenue rather than an error.
+google.com, pub-7456321071922775, DIRECT, f08c47fec0942fa0

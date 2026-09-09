@@ -69,21 +69,24 @@ export const BotNemesis = {
         const total = tallies.reduce((sum, t) => sum + t.wins, 0);
 
         if (total === 0) {
-            el.innerHTML = `<p style="opacity:0.5; margin:0;">${Localization.get('nemesisEmpty') || 'Play some offline matches to build a rivalry record.'}</p>`;
+            el.innerHTML = `<p class="profile-empty">${Localization.get('nemesisEmpty') || 'Play some offline matches to build a rivalry record.'}</p>`;
             return;
         }
 
         const nemesis = tallies.reduce((best, t) => (t.wins > (best?.wins || 0) ? t : best), null);
 
+        // v3.10.0 — the look moved to style.css with the rest of the profile
+        // card. `.is-nemesis` is the only per-row variation, so it is the only
+        // class the loop decides.
         const rows = tallies.map((t) => `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;">
+            <div class="profile-nemesis-row">
                 <span>${BOT_ICONS[t.key]} ${Localization.get('bot' + (BOT_KEYS.indexOf(t.key) + 1))}</span>
-                <span style="font-weight:700; color: ${t.key === nemesis?.key && t.wins > 0 ? '#ef4444' : 'inherit'};">${t.wins}</span>
+                <span class="profile-nemesis-count${t.key === nemesis?.key && t.wins > 0 ? ' is-nemesis' : ''}">${t.wins}</span>
             </div>
         `).join('');
 
         const nemesisLine = nemesis && nemesis.wins > 0
-            ? `<p style="margin:0 0 8px 0; font-size:0.8rem; color:#ef4444;">${(Localization.get('nemesisCallout') || '{bot} is your nemesis!').replace('{bot}', BOT_ICONS[nemesis.key] + ' ' + Localization.get('bot' + (BOT_KEYS.indexOf(nemesis.key) + 1)))}</p>`
+            ? `<p class="profile-nemesis-callout">${(Localization.get('nemesisCallout') || '{bot} is your nemesis!').replace('{bot}', BOT_ICONS[nemesis.key] + ' ' + Localization.get('bot' + (BOT_KEYS.indexOf(nemesis.key) + 1)))}</p>`
             : '';
 
         el.innerHTML = nemesisLine + rows;

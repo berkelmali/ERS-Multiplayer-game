@@ -1,0 +1,86 @@
+# Reusable quality gate. Called by ci.yml on every push and by deploy.yml
+# immediately before a production deploy, so nothing reaches the live site that
+# has not passed the exact same checks.
+name: Verify
+
+on:
+  workflow_call:
+    inputs:
+      run-smoke:
+        description: Also drive a real browser through the app.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Tests and static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Only the smoke job needs Playwright; skip the driver download here.
+      - run: npm ci --omit=dev
+
+      # public/js/firebaseConfig.js is gitignored and untracked, so a clean
+      # checkout does not have it — and every module imports it. Neither of
+      # these jobs uses real Firebase (the smoke test stubs the SDK outright),
+      # so the checked-in example stands in. That keeps both jobs runnable on
+      # any branch, including pull requests from forks, without a secret.
+      - name: Provide a placeholder Firebase config
+        run: cp public/js/firebaseConfig.example.js public/js/firebaseConfig.js
+
+      # 163 unit tests, syntax parse of every JS file, reference integrity,
+      # and locale key parity across all four languages.
+      - name: Verify
+        run: npm run verify
+
+      # The Cloud Functions copy of the slap rules is GENERATED. If someone
+      # edited one side by hand, regenerating produces a diff — and that diff
+      # is the bug: offline and multiplayer would be judging slaps differently.
+      - name: Cloud Functions rule mirror has not drifted
+        run: |
+          npm run sync:rules
+          if ! git diff --quiet -- functions/slapRules.js; then
+            echo "::error file=functions/slapRules.js::Rule mirror is stale. Run 'npm run sync:rules' and commit the result."
+            git --no-pager diff -- functions/slapRules.js
+            exit 1
+          fi
+          echo "Rule mirror is in sync."
+
+  smoke:
+    name: Browser smoke test
+    if: ${{ inputs.run-smoke }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # public/js/firebaseConfig.js is gitignored and untracked, so a clean
+      # checkout does not have it — and every module imports it. Neither of
+      # these jobs uses real Firebase (the smoke test stubs the SDK outright),
+      # so the checked-in example stands in. That keeps both jobs runnable on
+      # any branch, including pull requests from forks, without a secret.
+      - name: Provide a placeholder Firebase config
+        run: cp public/js/firebaseConfig.example.js public/js/firebaseConfig.js
+
+      - name: Smoke
+        run: npm run smoke

@@ -2,61 +2,14 @@ import EventBus from './eventbus.js';
 import { GameState } from './game.js';
 import { Settings } from './settings.js';
 import { GameManager } from './gameManager.js';
+import { Rng } from './rng.js';
+import { BotConfig, BotPersonalities, ROLL } from './botConfig.js';
+import { MatchContext, difficultyInForce } from './matchContext.js';
 
-export const BotConfig = {
-    easy: {
-        minReaction: 1300, maxReaction: 2600,
-        accuracy: 0.40, falseSlap: 0.075,
-        playDelay: 1200, playVariance: 600
-    },
-    medium: {
-        minReaction: 900, maxReaction: 1600,
-        accuracy: 0.65, falseSlap: 0.04,
-        playDelay: 900, playVariance: 400
-    },
-    hard: {
-        minReaction: 700, maxReaction: 1200,
-        accuracy: 0.82, falseSlap: 0.015,
-        playDelay: 700, playVariance: 300
-    },
-    challenger: {
-        // Elite Esports difficulty & Multiplayer Bot Takeover level
-        // Card play: 600–850ms (challenging gameplay pacing)
-        // Slap reaction: 550–950ms (elite human reflexes)
-        // Accuracy: 88% (precise but makes human-like mistakes)
-        // False slap: 1.5% chance (disciplined reflexes)
-        minReaction: 550, maxReaction: 950,
-        accuracy: 0.88, falseSlap: 0.015,
-        playDelay: 600, playVariance: 250
-    }
-};
-
-// --- BOT PERSONALITIES (v2.9.0) ---
-// Purely additive layer on top of BotConfig: each offline bot seat (1/2/3) gets a
-// fixed behavioral archetype that flavors the numbers from the selected difficulty
-// tier, without changing BotConfig's own shape. Multiplayer bot takeover reads
-// BotConfig.challenger directly (see multiplayerMode.js) and never touches this,
-// so personalities only ever apply to offline Bot Mode.
-export const BotPersonalities = {
-    1: { // Left seat — "Blitz": eager & aggressive, reacts fast, bluffs more, plays quickly
-        key: 'blitz',
-        reactionMult: 0.90, varianceMult: 0.85,
-        accuracyMult: 0.94, falseSlapMult: 1.55,
-        playDelayMult: 0.90, playVarianceMult: 0.90
-    },
-    2: { // Top seat — "Chaos": same average pace as the base difficulty, but wildly inconsistent
-        key: 'chaos',
-        reactionMult: 1.0, varianceMult: 1.9,
-        accuracyMult: 1.0, falseSlapMult: 1.1,
-        playDelayMult: 1.0, playVarianceMult: 1.8
-    },
-    3: { // Right seat — "Viper": patient & precise, slower on average but very consistent, rarely bluffs
-        key: 'viper',
-        reactionMult: 1.12, varianceMult: 0.8,
-        accuracyMult: 1.07, falseSlapMult: 0.4,
-        playDelayMult: 1.08, playVarianceMult: 0.8
-    }
-};
+// The tuning numbers moved to botConfig.js so a test can read them — ai.js
+// itself cannot be loaded outside a browser (Firebase CDN import). Re-exported
+// here because multiplayerMode.js imports BotConfig from this module.
+export { BotConfig, BotPersonalities };
 
 // Combines a base difficulty config with a bot's personality modifiers.
 // Keeps the midpoint of the reaction window anchored to the difficulty's own pacing
@@ -101,6 +54,17 @@ export const AIController = {
     slapTimeouts: {},
     initialized: false,
 
+    /**
+     * The override moved to `matchContext.js`. It was never only the AI's
+     * business: the turn timer needs the same answer, and while it lived here
+     * `game.js` could not read it without an import cycle — so it read
+     * `Settings.config.difficulty` instead and the two drifted apart for three
+     * releases. One source, two consumers.
+     */
+    currentDifficulty() {
+        return difficultyInForce(MatchContext.difficultyOverride, Settings.config.difficulty);
+    },
+
     init() {
         if (this.initialized) return;
         this.initialized = true;
@@ -125,10 +89,11 @@ export const AIController = {
             if (activeId === -1) return; // Güvenlik kilidi
             if (GameManager.activeMode !== 'bots') return;
             if (activeId >= 1 && activeId <= 3) {
-                const diff = Settings.config.difficulty;
+                const diff = this.currentDifficulty();
                 const baseConfig = BotConfig[diff] || BotConfig.medium;
                 const config = getPersonalityConfig(activeId, baseConfig);
-                const delay = config.playDelay + Math.random() * config.playVariance;
+                const delay = config.playDelay
+                    + Rng.pick(activeId, GameState.playCount || 0, ROLL.PLAY_DELAY) * config.playVariance;
                 const scheduledTime = Date.now();
 
                 EventBus.emit('syncTurnTimer', { activeId, duration: delay });
@@ -146,15 +111,17 @@ export const AIController = {
 
         EventBus.on('cardPlayed', () => {
             if (GameManager.activeMode !== 'bots') return;
-            const diff = Settings.config.difficulty;
+            const diff = this.currentDifficulty();
             const baseConfig = BotConfig[diff] || BotConfig.medium;
+            const tick = GameState.playCount || 0;
 
             if (GameState.isValidSlap()) {
                 [1, 2, 3].forEach(botId => {
                     const config = getPersonalityConfig(botId, baseConfig);
                     // Accuracy Hit Check
-                    if (Math.random() < config.accuracy) {
-                        const delay = config.minReaction + (Math.random() * (config.maxReaction - config.minReaction));
+                    if (Rng.pick(botId, tick, ROLL.SLAP_ACCURACY) < config.accuracy) {
+                        const delay = config.minReaction
+                            + (Rng.pick(botId, tick, ROLL.SLAP_DELAY) * (config.maxReaction - config.minReaction));
                         const scheduledTime = Date.now();
                         clearTimeout(this.slapTimeouts[botId]);
                         this.slapTimeouts[botId] = setTimeout(() => {
@@ -168,9 +135,10 @@ export const AIController = {
                 [1, 2, 3].forEach(botId => {
                     const config = getPersonalityConfig(botId, baseConfig);
                     // False Slap Hit Check
-                    if (Math.random() < config.falseSlap && GameState.players[botId].length > 0) {
+                    if (Rng.pick(botId, tick, ROLL.FALSE_SLAP) < config.falseSlap && GameState.players[botId].length > 0) {
                         // Small added delay to false slaps so they don't look completely mechanical
-                        const delay = config.minReaction + (Math.random() * (config.maxReaction - config.minReaction)) + 200;
+                        const delay = config.minReaction
+                            + (Rng.pick(botId, tick, ROLL.FALSE_SLAP_DELAY) * (config.maxReaction - config.minReaction)) + 200;
                         const scheduledTime = Date.now();
                         clearTimeout(this.slapTimeouts[botId]);
                         this.slapTimeouts[botId] = setTimeout(() => {

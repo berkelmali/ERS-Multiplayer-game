@@ -6,6 +6,8 @@ import { BotConfig } from './ai.js';
 import { Settings } from './settings.js';
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { functions } from "./firebaseConfig.js";
+import EventBus from './eventbus.js';
+import { NetQuality } from './netQuality.js';
 
 
 export const MultiplayerMode = {
@@ -171,7 +173,15 @@ export const MultiplayerMode = {
             return;
         }
         this.lastSlapTime = Date.now();
+        // GameState.lastPlayTime was converted to the local clock at the sync
+        // boundary (firebaseSync.js), so this stays a plain local subtraction.
         this.localSlapReaction = Date.now() - GameState.lastPlayTime;
+
+        // Offline play emits this from GameState.slap(); multiplayer resolves
+        // slaps through RTDB and never went through that path, which is why the
+        // slap coach used to be silent online. Emitting the same event here
+        // gives both modes identical coaching with no special-casing downstream.
+        EventBus.emit('slapAttempt', visualPlayerId);
 
         const actualId = this.toActual(visualPlayerId);
         // Push a slap event via RTDB Transaction (Secure and Free)
@@ -426,7 +436,10 @@ export const MultiplayerMode = {
             
             // Timeout humans who take longer than 15s (Competitive Standard)
             if (playerObj && !playerObj.eliminated && !playerObj.uid.startsWith('bot_')) {
-                const elapsed = Date.now() - (data.lastPlayTime || Date.now());
+                // `data.lastPlayTime` is on the shared server clock, so the elapsed
+                // check has to be too — a device with a skewed local clock must not
+                // time other players out early (or never).
+                const elapsed = NetQuality.serverNow() - (data.lastPlayTime || NetQuality.serverNow());
                 const timeoutLimit = 15000; 
                 if (elapsed > timeoutLimit) {
                     if (!this.timeoutLocks) this.timeoutLocks = {};

@@ -5,7 +5,6 @@ import { Localization } from './localization.js?v=3';
 export const ProfileUI = {
     init() {
         this.btnProfile = document.getElementById('user-profile-btn');
-        this.btnProfileText = document.getElementById('profile-btn-text');
         this.panelAccount = document.getElementById('account-panel');
 
         this.loggedOutSection = document.getElementById('account-logged-out');
@@ -25,13 +24,16 @@ export const ProfileUI = {
         this.displayUsername = document.getElementById('display-username');
         this.topRightScore = document.getElementById('top-right-score');
 
-        // Registration toggles
+        // v3.12.0 — the card is a <form> and its mode is ONE attribute on it.
+        // What used to be here: four button references whose `style.display`
+        // was written from three different places, plus an `isRegisterMode`
+        // boolean that could disagree with what was on screen. The attribute
+        // is now the single source of truth and CSS derives the rest.
+        this.form = document.getElementById('auth-form');
+        this.btnSubmit = document.getElementById('btn-auth-submit');
+        this.btnForgot = document.getElementById('btn-forgot');
         this.btnToggleRegister = document.getElementById('btn-toggle-register');
-        this.registerActions = document.getElementById('register-actions');
-        this.btnSignIn = document.getElementById('btn-signin');
         this.btnToggleLogin = document.getElementById('btn-toggle-login');
-
-        this.isRegisterMode = false;
 
         this.playerNameDisplay = document.getElementById('player-name-display');
 
@@ -176,30 +178,33 @@ export const ProfileUI = {
             }
         });
 
-        document.getElementById('btn-signin').addEventListener('click', async () => {
-            await this.handleAuthAction('signin');
+        // A real submit handler: Enter in any field reaches it, the password
+        // manager sees a form to offer to fill, and the browser stops warning
+        // about password inputs outside one. preventDefault is mandatory —
+        // without it the page navigates and the app restarts.
+        this.form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await this.handleAuthAction(this.mode());
         });
 
-        document.getElementById('btn-signup').addEventListener('click', async () => {
-            await this.handleAuthAction('register');
-        });
+        this.btnToggleRegister.addEventListener('click', () => this.setMode('register'));
+        this.btnToggleLogin.addEventListener('click', () => this.setMode('signin'));
 
-        this.btnToggleRegister.addEventListener('click', () => {
-            this.isRegisterMode = true;
-            this.usernameGroup.style.display = 'flex';
-            this.btnSignIn.style.display = 'none';
-            this.btnToggleRegister.style.display = 'none';
-            this.registerActions.style.display = 'flex';
-            this.errorMsg.innerText = '';
-        });
-
-        this.btnToggleLogin.addEventListener('click', () => {
-            this.isRegisterMode = false;
-            this.usernameGroup.style.display = 'none';
-            this.btnSignIn.style.display = 'block';
-            this.btnToggleRegister.style.display = 'block';
-            this.registerActions.style.display = 'none';
-            this.errorMsg.innerText = '';
+        this.btnForgot.addEventListener('click', async () => {
+            if (this.isBusy()) return;
+            const email = this.emailInput.value.trim();
+            if (!email) {
+                this.showMessage('resetNeedEmail', false);
+                this.emailInput.focus();
+                return;
+            }
+            this.setBusy(true);
+            try {
+                const result = await AuthSystem.resetPassword(email);
+                this.showMessage(result.messageKey, result.success);
+            } finally {
+                this.setBusy(false);
+            }
         });
 
         document.getElementById('btn-signout').addEventListener('click', async () => {
@@ -208,31 +213,84 @@ export const ProfileUI = {
         });
     },
 
-    async handleAuthAction(action) {
+    // --- v3.12.0: mode, busy and the one line that talks back --------------
+    //
+    // Every one of these reads or writes an ATTRIBUTE. Nothing here touches
+    // `style.display`, which is what lets the stylesheet own the appearance
+    // of both modes — and what lets the username field animate in.
+
+    mode() {
+        return this.form.dataset.mode === 'register' ? 'register' : 'signin';
+    },
+
+    setMode(mode) {
+        if (this.isBusy()) return;
+        this.form.dataset.mode = mode;
+        // A password manager offers to SAVE on `new-password` and to FILL on
+        // `current-password`. Getting this backwards is why so many sign-up
+        // forms silently refuse to be remembered.
+        this.passwordInput.autocomplete = (mode === 'register') ? 'new-password' : 'current-password';
+        this.clearMessage();
+        const first = (mode === 'register') ? this.usernameInput : this.emailInput;
+        if (first) first.focus();
+    },
+
+    isBusy() {
+        return this.form.dataset.busy === '1';
+    },
+
+    setBusy(busy) {
+        if (busy) {
+            this.form.dataset.busy = '1';
+        } else {
+            delete this.form.dataset.busy;
+        }
+        this.btnSubmit.disabled = busy;
+        this.btnForgot.disabled = busy;
+        this.btnToggleRegister.disabled = busy;
+        this.btnToggleLogin.disabled = busy;
+    },
+
+    showMessage(key, isSuccess) {
+        this.errorMsg.innerText = Localization.get(key);
+        this.errorMsg.classList.toggle('is-success', !!isSuccess);
+    },
+
+    clearMessage() {
         this.errorMsg.innerText = '';
+        this.errorMsg.classList.remove('is-success');
+    },
+
+    async handleAuthAction(action) {
+        if (this.isBusy()) return;
+        this.clearMessage();
+
         const email = this.emailInput.value.trim();
         const password = this.passwordInput.value;
         const username = this.usernameInput.value.trim();
 
         if (action === 'register' && (!username || !email || !password)) {
-            this.errorMsg.innerText = 'Username, email, and password are required.';
+            this.showMessage('authNeedAll', false);
             return;
         }
 
         if (action === 'signin' && (!email || !password)) {
-            this.errorMsg.innerText = 'Email and password are required.';
+            this.showMessage('authNeedEmailPass', false);
             return;
         }
 
+        this.setBusy(true);
         let result;
-        if (action === 'signin') {
-            result = await AuthSystem.signIn(email, password);
-        } else {
-            result = await AuthSystem.register(username, email, password);
+        try {
+            result = (action === 'signin')
+                ? await AuthSystem.signIn(email, password)
+                : await AuthSystem.register(username, email, password);
+        } finally {
+            this.setBusy(false);
         }
 
         if (!result.success) {
-            this.errorMsg.innerText = result.message;
+            this.showMessage(result.messageKey, false);
         } else {
             this.clearInputs();
         }
@@ -282,12 +340,10 @@ export const ProfileUI = {
             this.loggedOutSection.style.display = 'block';
             this.loggedInSection.style.display = 'none';
 
-            // Reset register mode
-            this.isRegisterMode = false;
-            this.usernameGroup.style.display = 'none';
-            this.btnSignIn.style.display = 'block';
-            this.btnToggleRegister.style.display = 'block';
-            this.registerActions.style.display = 'none';
+            // Reset register mode — one attribute, not five inline styles.
+            this.setBusy(false);
+            this.form.dataset.mode = 'signin';
+            this.passwordInput.autocomplete = 'current-password';
 
             // Toggle persistent corners
             this.btnProfile.style.display = 'flex';
@@ -316,7 +372,8 @@ export const ProfileUI = {
     clearInputs() {
         this.emailInput.value = '';
         this.passwordInput.value = '';
-        this.errorMsg.innerText = '';
+        if (this.usernameInput) this.usernameInput.value = '';
+        this.clearMessage();
     },
 
     saveMatchToHistory(record) {
@@ -347,37 +404,34 @@ export const ProfileUI = {
         }
 
         if (history.length === 0) {
-            listEl.innerHTML = `<div style="color: rgba(255,255,255,0.4); text-align: center; font-size: 0.8rem; padding: 10px;" data-i18n="noHistory">No matches played yet.</div>`;
-            graphEl.innerHTML = `<div style="color: rgba(255,255,255,0.3); text-align: center; font-size: 0.75rem; padding-top: 40px;" data-i18n="noTrend">Reflex trend curve will appear here.</div>`;
+            listEl.innerHTML = `<p class="profile-empty" data-i18n="noHistory">No matches played yet.</p>`;
+            graphEl.innerHTML = `<p class="profile-empty" data-i18n="noTrend">Reflex trend curve will appear here.</p>`;
             return;
         }
 
+        // v3.10.0 — every row used to carry eleven inline style declarations
+        // written on each render, and a hardcoded #58a6ff that no theme could
+        // touch. The look now lives in style.css under `.profile-match`; the
+        // only thing that still varies per row is win vs loss, so that is the
+        // only thing left as a modifier class.
         history.forEach(m => {
+            const won = m.result === 'WIN';
             const card = document.createElement('div');
-            card.style.background = m.result === 'WIN' ? 'rgba(46, 204, 113, 0.12)' : 'rgba(231, 76, 60, 0.12)';
-            card.style.border = m.result === 'WIN' ? '1px solid rgba(46, 204, 113, 0.25)' : '1px solid rgba(231, 76, 60, 0.25)';
-            card.style.borderRadius = '8px';
-            card.style.padding = '8px 10px';
-            card.style.display = 'flex';
-            card.style.justifyContent = 'space-between';
-            card.style.alignItems = 'center';
-            card.style.fontSize = '0.78rem';
+            card.className = `profile-match ${won ? 'profile-match--win' : 'profile-match--loss'}`;
 
             const reflexStr = m.bestReflex ? `${m.bestReflex}ms` : '---';
 
             card.innerHTML = `
                 <div>
-                    <div style="font-weight: 700; color: ${m.result === 'WIN' ? '#2ecc71' : '#e74c3c'}; display:flex; align-items:center; gap:6px;">
-                        <span>${m.result === 'WIN' ? '🏆 WIN' : '💀 DEFEAT'}</span>
-                        <span style="font-size: 0.65rem; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; color: rgba(255,255,255,0.6);">${m.mode}</span>
+                    <div class="profile-match-result">
+                        <span>${won ? '🏆 WIN' : '💀 DEFEAT'}</span>
+                        <span class="profile-match-mode">${m.mode}</span>
                     </div>
-                    <div style="font-size: 0.68rem; color: rgba(255,255,255,0.4); margin-top: 3px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        vs ${m.opponents}
-                    </div>
+                    <div class="profile-match-vs">vs ${m.opponents}</div>
                 </div>
-                <div style="text-align: right;">
-                    <div style="font-weight: 700; color: #58a6ff;">⚡ ${reflexStr}</div>
-                    <div style="font-size: 0.68rem; color: rgba(255,255,255,0.4); margin-top: 3px;">🎴 ${m.cardsWon} ${Localization.get('cardsLabel') || 'cards'}</div>
+                <div class="profile-match-right">
+                    <div class="profile-match-reflex">⚡ ${reflexStr}</div>
+                    <div class="profile-match-cards">🎴 ${m.cardsWon} ${Localization.get('cardsLabel') || 'cards'}</div>
                 </div>
             `;
             listEl.appendChild(card);
@@ -435,8 +489,8 @@ export const ProfileUI = {
             svgHtml += `
                 <defs>
                     <linearGradient id="graphGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#58a6ff" stop-opacity="0.25"/>
-                        <stop offset="100%" stop-color="#58a6ff" stop-opacity="0.0"/>
+                        <stop class="reflex-graph-stop-top" offset="0%"/>
+                        <stop class="reflex-graph-stop-bottom" offset="100%"/>
                     </linearGradient>
                 </defs>
                 <path d="${areaPath}" fill="url(#graphGradient)"/>
@@ -446,13 +500,17 @@ export const ProfileUI = {
             for (let i = 1; i < points.length; i++) {
                 linePath += `L ${points[i].x} ${points[i].y} `;
             }
-            svgHtml += `<path d="${linePath}" fill="none" stroke="#58a6ff" stroke-width="2" filter="drop-shadow(0 0 3px rgba(88,166,255,0.5))"/>`;
+            // v3.10.0 — the curve used to be #58a6ff, hardcoded four times, so
+            // it stayed blue inside a gold card in all five themes. Presentation
+            // attributes cannot read a CSS variable, so the paint moves to
+            // style.css and the SVG carries only classes.
+            svgHtml += `<path class="reflex-graph-line" d="${linePath}"/>`;
         }
 
         points.forEach(p => {
             svgHtml += `
-                <circle cx="${p.x}" cy="${p.y}" r="3" fill="#58a6ff" stroke="#fff" stroke-width="1"/>
-                <text x="${p.x}" y="${p.y - 6}" fill="rgba(255,255,255,0.85)" font-size="6.5" font-weight="700" text-anchor="middle" font-family="sans-serif">${p.val}ms</text>
+                <circle class="reflex-graph-dot" cx="${p.x}" cy="${p.y}" r="3"/>
+                <text class="reflex-graph-label" x="${p.x}" y="${p.y - 6}" text-anchor="middle">${p.val}ms</text>
             `;
         });
 

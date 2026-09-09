@@ -17,6 +17,14 @@
 * **🌐 Çok Oyunculu (Online Multiplayer):** Firebase Realtime Database & Firestore kuyruk sistemi ile 2-4 gerçek oyuncuyla eşleş. Eksik slotlar otomatik olarak botlarla doldurulur.
 * **🎓 Pratik & Öğretici Modu (Tutorial Mode):** Oyuna yeni başlayanlar için adım adım Slap (el basma) ve Meydan Okuma (Challenge) kurallarını öğreten etkileşimli kılavuz.
 
+### ✨ v3.0.0 Yenilikleri / What's New in v3.0.0
+* **🗓️ Günlük Meydan Okuma (Daily Challenge):** Herkes bugün **devam etmekte olan aynı maçı** devralır — kartlar oynanmış, eller dengesiz, ortada geçmişi olan bir yer var. Günün seed'i üç profilden birini seçer: *Toparlanma* (7 kartla geriden gel), *Bıçak Sırtı* (başa baş, yerdeki üst iki kart tek fark), *Bitiriş* (28 kartla kapatmaya çok yakın). Puan, devraldığınız pozisyonun zorluğuna göre ağırlıklandırılır. Günde bir puanlı koşu, global günlük tablo.
+* **🎲 Ev Kuralları (House Rules):** Dört slap kuralının her biri tek tek kapatılabilir — "Onluksuz" ya da "Sandviçsiz" bir masa kurun. Çok oyunculuda kural seti odaya yazılır; masaya katılan herkes aynı kurallarla oynar ve bekleme odasında rozet olarak görür. Kural mantığı artık tek bir dosyada, yani offline ve online asla ayrışamaz.
+* **🧠 Slap Forensics & Slap IQ:** Geçersiz bir slap artık sadece kart yakmıyor — **nedenini söylüyor**: *"Sandviç değil — arada 2 kart var, tam 1 olmalı."* Kaçırdığın desenler de sayılıyor, böylece Slap IQ hem isabetini hem **kapsamanı** ölçüyor.
+* **⚖️ Adil Slap Netcode:** Çok oyunculu slap yarışı artık transaction'ın ne zaman VARDIĞINA değil, refleksinin ne kadar HIZLI olduğuna göre çözülüyor (Firebase sunucu saati + 200ms hakemlik penceresi). Yüksek ping'li oyuncunun sistematik dezavantajı kalktı; masada canlı bağlantı göstergesi var.
+
+---
+
 ### ⚡ Oyun Mekanikleri & Görsellik / Gameplay Mechanics & Visuals
 * **⚡ Perfect Slap & Danger Zone:** Saliselerle ölçülen refleks takibi! Mükemmel zamanlamayla basılan el ekstra puan ve visual/audio efektler kazandırır.
 * **🎨 3D Parallax Masa & Dinamik Deste:** CSS 3D transformasyonları, dynamic card placement, kart dağıtma ve toplama animasyonları.
@@ -39,9 +47,13 @@ Masadaki ortaya atılan kart diziliminde aşağıdaki durumlar oluştuğunda mas
 | **Sandwich (Sandviç)** | `7` - `K` - `7` | Arasında 1 farklı kart bulunan aynı değerde iki kart |
 | **Tens (Onlular)** | `4` - `6` veya `7` - `3` | Üst üste gelen iki kartın toplamının 10 etmesi (Resimli kartlar hariç) |
 | **Marriage (Evlilik)** | `K` - `Q` veya `Q` - `K` | Yan yana gelen Kral ve Kraliçe |
-| **Top-Bottom (Baş-Son)** | `A` ... `A` | Masaya atılan ilk kart ile en son atılan kartın eşleşmesi |
-| **Four in a Row (Dörtlü Seri)** | `2` - `3` - `4` - `5` | Art arda gelen 4 sıralı kart dizilimi |
-| **Triple (Üçlü)** | `9` - `9` - `9` | Üst üste aynı değerde 3 kart |
+| **Triple (Üçlü)** ★ | `9` - `9` - `9` | Üst üste aynı değerde 3 kart |
+| **Four in a Row (Dörtlü Seri)** ★ | `2` - `3` - `4` - `5` | Art arda gelen 4 sıralı kart (As yüksek: J-Q-K-A geçerli, A-2-3-4 değil) |
+| **Top-Bottom (Baş-Son)** ★ | `A` ... `A` | Masaya atılan ilk kart ile en son atılan kartın eşleşmesi |
+
+> ★ **Ev Kuralı — varsayılan KAPALI.** Ayarlar → Ev Kuralları'ndan açılır. Bu üçü README'de yıllardır listeleniyordu ama kodda hiç uygulanmamıştı; artık gerçekten çalışıyorlar, mevcut maçların dengesini bozmamak için opt-in olarak.
+>
+> Klasik dört kural da aynı ekrandan **kapatılabilir** ("Onluksuz masa"). En az bir kural her zaman açık kalır — aksi halde slap ile el almak imkânsız olurdu. Yani panel iki yönlü çalışır: dört kural çıkarılabilir, üç kural eklenebilir.
 
 > ⚠️ **Hatalı Slap (Burn):** Yanlış zamanda el basan oyuncu destesine ceza olarak 1 kart yakar (burn pile).
 
@@ -67,7 +79,7 @@ Eğer savunmadaki oyuncu hakları bitene kadar resimli kart atamazsa, meydan oku
   * **Firebase Firestore:** Kullanıcı profilleri, küresel skor tablosu (Leaderboard) ve matchmaking kuyrukları.
   * **Firebase Cloud Functions (Node.js ESM):** Sunucu tarafı yetkili işlem doğrulamaları (`attemptSlap`, `attemptPlayCard`).
   * **Firebase Hosting:** Güvenli HTTP başlıkları (CSP, HSTS) ve performans optimize edilmiş CDN dağıtımı.
-* **Testing:** Node.js Native Test Runner (`test_gameLogic.mjs` — 53 kapsamlı birim testi).
+* **Testing — kapsamı dürüstçe:** `test_gameLogic.mjs` **895 birim testi** çalıştırıyor, ama bu testler projedeki 50 modülden (47 istemci + 3 Cloud Function) yalnızca **15 saf modülü** import ediyor: `functions/gameLogic.js`, `slapRules.js`, `fairSlap.js`, `rng.js`, `dailyScore.js`, `dailyScenario.js`, `botConfig.js`, `dailyFingerprint.js`, `ruleDoc.js`, `reflexDelta.js`, `botTell.js`, `matchContext.js`, `adsConfig.js`, `inviteLink.js`, `qrCode.js`. Bunlar oyunun kural ve puan matematiği — yani en kritik ve en sessizce bozulabilecek kısım. `ui.js`, `firebaseSync.js`, `dailyChallenge.js` gibi DOM/ağ modüllerinin birim testi **yok**; onlar Playwright smoke testiyle (`npm run smoke`) uçtan uca kontrol ediliyor. "895 test geçiyor" cümlesini "her şey test edilmiş" diye okumayın.
 
 ---
 
@@ -93,14 +105,26 @@ ers-web/
 │       ├── localization.js     # i18n Dil sözlüğü (TR, EN, DE, ES)
 │       ├── cardSkins.js        # Kart kaplamaları & ekonomi sistemi
 │       ├── shopUI.js           # Mağaza paneli
-│       └── victoryScreen.js    # Oyun sonu ekranı & MVP istatistikleri
+│       ├── victoryScreen.js    # Oyun sonu ekranı & MVP istatistikleri
+│       ├── houseRules.js       # v3.0.0 — Aktif kural seti (oda > yerel tercih)
+│       ├── slapForensics.js    # v3.0.0 — Refleks koçu, beceri kaydı, Slap IQ
+│       ├── fairSlap.js         # v3.0.0 — Gecikme telafili slap hakemliği (saf)
+│       ├── netQuality.js       # v3.0.0 — Paylaşılan sunucu saati + ping göstergesi
+│       ├── rng.js              # v3.0.0 — Deterministik RNG (akış + sayaç tabanlı)
+│       ├── dailyScore.js       # v3.0.0 — Günlük seed & puan formülü (saf, testli)
+│       ├── dailyChallenge.js   # v3.0.0 — Günlük koşu, tek puanlı deneme, global tablo
+│       └── dailyScenario.js    # v3.1.0 — Günün pozisyonunu üretir (3 profil, saf)
 ├── functions/                  # Firebase Cloud Functions backend
 │   ├── index.js                # Cloud Function endpoint tanımları
 │   ├── gameLogic.js            # Saf, Firebase SDK'sız sunucu iş mantığı
 │   └── package.json            # Node.js 20 ESM paketi
-├── test_gameLogic.mjs          # Birim test kümesi (53/53 PASS)
+├── tools/sync-rules.mjs        # functions/slapRules.js'i istemci kopyasından üretir
+├── package.json                # Sadece script: `npm test`, `npm run sync:rules` (istemcide build YOK)
+├── test_gameLogic.mjs          # Birim test kümesi (895/895 PASS — 15 saf modül)
 ├── firebase.json               # Firebase Hosting & Database kural yapılandırması
-└── database.rules.json         # Realtime Database güvenlik kuralları
+├── database.rules.json         # Realtime Database güvenlik kuralları
+├── CLAUDE.md                   # Detaylı mimari ve geliştirici dokümantasyonu
+└── COUNCIL.md                  # Geliştirme yol haritası
 ```
 
 ---
@@ -132,7 +156,15 @@ Oyun mantığının (Slap doğrulama, sıra takibi, challenge hesaplama) doğrul
 ```bash
 node test_gameLogic.mjs
 ```
-*Tüm testlerin (53/53 PASS) başarıyla geçtiğini doğrulayın.*
+*Tüm testlerin (895/895 PASS) başarıyla geçtiğini doğrulayın.*
+
+Tam doğrulama zinciri (testler + sözdizimi + bağlantılar + 4 dil paritesi + skor
+sınırı aynası) tek komutta:
+
+```bash
+npm run verify
+npm run smoke     # + tarayıcıda uçtan uca
+```
 
 ---
 

@@ -55,9 +55,18 @@ desktop.ini
 .gemini/
 .agents/
 scratch/
-CLAUDE.md
-COUNCIL.md
 
 # Testing & Coverage
 coverage/
 .nyc_output/
+.claude-memory/
+
+# Agent working notes. Commit 3e3b69e removed CLAUDE.md and COUNCIL.md from
+# git on purpose but never added the ignore rules, so they kept reappearing
+# as untracked and would have been swept back in by the next `git add -A`.
+CLAUDE.md
+COUNCIL.md
+
+# Backups left behind by earlier cleanups. Kept on disk deliberately; not
+# history.
+_to_delete_*.bak

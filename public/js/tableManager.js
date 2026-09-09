@@ -4,6 +4,9 @@ import { app, rtdb } from "./firebaseConfig.js";
 import { AuthSystem } from "./auth.js";
 import { Settings } from "./settings.js";
 import { createDeck } from "./game.js";
+import { HouseRules } from "./houseRules.js";
+import { NetQuality } from "./netQuality.js";
+import { ERR, appError } from "./errorCodes.js";
 
 const db = getFirestore(app);
 
@@ -21,7 +24,7 @@ export const TableManager = {
     },
 
     async createTable() {
-        if (!AuthSystem.currentUser) throw new Error("Not logged in");
+        if (!AuthSystem.currentUser) throw appError(ERR.AUTH_REQUIRED, "createTable: no signed-in user");
 
         const tableId = this.generateTableId();
         const uid = AuthSystem.currentUser.uid;
@@ -34,6 +37,10 @@ export const TableManager = {
             hostId: uid,
             hostUsername: name,
             players: [{ uid, name, index: 0 }],
+            // v3.0.0: the table's House Rules are fixed at creation time and
+            // shown in the waiting room, so nobody joins under one rule set and
+            // plays under another. startGame() copies this into the game room.
+            houseRules: HouseRules.localKey(),
             gameState: {
                 status: 'waiting',
                 playerCount: 1
@@ -56,6 +63,7 @@ export const TableManager = {
             hostUsername: name,
             players: [{ uid, name, index: 0, status: 'online' }],
             playerIds: playerIdsCount,
+            houseRules: HouseRules.localKey(),
             gameState: {
                 status: 'waiting',
                 playerCount: 1,
@@ -69,14 +77,14 @@ export const TableManager = {
     },
 
     async joinTable(tableId) {
-        if (!AuthSystem.currentUser) throw new Error("Not logged in");
+        if (!AuthSystem.currentUser) throw appError(ERR.AUTH_REQUIRED, "joinTable: no signed-in user");
 
         const tableIdUpper = tableId.toUpperCase();
         const tableRef = doc(db, "multiplayer_tables", tableIdUpper);
         const snap = await getDoc(tableRef);
 
         if (!snap.exists()) {
-            throw new Error("Table not found or already full!");
+            throw appError(ERR.TABLE_NOT_FOUND, "joinTable: no such document " + tableIdUpper);
         }
 
         const data = snap.data();
@@ -116,11 +124,11 @@ export const TableManager = {
         }
 
         if (data.gameState.status !== 'waiting') {
-            throw new Error("Game already started!");
+            throw appError(ERR.GAME_ALREADY_STARTED, "joinTable: gameState.status=" + data.gameState.status);
         }
 
         if (data.players.length >= 4) {
-            throw new Error("Table is full!");
+            throw appError(ERR.TABLE_FULL, "joinTable: 4 players already seated");
         }
 
         // Find an empty slot
@@ -131,7 +139,7 @@ export const TableManager = {
         }
 
         if (newIndex >= 4) {
-            throw new Error("Table is genuinely full!");
+            throw appError(ERR.TABLE_FULL, "joinTable: no free seat index");
         }
 
         data.players.push({ uid, name, index: newIndex, status: 'online' });
@@ -183,7 +191,19 @@ export const TableManager = {
         this.presenceListeners = {};
     },
 
-    listenToTable(tableId, onUpdate) {
+    /**
+     * @param {Function} onUpdate  called with the table data, or null when the
+     *                             table document is genuinely gone (host left).
+     * @param {Function} [onError] called when the LISTENER itself failed.
+     *
+     * The split matters. Until v3.7.0 the Firestore fallback's error callback
+     * called `onUpdate(null)`, and the only consumer of null renders "Host closed
+     * the table." So a dropped connection was reported to the player as another
+     * human being's decision, and they were returned to the lobby believing
+     * someone had left. That is worse than saying nothing: it is a confident,
+     * checkable, wrong answer.
+     */
+    listenToTable(tableId, onUpdate, onError) {
         if (this.unsub) {
             this.stopListening();
         }
@@ -216,7 +236,8 @@ export const TableManager = {
                 }
             }, (err) => {
                 console.error("Firestore fallback snapshot error:", err);
-                onUpdate(null);
+                if (typeof onError === 'function') onError(err);
+                else onUpdate(null);
             });
             
             innerUnsub = fsUnsub;
@@ -320,6 +341,20 @@ export const TableManager = {
                             }
                         }, 10000); // 10s Grace Period
                     }
+                }, (err) => {
+                    // v3.7.3 — this listener had no error callback. Silently, that
+                    // meant disconnect detection stopped for this player: they
+                    // could drop and never be shown as disconnected, and the
+                    // 60-second replacement timer would never start. Nobody at
+                    // the table would know why the seat had gone quiet.
+                    console.error(`Presence listener failed for ${p.uid}:`, err);
+                    import('./errorScreen.js').then(({ ErrorScreen }) =>
+                        import('./errorCodes.js').then(({ ERR, appError }) =>
+                            ErrorScreen.show({
+                                code: ERR.SYNC_LOST,
+                                titleKey: 'errTitleWaitingRoom',
+                                technical: 'presence/' + p.uid + ': ' + (err && err.message)
+                            }))).catch(() => {});
                 });
                 this.presenceListeners[p.uid] = { ref: presenceRef, cb: listener };
             }
@@ -495,7 +530,7 @@ export const TableManager = {
             // Minimum 2 real players required
             const realPlayersCount = data.players.filter(p => !p.uid.startsWith('bot_')).length;
             if (realPlayersCount < 2) {
-                throw new Error("Cannot start: At least 2 real players are required.");
+                throw appError(ERR.NOT_ENOUGH_PLAYERS, "startGame: fewer than 2 human players");
             }
 
             const roomId = "room_" + this.currentTableId + "_" + Date.now();
@@ -543,7 +578,12 @@ export const TableManager = {
                 gameStarted: true,
                 gameOver: false,
                 winnerIndex: -1,
-                lastPlayTime: Date.now()
+                // House Rules travel with the ROOM, written once by the host at
+                // deal time. Every client — the host included — reads the rule
+                // set back out of here rather than from its own settings, so all
+                // four seats evaluate a slap identically. See houseRules.js.
+                houseRules: data.houseRules || HouseRules.localKey(),
+                lastPlayTime: NetQuality.serverNow()
             });
 
             await updateDoc(tableRef, {

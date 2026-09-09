@@ -1,12 +1,18 @@
 import EventBus from './eventbus.js';
-import { GameState, getRankName, getSuitSymbol } from './game.js';
+import { GameState, getRankName, getSuitSymbol, SHIELD_DURATION_MS } from './game.js';
 import { Localization } from './localization.js?v=3';
 import { Settings } from './settings.js';
 import { GameManager } from './gameManager.js';
 import { CardSkins } from './cardSkins.js';
+import { renderRulesBadge } from './rulesBadge.js';
+import { LOADING_WATCHDOG_MS } from './errorCodes.js';
 
 export const UIManager = {
     initialized: false,
+
+    /** Incremented by clearBotTells(); see applyBotTells() for what it guards. */
+    _tellGeneration: 0,
+
     init() {
         if (this.initialized) return;
         this.initialized = true;
@@ -66,6 +72,11 @@ export const UIManager = {
         EventBus.on('gameStarted', () => {
             this.previousStatuses = {};
             this.shieldExpireTimestamps = [0, 0, 0, 0];
+
+            // A new match must not open underneath the last one's winner
+            // banner. `gameOver` posts that banner as PERMANENT, so without
+            // this line it survives every screen transition in between.
+            this.hideNotification();
             
             // Clear burn pile indicators at game start
             if (this.burnPileCountEl) this.burnPileCountEl.innerText = '0';
@@ -74,7 +85,28 @@ export const UIManager = {
             // Hide challenge banner at game start
             if (this.challengeBannerEl) this.challengeBannerEl.style.display = 'none';
 
+            this.applyBotTells();
+
             this.updateAll(true);
+        });
+
+        // The tell is removed whenever the TABLE goes away, not only when a
+        // match is won. Quitting emits no `gameOver` — it runs the confirm-modal
+        // path in main.js and lands on `gameStateChanged: 'menu'` — so a
+        // gameOver-only clear left the halos on the bot decks after a quit.
+        //
+        // FOUND ON THE LIVE SITE, NOT BY THE SUITE. The unit tests assert the
+        // call sites and the smoke test drives a match to its end; neither walks
+        // out of one. It was harmless (the game screen is hidden, and the next
+        // `applyBotTells` clears first) but the invariant this feature ships
+        // under said "removed when the match ends", and quitting ends a match.
+        //
+        // NO `EventBus.off('gameStateChanged')` HERE: `off(event)` without a
+        // callback wipes every listener for that event (see eventbus.js), and
+        // main.js and audioManager.js both own one. `init()` is idempotent, so
+        // this handler attaches exactly once.
+        EventBus.on('gameStateChanged', (state) => {
+            if (state === 'menu') this.clearBotTells();
         });
         EventBus.off('gameSynced');
         EventBus.on('gameSynced', (data) => this.handleGameSynced(data));
@@ -176,7 +208,16 @@ export const UIManager = {
                 }
 
                 if (slapTime > 0 && slapTime < 3000) {
-                    this.showReflexSpeedometer(winnerId, slapTime);
+                    // How this slap compares to the player's OWN history. Only
+                    // for their own slaps — a bot has no personal record, and
+                    // SlapForensics only ever measured seat 0. Computed at slap
+                    // time (see slapForensics.js), read here.
+                    let personal = null;
+                    if (winnerId === 0) {
+                        const { SlapForensics } = await import('./slapForensics.js');
+                        personal = SlapForensics.lastDelta;
+                    }
+                    this.showReflexSpeedometer(winnerId, slapTime, personal);
                 }
             }
 
@@ -308,6 +349,7 @@ export const UIManager = {
             const winnerStr = this.getVisualName(winnerId);
             this.showNotification(`${winnerStr} ${Localization.get('winMsg')}`, 'gold', true);
             if (this.challengeBannerEl) this.challengeBannerEl.style.display = 'none';
+            this.clearBotTells();
         });
 
         EventBus.off('gameAbandoned');
@@ -357,10 +399,27 @@ export const UIManager = {
             this.showNotification(`${pName}: ${title}`, "var(--primary)");
             this.addLog(`<strong>${pName}</strong> ${logMsg}`, 'highlight');
             
-            // Set 30s expiry timestamp for countdown display
-            if (!this.shieldExpireTimestamps) this.shieldExpireTimestamps = [0, 0, 0, 0];
-            this.shieldExpireTimestamps[playerId] = Date.now() + 30000;
-            
+            this.armShieldCountdown(playerId);
+            this.updateCounts();
+        });
+
+        /**
+         * v3.7.1 — a renewing slap refreshes the countdown.
+         *
+         * 'shieldEarned' only fires on the 0 -> 3 streak transition. A renewal
+         * holds the streak at 3, so this display clock was never re-armed while
+         * the real expiry timer was: the number counted to zero and vanished,
+         * leaving a bare shield icon that stayed for up to another 30 seconds,
+         * with the "expired" message arriving long after the counter had ended.
+         *
+         * Deliberately silent — no toast, no log line. A renewal is not news;
+         * the counter jumping back to 30 is the feedback. Announcing every
+         * renewal would spam the log during a slap streak, which is exactly when
+         * the player needs to be reading the pile instead.
+         */
+        EventBus.off('shieldRenewed');
+        EventBus.on('shieldRenewed', (playerId) => {
+            this.armShieldCountdown(playerId);
             this.updateCounts();
         });
 
@@ -424,6 +483,29 @@ export const UIManager = {
             } else {
                 this.showFloatingEmoji(playerId, emoji);
             }
+        });
+
+        // --- v3.0.0: House Rules badge on the table ---
+        EventBus.off('houseRulesChanged');
+        EventBus.on('houseRulesChanged', (rules) => {
+            renderRulesBadge('rules-badge', rules);
+        });
+
+        // --- v3.0.0: photo finish — a slap that was decided on reaction time ---
+        EventBus.off('slapPhotoFinish');
+        EventBus.on('slapPhotoFinish', ({ winnerId, reactionMs, marginMs }) => {
+            const name = this.getVisualName(winnerId);
+            const tpl = Localization.get('photoFinish') || '{name} won the race by {ms}ms';
+            const ms = (marginMs === null || marginMs === undefined) ? '—' : marginMs;
+            this.showNotification(`📸 ${tpl.replace('{name}', name).replace('{ms}', ms)}`, 'var(--primary)');
+            // Only the styles that actually exist in style.css: log-slap and
+            // log-highlight. Inventing a `log-success` class here would render
+            // as an unstyled default entry.
+            this.addLog(
+                `📸 <strong>${name}</strong> — ${reactionMs ?? '—'}ms (+${ms}ms)`,
+                winnerId === 0 ? 'slap' : 'highlight'
+            );
+            this.showPhotoFinishBanner(name, ms);
         });
 
         // --- Live language switch: re-render all dynamic in-game text instantly ---
@@ -631,6 +713,12 @@ export const UIManager = {
                 this.deckEls[i].classList.remove('combustion-glow');
             }
 
+            // v3.13.0 — the step ABOVE combustion. Ported from ers-revamp,
+            // where the class was added here and styled nowhere: the only
+            // mention of `.on-fire` in that stylesheet was a reduced-motion
+            // block switching off an animation it never had.
+            this.deckEls[i].classList.toggle('on-fire', currentStreak >= 3);
+
             // Shield icon management
             let shieldIcon = this.deckEls[i].querySelector('.deck-shield');
             if (currentStreak >= 3) {
@@ -645,6 +733,13 @@ export const UIManager = {
                     const secsLeft = Math.ceil((expireTime - now) / 1000);
                     shieldIcon.innerHTML = `🛡️ <span class="shield-timer-text">${secsLeft}</span>`;
                 } else {
+                    // A live shield (streak >= 3) with no running countdown. Before
+                    // v3.7.1 this was the everyday result of a renewing slap and it
+                    // read as a bug: a shield that had "run out" but was still there.
+                    // Now it only happens when this client never saw the arming
+                    // event — a spectator, or someone who joined while the shield
+                    // was already up — so the honest thing to draw is the shield
+                    // without a number rather than a countdown we cannot know.
                     shieldIcon.innerHTML = '🛡️';
                 }
             } else {
@@ -894,23 +989,112 @@ export const UIManager = {
         return div;
     },
 
+    /** Arms the drawn countdown. Always paired with the real expiry timer. */
+    armShieldCountdown(playerId) {
+        if (!this.shieldExpireTimestamps) this.shieldExpireTimestamps = [0, 0, 0, 0];
+        if (playerId < 0 || playerId > 3) return false;
+        this.shieldExpireTimestamps[playerId] = Date.now() + SHIELD_DURATION_MS;
+        return true;
+    },
+
     showNotification(msg, color, permanent = false) {
+        const generation = this._notificationGeneration = (this._notificationGeneration || 0) + 1;
         this.notifyEl.innerText = msg;
         this.notifyEl.style.color = color;
         this.notifyEl.style.transform = 'translate(-50%, -50%) scale(0)';
         this.notifyEl.style.opacity = '1';
 
         setTimeout(() => {
+            if (this._notificationGeneration !== generation) return;
             this.notifyEl.style.transform = 'translate(-50%, -50%) scale(1.1)';
             setTimeout(() => {
+                if (this._notificationGeneration !== generation) return;
                 this.notifyEl.style.transform = 'translate(-50%, -50%) scale(1)';
                 if (!permanent) {
                     setTimeout(() => {
+                        if (this._notificationGeneration !== generation) return;
                         this.notifyEl.style.opacity = '0';
                     }, 1200);
                 }
             }, 200);
         }, 10);
+    },
+
+    /**
+     * v3.13.0 — the photo-finish callout, ported from ers-revamp.
+     *
+     * Two changes on the way in. The original wrote a hardcoded English
+     * `⚡ PHOTO FINISH:` into a game that ships in four languages — with the
+     * `photoFinish` key sitting four lines above it, already translated, and
+     * already used by the log line. And it had no stylesheet rule at all, so
+     * `display:block` drew it as bare default text; `.photo-finish-banner`
+     * is written properly in style.css now.
+     *
+     * It retires ITSELF on a timer, and the timer is generation-guarded for
+     * the same reason `showNotification` is: two photo finishes in quick
+     * succession must not have the first one's timer hide the second.
+     */
+    showPhotoFinishBanner(name, ms) {
+        const banner = document.getElementById('photo-finish-banner');
+        if (!banner) return;
+        const generation = this._photoFinishGeneration = (this._photoFinishGeneration || 0) + 1;
+
+        const tpl = Localization.get('photoFinish') || '{name} won the race by {ms}ms';
+        banner.innerHTML = `⚡ ${tpl.replace('{name}', `<strong>${name}</strong>`).replace('{ms}', ms)}`;
+        banner.style.display = 'block';
+        requestAnimationFrame(() => {
+            if (this._photoFinishGeneration !== generation) return;
+            banner.classList.add('active');
+        });
+
+        setTimeout(() => {
+            if (this._photoFinishGeneration !== generation) return;
+            banner.classList.remove('active');
+            setTimeout(() => {
+                if (this._photoFinishGeneration !== generation) return;
+                banner.style.display = 'none';
+            }, 240);
+        }, 2400);
+    },
+
+    /**
+     * v3.12.0 — retire whatever the toast is currently saying.
+     *
+     * `showNotification(msg, colour, permanent = true)` has two call sites,
+     * `gameOver` and `gameAbandoned`, and until now the project contained NO
+     * code that ever set this element's opacity back to zero outside the
+     * non-permanent fade. So the winner banner — "KAOS KAZANDI!", 2.8rem,
+     * gold, z-index 9998 — stayed painted over the main menu until the next
+     * notification of any kind replaced it.
+     *
+     * The reason it survived review is worth writing down. `#notifications`
+     * used to live inside `#game-container`, where hiding the game screen hid
+     * it too; the teardown never needed to know about it. v3.x moved it to
+     * body level and made it `position: fixed` on purpose, so lobby, menu and
+     * reconnect messages could be seen at all. That fix is correct and stays.
+     * But it moved the element OUT of the only thing that was cleaning it up,
+     * and `resetOfflineUI()` — which does reach into the container and remove
+     * floating emojis, shields and banners — kept passing over it.
+     *
+     * The generation bump is not decoration: `showNotification` schedules a
+     * three-deep chain of timers, and without invalidating it a hide issued
+     * mid-chain would be followed by the chain's own transform writes.
+     */
+    hideNotification() {
+        this._notificationGeneration = (this._notificationGeneration || 0) + 1;
+        if (this.notifyEl) {
+            this.notifyEl.style.opacity = '0';
+            this.notifyEl.innerText = '';
+        }
+        // The photo-finish banner is match furniture too. It retires itself
+        // after 2.4s, but a player who quits inside that window would carry
+        // it to the menu — the v3.12.0 defect, in a second element.
+        this._photoFinishGeneration = (this._photoFinishGeneration || 0) + 1;
+        const banner = document.getElementById('photo-finish-banner');
+        if (banner) {
+            banner.classList.remove('active');
+            banner.style.display = 'none';
+        }
     },
 
 
@@ -1074,6 +1258,13 @@ export const UIManager = {
         // Hide challenge banner
         if (this.challengeBannerEl) this.challengeBannerEl.style.display = 'none';
 
+        // #notifications is body-level and `position: fixed`, so unlike every
+        // other line in this function it is NOT inside #game-container and
+        // hiding the game screen does not hide it. That is exactly why it was
+        // missed: this teardown reaches into the container, and the element
+        // moved out of it.
+        this.hideNotification();
+
         this.deckEls.forEach(el => {
             el.classList.remove('active');
             el.style.filter = 'none';
@@ -1091,6 +1282,25 @@ export const UIManager = {
         document.querySelectorAll('.deck-shield').forEach(el => el.remove());
     },
 
+    /**
+     * v3.7.0 — the spinner is now self-limiting.
+     *
+     * #loading-overlay is full-viewport, z-index 9999, with no close button, no
+     * click-to-dismiss and no escape handler. Before this change nothing in the
+     * app had a network deadline, and the Firestore SDK does not reject on a
+     * transport failure — it queues the read and retries forever. So a dropped
+     * connection during `await getDoc(...)` left the promise unsettled, `finally`
+     * never ran, hideLoading() never fired, and the player was stranded behind
+     * an opaque "Searching for table..." that could only be cleared by reloading
+     * the page. That is the single worst failure mode in the app, and it is the
+     * one the player described as "the screen just stayed like this".
+     *
+     * The watchdog is a backstop, not the primary fix: call sites wrap their
+     * awaits in withDeadline() so they can name the cause. This exists so that a
+     * call site which forgets can still never strand anyone.
+     */
+    _loadingWatchdog: null,
+
     showLoading(message) {
         const overlay = document.getElementById('loading-overlay');
         const msgEl = document.getElementById('loading-message');
@@ -1098,9 +1308,32 @@ export const UIManager = {
         if (overlay) {
             overlay.style.display = 'flex';
         }
+
+        if (this._loadingWatchdog) clearTimeout(this._loadingWatchdog);
+        this._loadingWatchdog = setTimeout(() => {
+            this._loadingWatchdog = null;
+            const ov = document.getElementById('loading-overlay');
+            if (!ov || ov.style.display === 'none') return;   // already resolved
+            ov.style.display = 'none';
+            Promise.all([import('./errorScreen.js'), import('./errorCodes.js')])
+                .then(([es, ec]) => {
+                    es.ErrorScreen.show({
+                        code: ec.readOnline() ? ec.ERR.TIMEOUT : ec.ERR.OFFLINE,
+                        titleKey: 'errTitleGeneric',
+                        technical: 'loading watchdog fired after ' + LOADING_WATCHDOG_MS + 'ms'
+                    });
+                })
+                .catch(() => {
+                    this.showNotification("Connection timed out.", "var(--error)");
+                });
+        }, LOADING_WATCHDOG_MS);
     },
 
     hideLoading() {
+        if (this._loadingWatchdog) {
+            clearTimeout(this._loadingWatchdog);
+            this._loadingWatchdog = null;
+        }
         const overlay = document.getElementById('loading-overlay');
         if (overlay) {
             overlay.style.display = 'none';
@@ -1124,18 +1357,14 @@ export const UIManager = {
         });
     },
 
-    showConfirmModal(action, opts = {}) {
+    showConfirmModal(action, customMessage) {
         const modal = document.getElementById('confirm-modal');
         const btnConfirm = document.getElementById('btn-confirm-leave');
         const btnCancel = document.getElementById('btn-cancel-leave');
         const subtext = modal.querySelector('.modal-subtext');
 
         if (subtext) {
-            let text = Localization.get('confirmLeaveSubtext') || "Your slot will instantly convert to a Bot. Any active slap streaks or score increments for this match will be forfeited!";
-            if (typeof opts.coinPenalty === 'number' && opts.coinPenalty !== 0) {
-                text += `\n\n🪙 ${opts.coinPenalty} ` + (Localization.get('coinPenaltyWarning') || 'coin will be deducted.');
-            }
-            subtext.innerText = text;
+            subtext.innerText = customMessage || Localization.get('confirmLeaveSubtext') || "Your slot will instantly convert to a Bot. Any active slap streaks or score increments for this match will be forfeited!";
         }
 
         modal.classList.add('active');
@@ -1200,7 +1429,14 @@ export const UIManager = {
         });
     },
 
-    showReflexSpeedometer(winnerId, slapTime) {
+    /**
+     * @param {object|null} personal result of reflexDelta() for this slap, or
+     *        null when there is not enough history to say anything. The badge is
+     *        simply absent in that case — no "calibrating" placeholder, because a
+     *        1.2-second toast is the wrong place to explain why a number is
+     *        missing.
+     */
+    showReflexSpeedometer(winnerId, slapTime, personal = null) {
         if (!this.centerPile) return;
 
         let badgeClass = 'reflex-lucky';
@@ -1228,10 +1464,24 @@ export const UIManager = {
             vignetteColor = 'rgba(52, 152, 219, 0.4)'; // Sapphire blue glow
         }
 
+        // Personal comparison, sitting next to the absolute grade rather than
+        // replacing it: GODLIKE/FAST/GOOD answers "was that fast", this answers
+        // "was that fast for you". The two disagree often, and that is the point.
+        let personalHtml = '';
+        if (personal && personal.tier !== 'onPar') {
+            const key = personal.tier === 'faster' ? 'reflexFaster' : 'reflexSlower';
+            const fallback = personal.tier === 'faster'
+                ? '{pct}% faster than your recorded slaps'
+                : '{pct}% slower than your recorded slaps';
+            const text = (Localization.get(key) || fallback)
+                .replace('{pct}', Math.abs(personal.pct));
+            personalHtml = ` <span class="reflex-personal rp-${personal.tier}">${text}</span>`;
+        }
+
         const speedometer = document.createElement('div');
         speedometer.className = `reflex-speedometer ${badgeClass}`;
         const name = this.getVisualName(winnerId);
-        speedometer.innerHTML = `⚡ ${name}: ${slapTime}ms <span class="badge">${badgeLabel}</span>`;
+        speedometer.innerHTML = `⚡ ${name}: ${slapTime}ms <span class="badge">${badgeLabel}</span>${personalHtml}`;
         this.centerPile.appendChild(speedometer);
 
         // Vignette pulse
@@ -1245,6 +1495,68 @@ export const UIManager = {
             speedometer.remove();
             vignette.remove();
         }, 1200);
+    },
+
+    /**
+     * Gives each bot seat its idle temperament halo.
+     *
+     * CALLED FROM EXACTLY TWO PLACES — `gameStarted` here, `gameOver` for the
+     * clear — and that is a rule, not an accident. The moment this is driven by
+     * anything that changes DURING a hand (a card played, a pile won, a slap
+     * scheduled) it stops being a temperament and becomes a readout of what the
+     * bots are about to do, which is the feature council ERS-04 rejected as an
+     * aimbot for the Daily Challenge board. `botTell.js` takes a seat number and
+     * nothing else, so the only way to break that is to change this call site.
+     *
+     * Offline Bot Mode only — multiplayer bot takeover reads BotConfig.challenger
+     * and has no personality to show (see botConfig.js).
+     */
+    async applyBotTells() {
+        this.clearBotTells();
+
+        // GENERATION GUARD. This function is fire-and-forget from a synchronous
+        // `gameStarted` handler and then awaits two dynamic imports;
+        // `clearBotTells` is synchronous. Without this, a `gameOver` arriving
+        // inside the await window clears the tells and then the resumed apply
+        // puts them straight back — a tell left glowing on a finished table.
+        // Rare (the imports are cached after the first match) but real, and
+        // reproduced deterministically by the smoke test.
+        //
+        // The counter is bumped by CLEAR, not by apply: it is the clear that
+        // must invalidate anything in flight.
+        const gen = this._tellGeneration;
+
+        try {
+            const [{ GameManager }, { allTells }] = await Promise.all([
+                import('./gameManager.js'),
+                import('./botTell.js')
+            ]);
+            if (gen !== this._tellGeneration) return; // a clear overtook us
+            if (GameManager.activeMode !== 'bots') return;
+
+            for (const tell of allTells()) {
+                const deck = this.deckEls[tell.botId];
+                if (!deck) continue;
+                deck.style.setProperty('--tell-period', `${tell.periodMs}ms`);
+                deck.style.setProperty('--tell-sway', (tell.swayPct / 100).toFixed(2));
+                deck.classList.add('bot-tell', `bot-tell-${tell.key}`);
+            }
+        } catch (e) {
+            // Ambience. If it cannot load, the match is unaffected.
+            console.warn('[UI] bot tells unavailable', e);
+        }
+    },
+
+    /** Bumps the generation so any apply still awaiting its imports is dropped. */
+    clearBotTells() {
+        this._tellGeneration = (this._tellGeneration || 0) + 1;
+        for (let i = 1; i <= 3; i++) {
+            const deck = this.deckEls[i];
+            if (!deck) continue;
+            deck.classList.remove('bot-tell', 'bot-tell-blitz', 'bot-tell-chaos', 'bot-tell-viper');
+            deck.style.removeProperty('--tell-period');
+            deck.style.removeProperty('--tell-sway');
+        }
     },
 
     spawnEmbers(visualId) {

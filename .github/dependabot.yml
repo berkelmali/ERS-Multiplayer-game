@@ -1,0 +1,17 @@
+# Keeps the Actions used by these workflows current. Without this they silently
+# rot until one breaks on a runner image update.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'ci'
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'chore'
