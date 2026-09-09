@@ -641,6 +641,49 @@ echo yesil. Ayrica gercek tarayicida 28 davranis kontrolu: cark ciziliyor,
 echo altin CardSkins'e yaziliyor, coinsUpdated gidiyor, gunluk hak
 echo tukeniyor, geri sayim basliyor, dort dil, foto finis geliyor ve
 echo kendini kaldiriyor, ve dort genislikte yatay tasma yok.
+echo  71) BESINCI OZELLIK UNUTULMUSTU: zafer ekranindaki "Meydan Oku"
+echo      butonu. Konsey envanterini dosya adlarindan cikardigim icin
+echo      gozden kacti; id niteliklerini difflerken bulundu. Bagliydi ama
+echo      dort yerden bozuktu, ucu bu projenin adini koydugu hata:
+echo      a. localStorage'dan `ers_high_score` okuyordu -- bu anahtari
+echo         hicbir modul YAZMIYOR. Her paylasim "skorumu gec: 0" derdi.
+echo         `.user-coin-balance` ile ayni sinif: olmayan seyi okumak.
+echo      b. `.btn-challenge-share` sinifinin stil kurali yoktu ^(bu
+echo         porttaki dorduncu ornek; 8/10 kapisi reddederdi^).
+echo      c. Panoya kopyalandi mesaji gomulu Ingilizceydi.
+echo      d. `navigator.clipboard.writeText^(...^).catch^(^(^) =^> {}^)` --
+echo         sessizce yutuluyordu. Bu projenin YAZILI kurali ve testi var:
+echo         guvenli olmayan baglamda navigator.clipboard undefined'dir,
+echo         yani uye erisimi SENKRON firlatir ve sondaki .catch'in
+echo         tutunacagi bir promise bile olmaz; ayrica basarisiz kopyalama
+echo         elle kopyalama yolunu SUNMAK zorunda.
+echo  72) Buton macin ozetini paylasiyor: kazandin mi, kac kart aldin, en
+echo      hizli saplagin. Ucu de zaten o ekranda yaziyor. 9999 "olcum yok"
+echo      sentinel'i cumleye SIZAMAZ -- refleks okumasi yoksa ayri bir
+echo      metin kullaniliyor, "en hizli saplak 9999ms" diye bir yalan
+echo      cikmasin. Alti anahtar x dort dil. Pano yolu LobbyUI'nin var olan
+echo      copyToClipboard'u; ikinci bir kopya yazilmadi. Paylasim sayfasi
+echo      iptal edilirse ^(AbortError^) panoya DUSMUYOR -- oyuncu
+echo      gondermekten vazgecti, kopyalamak istemedi.
+echo  73) smoke.mjs'te offsetParent kalmisti: ayni dosyanin IKI kez
+echo      yasakladigi yuklem. `position:fixed` bir oge tanimi geregi null
+echo      offsetParent dondurur, yani o kontrol -- gunluk siralamanin
+echo      "dogrulanmamis" uyarisini koruyan kontrol -- o uyari sabitlenirse
+echo      KOR olurdu ve ACIK KALIRDI. getClientRects^(^) ile degistirildi,
+echo      ve fark testin icinde OLCULUYOR: gecici fixed bir oge iki yukleme
+echo      birden gosteriliyor, eskisi false yenisi true demeli.
+echo  74) Ve o kapinin kendisi KARARSIZDI: bes kosudan biri dusuyordu.
+echo      Sebep kanitin kendisiydi -- gercek toast'i kaldirip goruyor
+echo      muyum diye bakiyordum, ama quitGame toast'i dinamik import ile
+echo      temizliyor ve o import prob kalktiktan SONRA cozulup siliyordu.
+echo      Kararsiz bir kapi, dikkate alinmayan kapidir. Prob artik
+echo      uygulamanin hicbir seyine dokunmayan gecici bir div. Ayrica iki
+echo      yuruyus ayni yuklemi iki kez yaziyordu ve mutasyon yalnizca
+echo      birini vurdu: tek bir paintedOverlays^(^) fonksiyonuna indirildi.
+echo.
+echo 6 mutasyon daha calistirildi, 6'si da yakalandi; 1821 test yesil.
+echo Ayrica gercek tarayicida 12 paylasim kontrolu: dort dil, 9999
+echo sizmiyor, pano kopyaliyor ve buton bunu soyluyor.
 echo.
 echo Motor, kurallar, puanlama ve Firebase islemleri EL DEGMEDI.
 echo Reklamlar hala kapali: yayinci kimligi bos oldugu surece hicbir istek yok.
@@ -758,5 +801,10 @@ echo     kaybolmali. Menuye donunce EKRANDA KALMAMALI
 echo   - 3 saplak ust uste yakala: desten ALEVLI parlamali
 echo   - Telefonda "Ana ekrana ekle": uygulama adi ve ikonu gelmeli,
 echo     acilista adres cubuksuz tam ekran olmali
+echo   - MEYDAN OKU ^(yeni^): bir mac bitir, zafer ekraninda "Arkadasina
+echo     meydan oku" butonuna bas. Telefonda paylasim sayfasi acilmali;
+echo     masaustunde metin PANOYA kopyalanmali ve buton "Meydan okuma
+echo     kopyalandi!" demeli. Yapistirdiginda metinde KART SAYISI ve
+echo     REFLEKS olmali; "0" ya da "9999" GORUNMEMELI
 echo.
 pause

@@ -409,8 +409,27 @@ await step('the board carries its unverified warning', async () => {
     const t = await page.evaluate(() => {
         const el = document.getElementById('daily-board-trust');
         if (!el) return { missing: true };
+        // NOT offsetParent. This file states the reason twice, three hundred
+        // lines below and again at the toast recorder: a `position: fixed`
+        // element reports a null offsetParent BY SPECIFICATION, whether or not
+        // it is on screen — so the predicate goes blind the day this warning,
+        // or any ancestor of it, becomes fixed. And what it guards is an
+        // honesty claim: that the board is not presented as trustworthy while
+        // VERIFIED_BOARD is false. A blind check there fails open.
+        //
+        // `blindProof` measures that rather than asserting it: the same
+        // element, temporarily fixed, seen by both predicates.
+        const cs = getComputedStyle(el);
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:fixed;top:10px;left:10px;width:20px;height:20px';
+        document.body.appendChild(probe);
+        const blindProof = { old: probe.offsetParent !== null, now: probe.getClientRects().length > 0 };
+        probe.remove();
         return {
-            shown: el.style.display !== 'none' && el.offsetParent !== null,
+            blindProof,
+            shown: el.getClientRects().length > 0
+                && cs.display !== 'none' && cs.visibility !== 'hidden'
+                && Number(cs.opacity) > 0.01,
             badge: (el.querySelector('.dbt-badge')?.textContent || '').trim(),
             body: (el.querySelector('.dbt-body')?.textContent || '').trim(),
             aboveBoard: !!(el.compareDocumentPosition(document.getElementById('daily-leaderboard'))
@@ -418,6 +437,9 @@ await step('the board carries its unverified warning', async () => {
         };
     });
     if (t.missing) throw new Error('#daily-board-trust is gone from the page');
+    // The measurement, before the assertion that depends on it.
+    if (t.blindProof.old !== false || t.blindProof.now !== true)
+        throw new Error('the predicate swap is not doing what it claims: ' + JSON.stringify(t.blindProof));
     if (!t.shown) throw new Error('the board is presented as trustworthy while VERIFIED_BOARD is false');
     if (t.badge.length < 4) throw new Error('warning has no heading');
     if (t.body.length < 40) throw new Error('warning does not explain what is wrong');
@@ -1324,34 +1346,47 @@ await step('nothing above the screen layer is left painted over the menu', async
         document.body.classList.remove('game-screen');
         await new Promise(r => setTimeout(r, 500));
 
-        const out = [];
-        for (const el of document.body.children) {
-            const cs = getComputedStyle(el);
-            const z = cs.zIndex === 'auto' ? 0 : Number(cs.zIndex);
-            if (!(z >= 1000)) continue;
-            const r = el.getBoundingClientRect();
-            const rendered = el.getClientRects().length > 0
-                && cs.display !== 'none'
-                && cs.visibility !== 'hidden'
-                && Number(cs.opacity) > 0.01
-                && r.width > 0 && r.height > 0;
-            if (rendered) out.push({ id: el.id || el.className, z, opacity: cs.opacity, text: el.innerText.trim().slice(0, 40) });
-        }
+        // ONE predicate, used by the walk and by the proof below. Written
+        // twice, the two drifted the first time they were mutated: a change
+        // to the walk left the proof still passing, so the mutation reported
+        // a gate that was in fact blind. Same defect class this project keeps
+        // removing everywhere else — a value with no single home.
+        const paintedOverlays = () => {
+            const found = [];
+            for (const el of document.body.children) {
+                const cs = getComputedStyle(el);
+                const z = cs.zIndex === 'auto' ? 0 : Number(cs.zIndex);
+                if (!(z >= 1000)) continue;
+                const r = el.getBoundingClientRect();
+                const rendered = el.getClientRects().length > 0
+                    && cs.display !== 'none'
+                    && cs.visibility !== 'hidden'
+                    && Number(cs.opacity) > 0.01
+                    && r.width > 0 && r.height > 0;
+                if (rendered) found.push({ id: el.id || el.className, z, opacity: cs.opacity, text: el.innerText.trim().slice(0, 40) });
+            }
+            return found;
+        };
+        const out = paintedOverlays();
         // Proof the scan is not blind: the same walk must be able to SEE an
         // overlay when there is one to see. Without this, an empty result is
         // equally consistent with "clean menu" and "the walk found nothing".
-        const probe = document.getElementById('notifications');
-        probe.style.opacity = '1';
-        probe.innerText = 'SCAN PROBE';
-        await new Promise(r => setTimeout(r, 120));
-        let sawProbe = false;
-        for (const el of document.body.children) {
-            const cs = getComputedStyle(el);
-            const z = cs.zIndex === 'auto' ? 0 : Number(cs.zIndex);
-            if (z >= 1000 && el.getClientRects().length > 0 && Number(cs.opacity) > 0.01) sawProbe = true;
-        }
-        const ui = await import('/js/ui.js');
-        ui.UIManager.hideNotification();
+        //
+        // The probe is a THROWAWAY element, not #notifications. The first
+        // version raised the real toast and this step failed roughly one run
+        // in five — because `GameManager.quitGame()` clears the toast through
+        // a dynamic `import('./ui.js').then(...)`, which can resolve AFTER the
+        // probe has been raised and wipe it. A flaky gate is a gate that gets
+        // ignored, and the flake was in the proof rather than in the thing
+        // being proved. A bare div owned by nobody cannot race the app.
+        const probe = document.createElement('div');
+        probe.id = 'smoke-overlay-probe';
+        probe.textContent = 'SCAN PROBE';
+        probe.style.cssText = 'position:fixed;top:40%;left:40%;width:120px;height:40px;z-index:10001;opacity:1;background:#111;color:#fff';
+        document.body.appendChild(probe);
+        await new Promise(r => setTimeout(r, 60));
+        const sawProbe = paintedOverlays().some(o => o.id === 'smoke-overlay-probe');
+        probe.remove();
         return { out, sawProbe };
     });
     if (!offenders.sawProbe)
