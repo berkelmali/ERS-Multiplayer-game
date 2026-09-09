@@ -37,7 +37,7 @@
  * job is to refuse to fill a rail that is not actually on screen.
  */
 
-import { PUBLISHER_ID, AD_SCREENS, adsEnabled, screenAllowsAd, slotFor, railSlotFor } from './adsConfig.js';
+import { PUBLISHER_ID, AD_SCREENS, RAIL_SIZE, adsEnabled, screenAllowsAd, slotFor, railSlotFor } from './adsConfig.js';
 import EventBus from './eventbus.js';
 
 const SCRIPT_SRC = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js';
@@ -111,22 +111,28 @@ export const Ads = {
         if (!slot && !railSlot) return 'no slot configured';
         if (this._filled.has(screenId)) return 'already filled';
 
-        // One screen can have more than one box: the in-column banner, and —
-        // on the lobby, on a wide window — the two gutter rails.
+        // ON SCREEN, MEASURED — one predicate, every box, no exceptions.
+        //
+        // The lobby carries two kinds of box and shows exactly one of them: the
+        // side rails on a wide window, its in-column banner on a narrow one.
+        // Which is which lives in the stylesheet, and this asks the stylesheet
+        // rather than repeating RAIL_MIN_WIDTH here — a number written twice is
+        // a number that drifts, and the drift would show up as an ad request
+        // for a box no player can see, which is an invisible impression.
+        //
+        // It is also why this is applied to the banner and not only to the
+        // rails: `display: none` on the banner above the breakpoint would
+        // otherwise hide it from the player and not from AdSense.
+        const onScreen = el => el.getClientRects().length > 0;
+
         const jobs = [];
         if (slot) {
             const host = document.querySelector(`#${screenId} .ad-slot`);
-            if (host) jobs.push({ host, slot, format: 'auto' });
+            if (host && onScreen(host)) jobs.push({ host, slot });
         }
         if (railSlot) {
-            // MEASURED, not re-derived: a rail is hidden by CSS below the
-            // breakpoint and whenever its screen is not active, and filling a
-            // box nobody can see buys an invisible impression. getClientRects()
-            // is the same "actually on screen" predicate tools/smoke.mjs uses,
-            // and it reads the stylesheet's answer instead of repeating its
-            // number here.
             for (const host of document.querySelectorAll(`.ad-rail-slot[data-ad-screen="${screenId}"]`)) {
-                if (host.getClientRects().length > 0) jobs.push({ host, slot: railSlot, format: 'vertical' });
+                if (onScreen(host)) jobs.push({ host, slot: railSlot, fixed: RAIL_SIZE });
             }
         }
         // Deliberate: this is decided ONCE, at the moment the screen is first
@@ -140,13 +146,26 @@ export const Ads = {
             job.host.innerHTML = '';
             const ins = document.createElement('ins');
             ins.className = 'adsbygoogle';
-            ins.style.display = 'block';
             ins.setAttribute('data-ad-client', PUBLISHER_ID);
             ins.setAttribute('data-ad-slot', job.slot);
-            ins.setAttribute('data-ad-format', job.format);
-            // Only the in-column banner may stretch; a rail that goes
-            // full-width is a rail that has left the gutter.
-            if (job.format === 'auto') ins.setAttribute('data-full-width-responsive', 'true');
+            if (job.fixed) {
+                // FIXED SIZE, and no data-ad-format at all. A responsive unit
+                // takes its size from the container's WIDTH, which is exactly
+                // wrong for a 160px box that must be 600px tall: it would ask
+                // for whatever fits 160px and leave the rest of the rail empty,
+                // or stretch and leave the gutter. The classic fixed-size tag
+                // states both dimensions and asks for that one shape.
+                // data-full-width-responsive is meaningless here and omitted
+                // rather than set to 'false', because a rail that could go
+                // full width is a rail that has left the gutter.
+                ins.style.display = 'inline-block';
+                ins.style.width = job.fixed.w + 'px';
+                ins.style.height = job.fixed.h + 'px';
+            } else {
+                ins.style.display = 'block';
+                ins.setAttribute('data-ad-format', 'auto');
+                ins.setAttribute('data-full-width-responsive', 'true');
+            }
             job.host.appendChild(ins);
             job.host.classList.add('filled');
 

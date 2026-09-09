@@ -33,6 +33,59 @@ import EventBus from './eventbus.js';
 import { todayKey } from './dailyScore.js';
 
 const LAST_SPIN_KEY = 'ers_last_spin_date';
+/** The tier reached today, kept so closing the modal cannot revoke it. */
+const TIER_KEY = 'ers_spin_tier';
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * WHERE THE POINTER IS, AND WHY IT IS A NUMBER IN THIS FILE
+ *
+ * `.wheel-pointer` is `top: -12px; left: 50%` — it hangs over the TOP of the
+ * wheel. Canvas angles start at 3 o'clock and grow clockwise, so the top edge
+ * is 270°, and `drawWheel` puts segment i's middle at `i*arc + arc/2` in that
+ * same system.
+ *
+ * The version this was ported from computed the landing angle as if the
+ * pointer were at 0° — the RIGHT edge. 270° / 45° is six segments, so every
+ * spin on an eight-segment wheel stopped six places away from the reward it
+ * paid out. Not sometimes: measured in a browser, all 8 of 8 indices were off
+ * by exactly 6. A wheel that pays a prize other than the one it stops on is
+ * worse than a broken wheel, because the player can see it lying.
+ *
+ * The two functions below are exported so a test can prove the round trip
+ * without a browser: put a segment under the pointer, then read back which
+ * segment is under the pointer, and get the same index. `indexUnderPointer`
+ * derives that from `drawWheel`'s convention alone — it never consults
+ * `landingRotation` — so the pair cannot agree by sharing a mistake.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/** Screen angle the pointer occupies, in canvas degrees (0° = 3 o'clock). */
+export const POINTER_DEG = 270;
+
+/**
+ * The absolute `rotate()` value that parks `winningIndex` under the pointer.
+ *
+ * ABSOLUTE, not additive. `currentRotation` accumulates across a session, so
+ * adding an offset to it lands correctly only on the first spin; every later
+ * spin inherits the previous one's remainder. This takes the next whole turn
+ * past where the wheel already is, adds five more for the animation, and then
+ * the one landing angle that is correct on its own.
+ */
+export function landingRotation(currentRotation, winningIndex, segmentCount, pointerDeg = POINTER_DEG) {
+    const arcDeg = 360 / segmentCount;
+    const midDeg = winningIndex * arcDeg + arcDeg / 2;
+    const landing = (((pointerDeg - midDeg) % 360) + 360) % 360;
+    const turns = Math.ceil(currentRotation / 360) + 5;
+    return turns * 360 + landing;
+}
+
+/** Which segment a viewer sees under the pointer at a given rotation. */
+export function indexUnderPointer(rotation, segmentCount, pointerDeg = POINTER_DEG) {
+    const arcDeg = 360 / segmentCount;
+    // Rotating the wheel clockwise by `rotation` moves the segment that was at
+    // canvas angle θ to θ + rotation, so the pointer reads θ = pointer − rotation.
+    const local = (((pointerDeg - rotation) % 360) + 360) % 360;
+    return Math.floor(local / arcDeg) % segmentCount;
+}
 
 export const DailySpin = {
     modal: null,
@@ -178,7 +231,33 @@ export const DailySpin = {
     consumeSpin() {
         try {
             localStorage.setItem(LAST_SPIN_KEY, todayKey());
+            // The ladder is a single turn's climb, so it ends with the turn.
+            localStorage.removeItem(TIER_KEY);
         } catch (e) { /* private mode: the spin simply is not remembered */ }
+    },
+
+    /* ── The unlocked tier survives closing the modal ───────────────────────
+       A tier-up deliberately does NOT consume the day's spin, so `open()` runs
+       its "spin available" branch again on the way back in — and that branch
+       reset currentTier to 0. The wheel announced "Silver unlocked", the
+       player closed the dialog to look at something, and came back to bronze
+       with the unlock gone and nothing to show it had ever happened. Stored
+       against today's key so it also survives a reload, and cleared by
+       consumeSpin above, so tomorrow starts at bronze like it should. */
+    saveTier() {
+        try { localStorage.setItem(TIER_KEY, `${todayKey()}:${this.currentTier}`); }
+        catch (e) { /* private mode: the climb lasts only as long as the dialog */ }
+    },
+
+    restoreTier() {
+        try {
+            const raw = localStorage.getItem(TIER_KEY);
+            if (!raw) return 0;
+            const [day, tier] = raw.split(':');
+            if (day !== todayKey()) return 0;
+            const n = Number(tier);
+            return Number.isInteger(n) && n >= 0 && n <= 2 ? n : 0;
+        } catch (e) { return 0; }
     },
 
     updateAvailabilityBadge() {
@@ -371,7 +450,7 @@ export const DailySpin = {
         this.modal.style.display = 'flex';
 
         if (this.canSpinToday()) {
-            this.currentTier = 0;
+            this.currentTier = this.restoreTier();
             this.currentRotation = 0;
             this.wheelCanvas.style.transition = 'none';
             this.wheelCanvas.style.transform = 'rotate(0deg)';
@@ -415,6 +494,7 @@ export const DailySpin = {
     advanceTier() {
         if (this.currentTier >= 2) return;
         this.currentTier++;
+        this.saveTier();
         this.currentRotation = 0;
 
         this.wheelCanvas.style.transition = 'transform 0.5s ease-in';
@@ -449,9 +529,8 @@ export const DailySpin = {
         const winningIndex = Math.floor(Math.random() * this.segments.length);
         const winningSegment = this.segments[winningIndex];
 
-        const arcDeg = 360 / this.segments.length;
-        const segmentOffset = (this.segments.length - 1 - winningIndex) * arcDeg + (arcDeg / 2);
-        this.currentRotation = this.currentRotation + (360 * 5) + segmentOffset;
+        this.currentRotation = landingRotation(
+            this.currentRotation, winningIndex, this.segments.length);
 
         this.wheelCanvas.style.transition = 'transform 4s cubic-bezier(0.15, 0.9, 0.25, 1)';
         this.wheelCanvas.style.transform = `rotate(${this.currentRotation}deg)`;

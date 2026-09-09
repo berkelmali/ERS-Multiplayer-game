@@ -25,12 +25,19 @@
 /**
  * Your AdSense publisher id, e.g. 'ca-pub-1234567890123456'.
  *
- * EMPTY BY DESIGN. While this is empty, `ads.js` loads nothing at all: no
- * script tag, no network request, no cookie. That matters for two reasons —
- * a placeholder tag on a live site is a bad look during AdSense review, and an
- * unconfigured ad slot is just an empty box that pushes the layout around.
+ * LIVE since v3.14.0, after the site was approved. It was empty through six
+ * releases on purpose: while empty, `ads.js` loads nothing at all — no script
+ * tag, no network request, no cookie — because a placeholder tag on a live
+ * site is a bad look during AdSense review, and an unconfigured slot is just
+ * an empty box that pushes the layout around.
+ *
+ * Setting it back to '' is still the whole off switch, and every test that
+ * proved the empty case still runs.
+ *
+ * This must stay identical to the <meta name="google-adsense-account"> tag in
+ * index.html and to public/ads.txt; a test compares all three.
  */
-export const PUBLISHER_ID = '';
+export const PUBLISHER_ID = 'ca-pub-7456321071922775';
 
 /**
  * Screens an ad unit may live on. Every one of these is a menu or a reading
@@ -82,16 +89,27 @@ export const NEVER_AD_SCREENS = Object.freeze([
  * The ad unit slot ids from your AdSense dashboard, keyed by screen. A screen
  * with no entry here simply gets no ad, even if it is listed above.
  *
- * Fill these in after creating the units. Leave a value empty to skip that one.
+ * One unit ('Frame', responsive display) serves all of them. Separate units
+ * per screen would give better reporting; that is a dashboard decision and can
+ * be made later by editing this object alone — nothing else in the codebase
+ * knows these numbers.
+ *
+ * 'main-menu' carries a banner too, but ONLY on a narrow window. The lobby
+ * gets exactly one ad at any width: the side rails above RAIL_MIN_WIDTH, this
+ * banner below it. Never both — a rail plus a banner puts two units around
+ * artwork the whole design is built on. The stylesheet enforces the swap by
+ * hiding whichever one does not belong at that width, and ads.js refuses to
+ * fill a box that is not actually on screen, so the hidden one is never
+ * requested either.
  */
 export const AD_SLOTS = Object.freeze({
-    'main-menu': '',
-    'about-panel': '',
-    'shop-panel': '',
-    'rules-panel': '',
-    'slapiq-panel': '',
-    'leaderboard-panel': '',
-    'account-panel': ''
+    'main-menu': '7107476549',
+    'about-panel': '7107476549',
+    'shop-panel': '7107476549',
+    'rules-panel': '7107476549',
+    'slapiq-panel': '7107476549',
+    'leaderboard-panel': '7107476549',
+    'account-panel': '7107476549'
 });
 
 /** True only when there is a real publisher id to load. */
@@ -157,11 +175,24 @@ export function slotFor(screenId) {
 export const AD_RAIL_SCREEN = 'main-menu';
 
 /**
- * The vertical (160x600) ad unit id for the rails. EMPTY BY DESIGN, exactly
- * like PUBLISHER_ID: while it is empty no rail is ever filled, and the two
- * rail boxes are zero-height, border-less and invisible.
+ * The ad unit id for the rails. Empty means no rail is ever filled and the two
+ * rail boxes stay zero-height and invisible — that was the shipped state until
+ * the site was approved, and it is still the off switch for the rails alone.
+ *
+ * The same unit as AD_SLOTS above, requested in FIXED SIZE rather than
+ * responsive: see the comment in ads.js for why a 160x600 box must state both
+ * dimensions instead of letting a responsive unit read its width.
  */
-export const AD_RAIL_SLOT = '';
+export const AD_RAIL_SLOT = '7107476549';
+
+/**
+ * The shape a rail asks for. 160x600 is the standard wide skyscraper, and it
+ * is the same 160 the stylesheet gives `.ad-rail` and the same 600 it reserves
+ * on `.ad-rail-slot.filled` — a test holds all three together, because a unit
+ * that asks for a taller ad than its box reserves is how a rail ends up
+ * clipped by its own `overflow: hidden`.
+ */
+export const RAIL_SIZE = Object.freeze({ w: 160, h: 600 });
 
 /**
  * Below this width there is no gutter to put a rail in. This number is also

@@ -726,7 +726,98 @@ echo Savunulamaz, guc: Guclu. Iki muhalif yargic da itirazini TEK bir
 echo bulguya ^(75^) baglamis ve cozulunce oyunun degisecegini soylemis.
 echo.
 echo Motor, kurallar, puanlama ve Firebase islemleri EL DEGMEDI.
-echo Reklamlar hala kapali: yayinci kimligi bos oldugu surece hicbir istek yok.
+echo.
+echo ================================================================
+echo v3.14.0 -- REKLAMLAR ACILDI. Alti surum boyunca yayinci kimligi
+echo bilerek bostu; site onaylandi, artik dolu.
+echo.
+echo  80) YAN RAYLAR. Ana menunun iki yaninda, 600px'lik sutunun
+echo      disindaki bosluga hizali iki dikey birim ^(160x600^).
+echo      Bunlari HICBIR SCRIPT gostermiyor ya da gizlemiyor. Tek
+echo      kural: #main-menu.active ~ .ad-rail, min-width:1200px
+echo      icinde. v3.12.0'da ekranda kalan kazanan bandi "sahibi olan
+echo      ama emekli edeni olmayan" bir katmandi; bunun sahibi yok,
+echo      cunku ihtiyaci yok -- lobi aktif olmayi biraktigi an kural
+echo      eslesmeyi birakiyor. Herhangi bir hatanin sonucu "ray yok",
+echo      asla "yiginin uzerinde ray" degil.
+echo  81) RAYLAR SUTUNUN ICINDE OLAMAZ. #main-menu overflow-y: auto,
+echo      yani IKI eksende de kirpan bir kutu; icine konsa sutun
+echo      kenarinda kesilir ve kimse fark etmezdi -- bu projenin imza
+echo      hatasi. Raylar body seviyesinde, #main-menu'nun hemen
+echo      ardinda. Testler bunu yorum okuyarak degil, ikisi
+echo      arasindaki div dengesini sayarak sabitliyor.
+echo  82) 1200px IKI DILDE YAZILI: style.css ve adsConfig.js'teki
+echo      RAIL_MIN_WIDTH. Bir test media query'yi ayristirip kaymayi
+echo      yakaliyor. ads.js sayiyi HIC tekrarlamiyor: getClientRects^(^)
+echo      bos olan bir rayi doldurmayi reddediyor -- gorunmeyen kutu
+echo      gosterim satin alamaz.
+echo  83) screenHasRail^(^) neden var: AD_RAIL_SLOT bosken railSlotFor
+echo      her ekran icin '' donuyor, yani donus degerini olcen bir
+echo      test calisan bir yasak listesiyle SILINMIS bir yasak
+echo      listesini ayirt edemiyor. Iki korumayi da kaldirmak hicbir
+echo      testi kirmadi -- ta ki bu boolean yuklem yazilana kadar.
+echo      Ozellik kapaliyken gozlemleyemedigin kural, sessizce yok
+echo      olmus bir kuraldir.
+echo  84) RAY SABIT BOYUT ISTIYOR, RESPONSIVE DEGIL. Responsive birim
+echo      boyutu kabin GENISLIGINDEN okur; 160px'lik bir kutu icin bu
+echo      yanlis soru, cunku kutuyu tanimlayan sey 600 olmasi. Ray
+echo      icin data-ad-format hic yazilmiyor, iki olcu de veriliyor.
+echo  85) DORT PIKSEL. inline-block birim metin taban cizgisine
+echo      oturuyor ve 600px'lik rayi 604px yapiyordu. Olculdu, smoke
+echo      yakaladi; vertical-align: top ile duzeldi.
+echo  86) LOBIDE HER GENISLIKTE TEK REKLAM, AMA HER GENISLIKTE BASKASI.
+echo      1200px ve uzeri: iki yan ray. Altinda: sutun icindeki alt
+echo      banner. ASLA IKISI BIRDEN -- ray artI banner, resmin etrafina
+echo      iki birim koyuyor ki raylari en basta oluga koymamizin sebebi
+echo      buydu. Degisimi rayLari acan AYNI media query yapiyor, yani
+echo      ikisinin ayni anda gorunebilecegi bir genislik yok.
+echo      Ve ads.js gorunmeyen kutuyu DOLDURMUYOR: gizlenen taraf
+echo      sadece gorunmez degil, hic istenmiyor da ^(gorunmeyen
+echo      gosterim = AdSense'e yalan^). Ayni yuklem artik her kutuya
+echo      uygulaniyor, yalnizca raylara degil.
+echo      Olculdu, 390x844 telefonda ayri bir sayfa yuklenerek:
+echo      1 banner ^(358px^), 0 ray, 0px yatay tasma, surum satirinin
+echo      ustune binmiyor. Yeniden boyutlandirma ile DEGIL, temiz
+echo      yukleme ile -- dolum bir kez, ekran ilk acildiginda karar
+echo      verilir; boyut degisimini kovalamak gosterim sismesidir.
+echo      Diger alti panel ^(Hakkinda, Kurallar, Magaza, Slap IQ,
+echo      Skor Tablosu, Hesap^) responsive banner tasiyor.
+echo.
+echo  87) CARK, DURDUGU YERDEN BASKA BIR ODUL VERIYORDU. Oyuncu buldu,
+echo      kapi degil. Olculdu -- tarayicinin kendi transform matrisi ters
+echo      cevrilip isaretcinin altindaki dilim okundu: 8 indeksin 8'i de
+echo      TAM ALTI dilim sapmis. Ara sira degil, her donuste, hep ayni.
+echo      Sebep tek bir sayi: .wheel-pointer carkin USTUNDE duruyor, yani
+echo      canvas koordinatlarinda 270 derece ^(0 derece saat 3 yonu^).
+echo      Devralinan formul isaretciyi 0'da sanmis. 270 / 45 = alti dilim.
+echo      Artik landingRotation^(^) tek bir MUTLAK aci donduruyor.
+echo  88) VE ACI ARTIK EKLEMELI DEGIL. currentRotation oturum boyunca
+echo      birikiyor; uzerine offset eklemek yalnizca ILK donuste dogru.
+echo      Yeni formul icinde bulundugu turdan sonraki tam tura gecip
+echo      bes tur daha ekliyor, sonra tek dogru acida duruyor.
+echo  89) ACILAN KADEME, KUTUYU KAPATINCA GERI ALINIYORDU. Kademe
+echo      atlamak gunun hakkini harcamiyor, bu yuzden open^(^) tekrar
+echo      "hak var" dalina giriyor ve o dal kademeyi 0'a cekiyordu:
+echo      cark "Gumus acildi" diyor, oyuncu kutuyu kapatip donuyor,
+echo      bronzdayiz ve olan biteni gosteren hicbir sey yok. Artik
+echo      ers_spin_tier'da BUGUNUN anahtariyla saklaniyor, hak
+echo      harcaninca siliniyor.
+echo.
+echo  UYARI -- SURECE DAIR, KODA DEGIL: bir mutasyon kosusu 10 dakika
+echo  zaman asimina takilip OLDURULDU ve geri yukleme adimi hic
+echo  calismadi, sabotaj satiri ^(_filled.clear^(^) + mac baslarken
+echo  yeniden doldurma^) calisma agacinda kaldi ve bir yamaya girdi.
+echo  smoke telde yakaladi. Artik bir birim testi de gameStateChanged
+echo  isleyicisinin BAYRAK DISINDA hicbir sey yapmadigini sabitliyor.
+echo.
+echo Olculdu ^(gercek doldurma yolu, sahte reklam etiketiyle^):
+echo   6 genislikte -- ray sutundan 24px, 1200px'te pencere kenarindan
+echo   116px uzakta, 1199px'te yok, hicbir genislikte yatay tasma yok,
+echo   Magaza/Kurallar/Ayarlar/Gizlilik'te ekranda kalan ray yok.
+echo   CANLI MAC: 0 reklam istegi, 0 yeni birim, masanin uzerinde 0 ray.
+echo   1965 test, 8 kaynak kapisi, smoke yesil.
+echo   23/23 kaynak mutanti + 4/4 smoke mutanti yakalandi.
+echo ================================================================
 echo.
 echo ADSENSE PANELINDE YAPILMASI GEREKEN -- KODLA ZORLANAMAZ:
 echo   Otomatik reklamlar ^(Auto ads^) bu site icin KAPALI kalmali.
@@ -752,9 +843,12 @@ echo   600px'lik sutunun kenari merkezden 300px; ray 160px, aralik 24px;
 echo   yani 484px. 1200px'te her iki kenarda 116px bosluk kalir.
 echo   Raylar ancak adsConfig.js'te HEM yayinci kimligi HEM de
 echo   AD_RAIL_SLOT doluyken dolar; birisi bossa kutu gorunmez kalir.
+echo   KAPATMA: adsConfig.js'te PUBLISHER_ID = '' butun reklamlari,
+echo   AD_RAIL_SLOT = '' sadece raylari kapatir. Iki durumu da olcen
+echo   testler hala calisiyor.
 echo.
 echo DEPLOY SONRASI KONTROL (bunlar sadece tarayicida dogrulanabilir):
-echo   - Ana menude surum yazisi v3.13.0 olmali
+echo   - Ana menude surum yazisi v3.14.0 olmali
 echo   - / yanitinda Cache-Control: no-store olmali
 echo   - HESAP PANELI ^(bu surumun ana isi^): giris yap, sonra bak --
 echo     amblem ALTIN HALKALI YUVARLAK olmali, 12px bir maca isareti degil
@@ -791,13 +885,31 @@ echo     ^(ayni butonun iki farkli sebep soylemesi bu surumun ozeti^)
 echo   - Botlarla oyna, 3 saplak yakala: destede 30'dan geri sayan bir
 echo     kalkan cikmali. 4. saplakta sayac 30'a GERI DONMELI.
 echo   - Masa kur, "Kodu Kopyala" ve "Davet Et" yan yana ve ikisi de calismali
-echo   - Network sekmesinde googlesyndication adresine tek istek olmamali
-echo     ^(yayinci kimligi bos oldugu surece; dolunca bu satir degisir^)
+echo   - REKLAMLAR ^(bu surumun ana isi^): Network sekmesini ac,
+echo     googlesyndication adresine TEK bir script istegi olmali
 echo   - YAN RAYLAR: pencereyi 1366px genislige getir -- menunun iki
-echo     yaninda kutular OLMAMALI ^(slot kimligi bos oldugu surece^).
-echo     Pencereyi 1199px'e daralt: hicbir sey degismemeli ve YATAY
-echo     KAYDIRMA CUBUGU CIKMAMALI. Ayarlar'i ac: yanlarda hicbir sey
-echo     kalmamali. Botlarla oyna: masanin yaninda hicbir sey olmamali.
+echo     yaninda 160x600 reklamlar GORUNMELI, kartlarin ustunde ama
+echo     menu sutununa DEGMEDEN. Pencereyi 1199px'e daralt: raylar
+echo     KAYBOLMALI ve YATAY KAYDIRMA CUBUGU CIKMAMALI.
+echo   - Ayarlar'i ac: yanlarda hicbir sey kalmamali ^(raylar lobiye ait^)
+echo   - BOTLARLA OYNA: masanin uzerinde ya da yaninda HICBIR reklam
+echo     olmamali, ve Network'te mac boyunca YENI istek olmamali.
+echo     Bu, adsConfig.js'in var olma sebebi -- 50 ms takilma 72 puan.
+echo   - Hakkinda / Kurallar / Magaza / Slap IQ / Skor Tablosu /
+echo     Hesap: her birinde metnin altinda TEK bir banner olmali
+echo   - TELEFONDA ^(ya da pencereyi 1199px'in altina daraltinca^):
+echo     ana menude, Ayarlar butonunun ALTINDA bir banner OLMALI --
+echo     ve yanlarda ray OLMAMALI. 1200px ustunde tam tersi.
+echo     Ikisini AYNI ANDA goruyorsan media query kaymis demektir.
+echo   - Gizlilik sayfasinda reklam OLMAMALI ^(reklamlari anlatan
+echo     sayfanin yaninda reklam sacma^)
+echo   - RA'NIN CARKI ^(bu surumde duzeltildi^): cevir ve DUR. Isaretcinin
+echo     ustunde durdugu dilimde yazan odul, sana verilen odulun AYNISI
+echo     olmali. Once alti dilim sapiyordu.
+echo   - Kademe atlarsan ^("Gumus acildi"^): kutuyu KAPAT ve tekrar ac --
+echo     hala Gumus'te olmalisin, bronza dusmemelisin.
+echo   - Ertesi gun ^(ya da localStorage'dan ers_last_spin_date silinince^)
+echo     cark yeniden bronzdan baslamali.
 echo   - Cok oyunculu, 1 insan + 3 bot: insan elenince mac BITMELI
 echo     ^(botlar oynamaya devam etmemeli, kazanan ilan edilmemeli^)
 echo   - 2 insan + 2 bot: biri elenince mac DEVAM ETMELI

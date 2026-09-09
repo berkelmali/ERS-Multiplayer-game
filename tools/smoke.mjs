@@ -122,6 +122,23 @@ await ctx.route('**://fonts.googleapis.com/**', r =>
 await ctx.route('**://fonts.gstatic.com/**', r => r.abort());
 // Several megabytes of BGM the test never listens to.
 await ctx.route('**/audio/*.mp3', r => r.fulfill({ status: 200, contentType: 'audio/mpeg', body: '' }));
+// v3.14.0 — the ad tag is now really requested, so it is stubbed rather than
+// left to reach Google from a test machine. The stub is deliberately dumb: it
+// only drains the queue, so `adsbygoogle.push` cannot throw and mask a real
+// failure, and the wire watcher below still sees the request that was made.
+await ctx.route('**://pagead2.googlesyndication.com/**', r =>
+    r.fulfill({ status: 200, contentType: 'text/javascript',
+        // The stub's `push` makes a REQUEST, because that is the only part of
+        // the real tag this file needs to reproduce. A push that silently
+        // returned 1 made the "no ad request during a match" claim untestable:
+        // a mutant that re-filled a panel mid-match passed, because nothing
+        // ever reached the wire watcher. The request is intercepted by this
+        // same route, so nothing leaves the machine.
+        body: `window.adsbygoogle = window.adsbygoogle || [];
+               window.adsbygoogle.push = function(){
+                 fetch('https://pagead2.googlesyndication.com/pagead/ads?stub=1').catch(function(){});
+                 return 1;
+               };` }));
 
 const page = await ctx.newPage();
 page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
@@ -135,9 +152,11 @@ page.on('pageerror', e => consoleErrors.push(e.message));
 // That is why serving the real headers still produced a green run at first.
 const NEVER_IGNORABLE = /Content Security Policy|Refused to (execute|load|connect|frame)/i;
 
-// v3.4.0. `PUBLISHER_ID` is empty in the repo, and the claim attached to that
-// is absolute: no script tag, no request, no cookie. A claim like that is only
-// worth anything if something watches the wire, so this listens from before the
+// v3.4.0, still the point in v3.14.0. Until this release PUBLISHER_ID was empty
+// and the claim was absolute: no script tag, no request, no cookie. Now ads are
+// on, and the claim that replaced it is narrower but harder: requests happen on
+// menus and NEVER while a match is running. Either claim is only worth
+// something if something watches the wire, so this listens from before the
 // first navigation and every step below runs under it.
 const AD_HOST = /googlesyndication|googleadservices|googletagservices|adservice\.google|doubleclick|fundingchoices/i;
 const adRequests = [];
@@ -1560,8 +1579,10 @@ await step('About and Rules render real prose, and follow the language', async (
         if (seen.empty.length) throw new Error(`${panel} has empty strings: ${seen.empty.join(', ')}`);
         if (seen.words < minWords) throw new Error(`${panel} is thin: ${seen.words} words`);
         if (seen.ads !== 1) throw new Error(`${panel} should carry exactly one ad container, has ${seen.ads}`);
-        if (seen.filled) throw new Error(`${panel} filled an ad slot with no publisher id`);
-        console.log(`         ${panel} — ${seen.words} words, 1 empty ad container`);
+        // v3.14.0: the container now fills. What this step still owns is the
+        // PROSE — the ad's own behaviour is two steps below, on the wire.
+        if (seen.filled !== 1) throw new Error(`${panel} has ${seen.filled} filled ad containers, want 1`);
+        console.log(`         ${panel} — ${seen.words} words, 1 filled ad container`);
         await page.click(backBtn);
         await page.waitForSelector('#main-menu.active', { timeout: 5000 });
     }
@@ -1594,9 +1615,11 @@ await step('About and Rules render real prose, and follow the language', async (
     await page.waitForSelector('#main-menu.active', { timeout: 5000 });
 });
 
-await step('an unconfigured build is an ad-free build', async () => {
-    // Open every screen that is ALLOWED to carry an ad. If a slot could fill
-    // itself without a publisher id, this is where it would happen.
+await step('ads land on menus, and on no measured screen', async () => {
+    // Until v3.14.0 this step proved the opposite claim — an empty publisher id
+    // meant no script, no request, no cookie — and it is kept in the same place
+    // because the replacement claim is the one that now protects the game:
+    // units on reading panels, never on a screen where something is timed.
     const visits = [
         ['#btn-shop', '#shop-panel', '#btn-shop-back'],
         ['#btn-rules', '#rules-panel', '#btn-rules-back'],
@@ -1611,23 +1634,225 @@ await step('an unconfigured build is an ad-free build', async () => {
         await page.waitForSelector('#main-menu.active', { timeout: 5000 });
     }
 
-    const seen = await page.evaluate(() => ({
-        script: document.querySelectorAll('script[src*="googlesyndication"]').length,
-        ins: document.querySelectorAll('ins.adsbygoogle').length,
-        filled: document.querySelectorAll('.ad-slot.filled').length,
-        containers: document.querySelectorAll('.ad-slot').length,
-        // An empty container that still occupies space is a layout bug: the
-        // menu would carry a hole for an ad that is never coming.
-        tallest: Math.max(0, ...[...document.querySelectorAll('.ad-slot')]
-            .map(el => el.getBoundingClientRect().height))
+    const seen = await page.evaluate(() => {
+        const units = [...document.querySelectorAll('ins.adsbygoogle')];
+        const home = (el) => {
+            const screen = el.closest('.screen');
+            if (screen) return screen.id;
+            const rail = el.closest('.ad-rail');
+            return rail ? 'RAIL:' + (el.closest('[data-ad-screen]') || {}).dataset?.adScreen : 'ORPHAN';
+        };
+        return {
+            scripts: [...document.querySelectorAll('script[src*="googlesyndication"]')].map(s => s.src),
+            units: units.map(el => ({
+                where: home(el),
+                client: el.getAttribute('data-ad-client'),
+                slot: el.getAttribute('data-ad-slot'),
+                format: el.getAttribute('data-ad-format'),
+                fullWidth: el.getAttribute('data-full-width-responsive'),
+                w: el.style.width, h: el.style.height, display: el.style.display
+            })),
+            // Every screen id in the markup, so the deny list can be checked
+            // against what is actually on the page rather than against itself.
+            denyOccupied: ['game-container', 'daily-panel', 'tutorial-screen', 'lobby-panel',
+                           'waiting-room-panel', 'victory-screen', 'settings-panel',
+                           'privacy-panel', 'confirm-modal', 'invite-modal']
+                .filter(id => (document.getElementById(id) || { querySelectorAll: () => [] })
+                    .querySelectorAll('ins.adsbygoogle').length > 0)
+        };
+    });
+
+    if (seen.scripts.length !== 1) throw new Error(seen.scripts.length + ' ad script tags, want exactly 1');
+    if (!/client=ca-pub-\d{10,}/.test(seen.scripts[0])) throw new Error('the tag carries no publisher id: ' + seen.scripts[0]);
+    if (!seen.units.length) throw new Error('ads are configured and not one unit was created');
+    if (seen.denyOccupied.length) throw new Error('an ad unit sits on ' + seen.denyOccupied.join(', '));
+
+    const badClient = seen.units.filter(u => !/^ca-pub-\d{10,}$/.test(u.client || ''));
+    if (badClient.length) throw new Error(badClient.length + ' unit(s) with no publisher id');
+    const badSlot = seen.units.filter(u => !/^\d{8,12}$/.test(u.slot || ''));
+    if (badSlot.length) throw new Error(badSlot.length + ' unit(s) with no slot id');
+
+    // ONE lobby ad. This run is at 1280px, above the rail breakpoint, so the
+    // lobby's ad is its two rails and its in-column banner must have stepped
+    // aside. The phone case — banner, no rails — is the step below.
+    const inLobby = seen.units.filter(u => u.where === 'main-menu');
+    if (inLobby.length) throw new Error(inLobby.length + ' in-column banner(s) in the lobby at 1280px, want 0 (the rails are its ad)');
+
+    // A rail asks for one fixed shape; a panel banner is responsive. Getting
+    // these the wrong way round renders, and looks wrong to a human only.
+    const rails = seen.units.filter(u => String(u.where).startsWith('RAIL:'));
+    for (const r of rails) {
+        if (r.format) throw new Error('a rail asked for data-ad-format=' + r.format);
+        if (r.fullWidth) throw new Error('a rail asked to go full width');
+        if (r.w !== '160px' || r.h !== '600px') throw new Error(`a rail is ${r.w} x ${r.h}, want 160px x 600px`);
+    }
+    for (const b of seen.units.filter(u => !String(u.where).startsWith('RAIL:'))) {
+        if (b.format !== 'auto') throw new Error(`the banner on ${b.where} asked for ${b.format}`);
+        if (b.w || b.h) throw new Error(`the banner on ${b.where} was given a fixed size`);
+    }
+    if (!adRequests.length) throw new Error('ads are on and nothing was ever requested');
+    console.log(`         ${seen.units.length} units (${rails.length} rails), 1 script, 0 on a measured screen`);
+});
+
+await step('a phone gets the lobby banner, and no rails', async () => {
+    // The lobby has one ad at any width and a different one at each: rails in
+    // the gutter on a desktop, an in-column banner on a phone. Both are chosen
+    // by CSS alone, so the only way to know which one a player actually gets is
+    // to load the page at that width and look.
+    //
+    // A FRESH page, not a resize of this one: a fill is decided once, when the
+    // screen is first opened, because re-running fills to chase a resize is the
+    // impression churn ads.js refuses to commit. A phone loads narrow.
+    const phone = await ctx.newPage();
+    const phoneAds = [];
+    phone.on('request', r => { if (AD_HOST.test(r.url())) phoneAds.push(r.url()); });
+    try {
+        await phone.setViewportSize({ width: 390, height: 844 });
+        await phone.goto(base + '/', { waitUntil: 'domcontentloaded' });
+        await phone.waitForSelector('#main-menu.active', { timeout: 20000 });
+        await phone.waitForTimeout(2500);
+
+        const seen = await phone.evaluate(() => {
+            const menu = document.getElementById('main-menu');
+            const banner = menu.querySelector('.ad-slot');
+            const on = el => el && el.getClientRects().length > 0;
+            const b = banner ? banner.getBoundingClientRect() : null;
+            const footer = document.getElementById('game-version');
+            const f = footer ? footer.getBoundingClientRect() : null;
+            return {
+                bannerFilled: !!(banner && banner.classList.contains('filled')),
+                bannerVisible: on(banner),
+                bannerUnits: menu.querySelectorAll('ins.adsbygoogle').length,
+                railsVisible: [...document.querySelectorAll('.ad-rail')].filter(on).length,
+                railUnits: document.querySelectorAll('.ad-rail-slot ins.adsbygoogle').length,
+                width: b ? Math.round(b.width) : 0,
+                overlapsFooter: !!(b && f && b.bottom > f.top && b.top < f.bottom),
+                scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                inTable: document.querySelectorAll('#game-container ins.adsbygoogle').length
+            };
+        });
+
+        if (!seen.bannerFilled) throw new Error('the phone lobby got no banner at all');
+        if (!seen.bannerVisible) throw new Error('the phone banner was filled but is not on screen');
+        if (seen.bannerUnits !== 1) throw new Error(seen.bannerUnits + ' units in the phone lobby, want exactly 1');
+        if (seen.railsVisible) throw new Error(seen.railsVisible + ' rail(s) visible on a 390px phone');
+        if (seen.railUnits) throw new Error('a rail was filled on a phone — an invisible impression');
+        if (seen.width > 390) throw new Error('the banner is ' + seen.width + 'px wide in a 390px window');
+        if (seen.overlapsFooter) throw new Error('the banner sits on top of the version line');
+        if (seen.scrollX > 0) throw new Error(seen.scrollX + 'px of horizontal overflow on a phone');
+        if (seen.inTable) throw new Error('an ad unit is inside #game-container');
+        if (!phoneAds.length) throw new Error('a phone made no ad request at all');
+        console.log(`         390x844: 1 banner (${seen.width}px), 0 rails, 0px overflow`);
+    } finally {
+        await phone.close();
+    }
+});
+
+await step('a live match asks for nothing', async () => {
+    // The whole reason adsConfig.js exists. Measured on the real scoring
+    // function, 50ms of jank during a slap is worth 72 points, and in
+    // multiplayer fairSlap.js gives the pile to whoever was not janked. So the
+    // claim is not "ads are tasteful during a match" — it is that the wire is
+    // silent. This counts requests across the match rather than reading the
+    // guard in ads.js, because the guard is what is being tested.
+    const before = adRequests.length;
+    const unitsBefore = await page.evaluate(async () => {
+        const { Ads } = await import('./js/ads.js');
+        window.__filledBefore = [...Ads._filled];
+        return document.querySelectorAll('ins.adsbygoogle').length;
+    });
+
+    await page.fill('#input-username', 'SmokeAds').catch(() => {});
+    await page.click('#btn-play-bots');
+    await page.waitForSelector('#game-container.active', { timeout: 15000 });
+    await page.waitForTimeout(2500);
+
+    const during = await page.evaluate(() => ({
+        units: document.querySelectorAll('ins.adsbygoogle').length,
+        inTable: document.querySelectorAll('#game-container ins.adsbygoogle').length,
+        railsVisible: [...document.querySelectorAll('.ad-rail')].filter(r => r.getClientRects().length > 0).length
     }));
-    if (seen.containers === 0) throw new Error('no ad containers in the markup at all');
-    if (seen.script) throw new Error('an ad script was injected without a publisher id');
-    if (seen.ins) throw new Error('an ad unit was created without a publisher id');
-    if (seen.filled) throw new Error(seen.filled + ' slot(s) marked filled');
-    if (seen.tallest > 1) throw new Error('an unfilled slot reserves ' + seen.tallest + 'px');
-    if (adRequests.length) throw new Error('network request to ' + adRequests[0]);
-    console.log(`         ${seen.containers} containers, 0 requests, 0px reserved`);
+    const added = adRequests.length - before;
+    if (added) {
+        const who = await page.evaluate(async () => {
+            const { Ads } = await import('./js/ads.js');
+            return [...Ads._filled].filter(s => !window.__filledBefore.includes(s));
+        });
+        // Naming WHICH screen filled turns "something asked for an ad" into a
+        // one-line diagnosis. "(none)" means the push came from outside
+        // _maybeFill's own bookkeeping, which is how a stray edit in the
+        // gameStateChanged handler showed itself.
+        throw new Error(added + ' ad request(s) during a live match; newly filled: ' +
+            (who.length ? who.join(', ') : '(none — pushed without claiming a screen)'));
+    }
+    if (during.units !== unitsBefore) throw new Error('a unit was created during a live match');
+    if (during.inTable) throw new Error('an ad unit is inside #game-container');
+    if (during.railsVisible) throw new Error(during.railsVisible + ' rail(s) still on screen over the table');
+
+    // Back to the menu the way every other step in this file does it, so the
+    // rest of the run starts clean. Not `.catch(() => {})`: a step that leaves
+    // the app on the table makes every later step fail for the wrong reason.
+    await page.evaluate(() => window.GameState.quitGame());
+    await page.click('#btn-quit');
+    await page.waitForTimeout(300);
+    await page.click('#btn-confirm-leave').catch(() => {});
+    await page.waitForSelector('#main-menu.active', { timeout: 10000 });
+    console.log(`         0 requests, 0 new units, 0 rails visible over the table`);
+});
+
+await step('the wheel pays the prize it stops on', async () => {
+    // A player found this, not a gate: the wheel stopped on one prize and paid
+    // another, every spin, six segments apart. What makes it gate-able is
+    // asking the BROWSER which segment is under the pointer — invert the
+    // canvas's live transform matrix and read the polar angle in drawWheel's
+    // own convention — instead of re-running spin()'s arithmetic and agreeing
+    // with it.
+    const results = await page.evaluate(async () => {
+        const { DailySpin } = await import('./js/dailySpin.js');
+        const canvas = document.getElementById('daily-spin-canvas');
+        const pointer = document.querySelector('.wheel-pointer');
+        if (!canvas || !pointer) throw new Error('the wheel is not in the markup');
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        function indexUnderPointer(n) {
+            const cr = canvas.getBoundingClientRect();
+            const pr = pointer.getBoundingClientRect();
+            const cx = cr.left + cr.width / 2, cy = cr.top + cr.height / 2;
+            const inv = new DOMMatrix(getComputedStyle(canvas).transform).inverse();
+            const p = inv.transformPoint(new DOMPoint((pr.left + pr.right) / 2 - cx, cr.top + 26 - cy));
+            let th = Math.atan2(p.y, p.x);
+            if (th < 0) th += 2 * Math.PI;
+            return Math.floor(th / ((2 * Math.PI) / n));
+        }
+
+        const out = [];
+        // Three indices, not all eight: enough to catch a constant offset,
+        // and each spin costs the animation's four seconds.
+        for (const want of [0, 3, 6]) {
+            localStorage.removeItem('ers_last_spin_date');
+            localStorage.removeItem('ers_spin_tier');
+            DailySpin.isSpinning = false;
+            DailySpin.open();
+            const segs = DailySpin.segments;
+            const real = Math.random;
+            Math.random = () => (want + 0.5) / segs.length;
+            DailySpin.spin();
+            Math.random = real;
+            await sleep(4400);
+            out.push({ want, saw: indexUnderPointer(segs.length),
+                       prize: `${segs[want].coins} ${segs[want].type}` });
+            DailySpin.close();
+        }
+        localStorage.removeItem('ers_last_spin_date');
+        localStorage.removeItem('ers_spin_tier');
+        return out;
+    });
+    const wrong = results.filter(r => r.saw !== r.want);
+    if (wrong.length) {
+        throw new Error(wrong.map(r =>
+            `paid segment ${r.want} (${r.prize}) but stopped on ${r.saw}`).join('; '));
+    }
+    console.log(`         3 spins, the pointer stopped on the segment that paid, every time`);
 });
 
 await step('the lobby rails are geometry, not decoration', async () => {
@@ -1655,8 +1880,11 @@ await step('the lobby rails are geometry, not decoration', async () => {
                 // window's. 484 = 300 (half column) + 24 (gap) + 160 (rail).
                 overlapsColumn: boxes.some(b => b.right > menu.left + 0.5 && b.left < menu.right - 0.5),
                 offscreen: boxes.some(b => b.left < 0 || b.right > width),
-                reserved: Math.max(0, ...[...document.querySelectorAll('.ad-rail-slot')]
-                    .map(el => el.getBoundingClientRect().height)),
+                // Height of the rails that are actually on screen. A hidden
+                // rail measures 0 whether or not it holds a unit, so this is
+                // "what the viewer's layout gives the ad", not "what exists".
+                reserved: Math.max(0, ...boxes.map(b => b.height)),
+                filled: shown.filter(r => r.querySelector('.ad-rail-slot.filled')).length,
                 scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth
             };
         }, w));
@@ -1667,7 +1895,12 @@ await step('the lobby rails are geometry, not decoration', async () => {
         if (r.shown !== want) throw new Error(`${r.width}px: ${r.shown} rail(s) visible, want ${want}`);
         if (r.overlapsColumn) throw new Error(`${r.width}px: a rail overlaps the menu column`);
         if (r.offscreen) throw new Error(`${r.width}px: a rail hangs off the window`);
-        if (r.reserved > 1) throw new Error(`${r.width}px: an unfilled rail reserves ${r.reserved}px`);
+        // A rail is either absent (0px) or exactly the shape ads.js asked the
+        // network for. 604 is the failure this caught once: an inline-block on
+        // the text baseline, four pixels of descender under a 600px unit.
+        const wantHeight = r.filled ? 600 : 0;
+        if (Math.abs(r.reserved - wantHeight) > 1)
+            throw new Error(`${r.width}px: a rail measures ${Math.round(r.reserved)}px, want ${wantHeight}px`);
         if (r.scrollX > 0) throw new Error(`${r.width}px: ${r.scrollX}px of horizontal overflow`);
     }
 
@@ -1708,7 +1941,8 @@ await step('the lobby rails are geometry, not decoration', async () => {
     if (!proof.seenWhenForced) throw new Error('the visibility predicate is blind — it cannot see a shown rail');
     await page.setViewportSize({ width: before.w, height: before.h });
     await page.waitForTimeout(120);
-    console.log(`         6 widths, rails only >=1200px, 0px reserved, 0px overflow, none stranded`);
+    const tall = rows.filter(r => r.shown).map(r => `${r.width}:${Math.round(r.reserved)}px`).join(' ');
+    console.log(`         6 widths, rails only >=1200px (${tall}), 0px overflow, none stranded`);
 });
 
 await step('the privacy panel opens, reads, and closes', async () => {
