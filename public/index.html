@@ -163,6 +163,30 @@
         </div>
     </div>
 
+    <!-- LOBBY SIDE RAILS (v3.14.0). Two vertical ad boxes in the empty gutter
+         either side of the 600px content column.
+
+         THEY MUST STAY HERE, OUTSIDE #main-menu AND IMMEDIATELY AFTER IT.
+         Outside, because #main-menu is `overflow-y: auto` — a clipping box on
+         both axes — so a child in the gutter would simply be cut off at the
+         column edge. Immediately after, because the ONLY thing that shows them
+         is `#main-menu.active ~ .ad-rail`: move them above the menu and the
+         sibling combinator stops matching and they never appear; move them
+         after another screen and they still work, but the reason they are safe
+         stops being local to read.
+
+         No script shows or hides these. That is the point: a rail cannot be
+         stranded over a live match the way v3.12.0's winner banner was, because
+         the rule that reveals it stops matching the instant the lobby stops
+         being the active screen. Empty and invisible until adsConfig.js has
+         both a publisher id and a rail slot id. -->
+    <div class="ad-rail ad-rail-left" aria-hidden="true">
+        <div class="ad-rail-slot" data-ad-screen="main-menu"></div>
+    </div>
+    <div class="ad-rail ad-rail-right" aria-hidden="true">
+        <div class="ad-rail-slot" data-ad-screen="main-menu"></div>
+    </div>
+
     <!-- PRACTICE / TUTORIAL MODE -->
     <div id="tutorial-screen" class="screen">
         <div class="tutorial-container">

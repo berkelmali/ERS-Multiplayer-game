@@ -4626,6 +4626,71 @@ body.high-legibility .stat-value {
     .ad-slot.filled { min-height: 60px; }
 }
 
+/* ---------- Lobby side rails (v3.14.0) --------------------------------- */
+/* Two 160x600 boxes in the gutter either side of the 600px content column.
+   Three rules do all the work, and each is answering something a review found:
+
+   1. HIDDEN BY DEFAULT, at every width, on every screen. The only thing that
+      turns a rail on is `#main-menu.active ~ .ad-rail` inside the min-width
+      query below. So the failure mode of ANY mistake — a screen switch that
+      forgets something, a breakpoint that stops matching, markup moved to the
+      wrong place — is "no rail", never "rail over the pile". It is also why no
+      script touches these: v3.12.0 shipped a match-scoped banner with no owner
+      to retire it, and this rail has no owner because it needs none.
+
+   2. NOT INSIDE THE COLUMN. #main-menu is `overflow-y: auto`, which clips on
+      both axes; the rails are body-level siblings and `position: fixed`, so no
+      ancestor of theirs carries a transform (`.screen` does) that would turn
+      `fixed` into `absolute` under their feet.
+
+   3. THE GUTTER IS MEASURED, NOT GUESSED. The column is 600px wide and centred,
+      so its edge sits at `50% - 300px`. A rail is 160px wide with a 24px gap:
+      300 + 24 + 160 = 484px from centre. At the 1200px breakpoint that leaves
+      116px of margin at each window edge — the rails never touch the edge and
+      never reintroduce the horizontal scrollbar v3.10.0 spent a release
+      removing.
+
+   1200px is also written in adsConfig.js as RAIL_MIN_WIDTH, and a test asserts
+   the two agree. */
+
+.ad-rail {
+    display: none;
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 160px;
+    z-index: 4;              /* under .screen (z:5): a rail can never cover the menu */
+    pointer-events: none;    /* only a filled unit takes clicks; see .ad-rail-slot */
+}
+
+.ad-rail-left  { left: calc(50% - 484px); }
+.ad-rail-right { right: calc(50% - 484px); }
+
+.ad-rail-slot {
+    width: 160px;
+    min-height: 0;           /* nothing reserved until a rail is actually filled */
+    overflow: hidden;
+    pointer-events: auto;
+}
+
+/* A filled rail sits on the game's own panel surface rather than punching a
+   rectangle out of the painting. Same tokens the other panels use, so it
+   follows the five themes instead of fighting them — the note that closed
+   v3.12.0's account card applies here too: an ad frame in its own private
+   palette is the thing that looks bolted on. */
+.ad-rail-slot.filled {
+    min-height: 600px;
+    border-radius: 10px;
+    background: var(--panel-bg);
+    box-shadow: 0 10px 30px var(--panel-shadow);
+}
+
+.ad-rail-slot .adsbygoogle { display: block; width: 160px; height: 600px; }
+
+@media (min-width: 1200px) {
+    #main-menu.active ~ .ad-rail { display: block; }
+}
+
 /* ---------- Privacy policy link and panel ------------------------------ */
 
 #game-version .link-btn {

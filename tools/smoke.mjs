@@ -1630,6 +1630,87 @@ await step('an unconfigured build is an ad-free build', async () => {
     console.log(`         ${seen.containers} containers, 0 requests, 0px reserved`);
 });
 
+await step('the lobby rails are geometry, not decoration', async () => {
+    // Everything above counts `.ad-slot`, which is the in-column banner. The
+    // rails are a different element with a different failure mode: they are
+    // `position: fixed` and live OUTSIDE the 600px column, so the two ways they
+    // go wrong are (a) covering the menu and (b) bringing back the horizontal
+    // scrollbar v3.10.0 spent a release removing. Both are geometry, and
+    // geometry can only be measured in a browser — no source scan sees either.
+    const before = { w: page.viewportSize().width, h: page.viewportSize().height };
+    const rows = [];
+    for (const [w, h] of [[1535, 900], [1366, 768], [1200, 800], [1199, 800], [768, 900], [360, 740]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(120);
+        rows.push(await page.evaluate((width) => {
+            const rails = [...document.querySelectorAll('.ad-rail')];
+            const shown = rails.filter(r => r.getClientRects().length > 0);
+            const menu = document.getElementById('main-menu').getBoundingClientRect();
+            const boxes = shown.map(r => r.getBoundingClientRect());
+            return {
+                width,
+                rails: rails.length,
+                shown: shown.length,
+                // A rail may never reach past the column's edge, nor past the
+                // window's. 484 = 300 (half column) + 24 (gap) + 160 (rail).
+                overlapsColumn: boxes.some(b => b.right > menu.left + 0.5 && b.left < menu.right - 0.5),
+                offscreen: boxes.some(b => b.left < 0 || b.right > width),
+                reserved: Math.max(0, ...[...document.querySelectorAll('.ad-rail-slot')]
+                    .map(el => el.getBoundingClientRect().height)),
+                scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth
+            };
+        }, w));
+    }
+    for (const r of rows) {
+        if (r.rails !== 2) throw new Error(`${r.width}px: expected 2 rails, found ${r.rails}`);
+        const want = r.width >= 1200 ? 2 : 0;
+        if (r.shown !== want) throw new Error(`${r.width}px: ${r.shown} rail(s) visible, want ${want}`);
+        if (r.overlapsColumn) throw new Error(`${r.width}px: a rail overlaps the menu column`);
+        if (r.offscreen) throw new Error(`${r.width}px: a rail hangs off the window`);
+        if (r.reserved > 1) throw new Error(`${r.width}px: an unfilled rail reserves ${r.reserved}px`);
+        if (r.scrollX > 0) throw new Error(`${r.width}px: ${r.scrollX}px of horizontal overflow`);
+    }
+
+    // And the part no source scan can settle: leave the lobby, and the rails
+    // must go with it. This is the v3.12.0 stranded-banner class, checked by
+    // walking rather than by reading the rule that is supposed to prevent it.
+    await page.setViewportSize({ width: 1535, height: 900 });
+    await page.waitForTimeout(120);
+    const strandedOn = [];
+    for (const [open, panel, close] of [
+        ['#btn-shop', '#shop-panel', '#btn-shop-back'],
+        ['#btn-rules', '#rules-panel', '#btn-rules-back'],
+        ['#btn-settings', '#settings-panel', '#btn-back'],
+        ['#btn-privacy', '#privacy-panel', '#btn-privacy-back']
+    ]) {
+        if (!(await page.$(open))) continue;
+        await page.click(open);
+        await page.waitForSelector(panel + '.active', { timeout: 5000 });
+        await page.waitForTimeout(120);
+        const still = await page.evaluate(() =>
+            [...document.querySelectorAll('.ad-rail')].filter(r => r.getClientRects().length > 0).length);
+        if (still) strandedOn.push(`${panel} (${still})`);
+        await page.click(close);
+        await page.waitForSelector('#main-menu.active', { timeout: 5000 });
+    }
+    if (strandedOn.length) throw new Error('a rail stayed on screen over ' + strandedOn.join(', '));
+
+    // The blindness probe: if the predicate above cannot see a rail that IS
+    // shown, every assertion in this step passed for the wrong reason.
+    const proof = await page.evaluate(() => {
+        const el = document.querySelector('.ad-rail');
+        const was = el.style.display;
+        el.style.display = 'block';
+        const seenWhenForced = el.getClientRects().length > 0;
+        el.style.display = was;
+        return { seenWhenForced, hiddenAgain: el.getClientRects().length > 0 };
+    });
+    if (!proof.seenWhenForced) throw new Error('the visibility predicate is blind — it cannot see a shown rail');
+    await page.setViewportSize({ width: before.w, height: before.h });
+    await page.waitForTimeout(120);
+    console.log(`         6 widths, rails only >=1200px, 0px reserved, 0px overflow, none stranded`);
+});
+
 await step('the privacy panel opens, reads, and closes', async () => {
     await page.click('#btn-privacy');
     await page.waitForSelector('#privacy-panel.active', { timeout: 5000 });
