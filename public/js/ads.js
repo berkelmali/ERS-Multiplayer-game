@@ -29,9 +29,15 @@
  * panel's open path — six call sites that would each have to remember this —
  * one MutationObserver watches the class attribute of the allowed screens. The
  * observer is the only wiring, so there is one place to be wrong.
+ *
+ * SIDE RAILS. The lobby also has two vertical boxes in the gutter either side
+ * of the 600px column. They are body-level siblings of #main-menu, not children
+ * of it, and CSS alone decides when they are visible — see the long note in
+ * adsConfig.js for why both of those are load-bearing. This file's only extra
+ * job is to refuse to fill a rail that is not actually on screen.
  */
 
-import { PUBLISHER_ID, AD_SCREENS, adsEnabled, screenAllowsAd, slotFor } from './adsConfig.js';
+import { PUBLISHER_ID, AD_SCREENS, adsEnabled, screenAllowsAd, slotFor, railSlotFor } from './adsConfig.js';
 import EventBus from './eventbus.js';
 
 const SCRIPT_SRC = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js';
@@ -101,29 +107,55 @@ export const Ads = {
         if (!screenAllowsAd(screenId)) return 'screen is not an ad screen';
 
         const slot = slotFor(screenId);
-        if (!slot) return 'no slot configured';
+        const railSlot = railSlotFor(screenId);
+        if (!slot && !railSlot) return 'no slot configured';
         if (this._filled.has(screenId)) return 'already filled';
 
-        const host = document.querySelector(`#${screenId} .ad-slot`);
-        if (!host) return 'no container in the markup';
+        // One screen can have more than one box: the in-column banner, and —
+        // on the lobby, on a wide window — the two gutter rails.
+        const jobs = [];
+        if (slot) {
+            const host = document.querySelector(`#${screenId} .ad-slot`);
+            if (host) jobs.push({ host, slot, format: 'auto' });
+        }
+        if (railSlot) {
+            // MEASURED, not re-derived: a rail is hidden by CSS below the
+            // breakpoint and whenever its screen is not active, and filling a
+            // box nobody can see buys an invisible impression. getClientRects()
+            // is the same "actually on screen" predicate tools/smoke.mjs uses,
+            // and it reads the stylesheet's answer instead of repeating its
+            // number here.
+            for (const host of document.querySelectorAll(`.ad-rail-slot[data-ad-screen="${screenId}"]`)) {
+                if (host.getClientRects().length > 0) jobs.push({ host, slot: railSlot, format: 'vertical' });
+            }
+        }
+        // Deliberate: this is decided ONCE, at the moment the screen is first
+        // opened. Widening the window afterwards does not add rails, because
+        // re-running fills to chase a resize is impression churn — the same
+        // AdSense policy line this file refuses to cross for screen changes.
+        if (jobs.length === 0) return 'no container in the markup';
 
         this._filled.add(screenId);
-        host.innerHTML = '';
-        const ins = document.createElement('ins');
-        ins.className = 'adsbygoogle';
-        ins.style.display = 'block';
-        ins.setAttribute('data-ad-client', PUBLISHER_ID);
-        ins.setAttribute('data-ad-slot', slot);
-        ins.setAttribute('data-ad-format', 'auto');
-        ins.setAttribute('data-full-width-responsive', 'true');
-        host.appendChild(ins);
-        host.classList.add('filled');
+        for (const job of jobs) {
+            job.host.innerHTML = '';
+            const ins = document.createElement('ins');
+            ins.className = 'adsbygoogle';
+            ins.style.display = 'block';
+            ins.setAttribute('data-ad-client', PUBLISHER_ID);
+            ins.setAttribute('data-ad-slot', job.slot);
+            ins.setAttribute('data-ad-format', job.format);
+            // Only the in-column banner may stretch; a rail that goes
+            // full-width is a rail that has left the gutter.
+            if (job.format === 'auto') ins.setAttribute('data-full-width-responsive', 'true');
+            job.host.appendChild(ins);
+            job.host.classList.add('filled');
 
-        try {
-            (window.adsbygoogle = window.adsbygoogle || []).push({});
-        } catch (e) {
-            // A blocked or failed ad is never worth breaking a menu over.
-            console.warn('[Ads] slot could not be filled', e);
+            try {
+                (window.adsbygoogle = window.adsbygoogle || []).push({});
+            } catch (e) {
+                // A blocked or failed ad is never worth breaking a menu over.
+                console.warn('[Ads] slot could not be filled', e);
+            }
         }
         return 'filled';
     }

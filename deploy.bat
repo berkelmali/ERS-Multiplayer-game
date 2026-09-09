@@ -728,6 +728,31 @@ echo.
 echo Motor, kurallar, puanlama ve Firebase islemleri EL DEGMEDI.
 echo Reklamlar hala kapali: yayinci kimligi bos oldugu surece hicbir istek yok.
 echo.
+echo ADSENSE PANELINDE YAPILMASI GEREKEN -- KODLA ZORLANAMAZ:
+echo   Otomatik reklamlar ^(Auto ads^) bu site icin KAPALI kalmali.
+echo   Acik oldugunda Google birimi sayfanin ISTEDIGI yerine koyar --
+echo   #game-container dahil, yani CANLI MASANIN uzerine. Bu tek anahtar
+echo   uc seyi ayni anda bozar:
+echo     1^) adsConfig.js'teki on ekranlik yasak listesi tamamen atlanir
+echo     2^) dort dildeki gizlilik sozu ^("mac sirasinda asla reklam yok"^)
+echo        yalan olur -- o soz 16 testle sabitlenmis durumda
+echo     3^) refleks olcumunun kendisi bozulur: olculdu, 50 ms takilma
+echo        72 puan eder; cok oyunculuda fairSlap.js yigini karsi tarafa
+echo        verir. Yani sadece puan degil, el kaybedilir.
+echo   Panel: AdSense ^> Reklamlar ^> Siteye gore ^> ers-card-game.web.app
+echo   ^> Otomatik reklamlar: KAPALI. Reklam birimleri elle yerlestirilir.
+echo.
+echo YAN RAYLAR ^(ana menunun sagi ve solu^):
+echo   Yalnizca 1200px ve uzeri pencerede, yalnizca ana menu aktifken
+echo   gorunur. Tek bir CSS kurali aciyor: #main-menu.active ~ .ad-rail
+echo   Hicbir script gosterip gizlemiyor -- v3.12.0'da ekranda kalan
+echo   kazanan bandi tam olarak "sahibi olan ama emekli edeni olmayan"
+echo   bir katmandi; bunun sahibi yok, cunku ihtiyaci yok.
+echo   600px'lik sutunun kenari merkezden 300px; ray 160px, aralik 24px;
+echo   yani 484px. 1200px'te her iki kenarda 116px bosluk kalir.
+echo   Raylar ancak adsConfig.js'te HEM yayinci kimligi HEM de
+echo   AD_RAIL_SLOT doluyken dolar; birisi bossa kutu gorunmez kalir.
+echo.
 echo DEPLOY SONRASI KONTROL (bunlar sadece tarayicida dogrulanabilir):
 echo   - Ana menude surum yazisi v3.13.0 olmali
 echo   - / yanitinda Cache-Control: no-store olmali
@@ -767,6 +792,12 @@ echo   - Botlarla oyna, 3 saplak yakala: destede 30'dan geri sayan bir
 echo     kalkan cikmali. 4. saplakta sayac 30'a GERI DONMELI.
 echo   - Masa kur, "Kodu Kopyala" ve "Davet Et" yan yana ve ikisi de calismali
 echo   - Network sekmesinde googlesyndication adresine tek istek olmamali
+echo     ^(yayinci kimligi bos oldugu surece; dolunca bu satir degisir^)
+echo   - YAN RAYLAR: pencereyi 1366px genislige getir -- menunun iki
+echo     yaninda kutular OLMAMALI ^(slot kimligi bos oldugu surece^).
+echo     Pencereyi 1199px'e daralt: hicbir sey degismemeli ve YATAY
+echo     KAYDIRMA CUBUGU CIKMAMALI. Ayarlar'i ac: yanlarda hicbir sey
+echo     kalmamali. Botlarla oyna: masanin yaninda hicbir sey olmamali.
 echo   - Cok oyunculu, 1 insan + 3 bot: insan elenince mac BITMELI
 echo     ^(botlar oynamaya devam etmemeli, kazanan ilan edilmemeli^)
 echo   - 2 insan + 2 bot: biri elenince mac DEVAM ETMELI
