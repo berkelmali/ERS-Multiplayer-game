@@ -30,6 +30,7 @@ import { AudioManager } from './audioManager.js';
 import { Localization } from './localization.js?v=3';
 import { CardSkins } from './cardSkins.js';
 import EventBus from './eventbus.js';
+import { todayKey } from './dailyScore.js';
 
 const LAST_SPIN_KEY = 'ers_last_spin_date';
 
@@ -156,9 +157,19 @@ export const DailySpin = {
         if (el) el.textContent = String(total);
     },
 
+    /**
+     * UTC, via the same `todayKey()` the Daily Challenge uses.
+     *
+     * This was `new Date().toDateString()` — LOCAL midnight — and the game
+     * already had a different answer six files away, with a comment saying
+     * why and a test named "todayKey does not drift with local time".
+     * Measured at 2026-09-09T22:30Z in Europe/Istanbul: the wheel had
+     * flipped to the 10th while the Daily Challenge was still on the 9th.
+     * Two features called "daily" in one game, resetting three hours apart.
+     */
     canSpinToday() {
         try {
-            return localStorage.getItem(LAST_SPIN_KEY) !== new Date().toDateString();
+            return localStorage.getItem(LAST_SPIN_KEY) !== todayKey();
         } catch (e) {
             return true;
         }
@@ -166,7 +177,7 @@ export const DailySpin = {
 
     consumeSpin() {
         try {
-            localStorage.setItem(LAST_SPIN_KEY, new Date().toDateString());
+            localStorage.setItem(LAST_SPIN_KEY, todayKey());
         } catch (e) { /* private mode: the spin simply is not remembered */ }
     },
 
@@ -239,9 +250,12 @@ export const DailySpin = {
         this.stopCountdown();
         const update = () => {
             if (!this.countdownEl) return;
+            // Counts to the SAME instant the gate opens at — UTC midnight,
+            // not the viewer's. A countdown to a different midnight than the
+            // one that unlocks the spin is a clock that lies.
             const now = new Date();
-            const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
-            const diffMs = midnight - now;
+            const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0);
+            const diffMs = midnight - now.getTime();
             if (diffMs <= 0) { this.stopCountdown(); this.open(); return; }
             const pad = (n) => String(n).padStart(2, '0');
             const clock = `${pad(Math.floor(diffMs / 3600000))}:${pad(Math.floor((diffMs % 3600000) / 60000))}:${pad(Math.floor((diffMs % 60000) / 1000))}`;

@@ -685,6 +685,46 @@ echo 6 mutasyon daha calistirildi, 6'si da yakalandi; 1821 test yesil.
 echo Ayrica gercek tarayicida 12 paylasim kontrolu: dort dil, 9999
 echo sizmiyor, pano kopyaliyor ve buton bunu soyluyor.
 echo.
+echo v3.13.0 -- deploy oncesi sert kontrol ^(konsey^) ve bes duzeltme:
+echo  75) MANIFEST GELDI AMA OYUN YUKLENEMIYORDU. Olculdu: assets/logo.png
+echo      298x113 -- kare degil ve Chrome'un 144px alt siniri altinda.
+echo      "sizes": "any" yalnizca SVG icin anlamli. Yani manifest servis
+echo      ediliyor, ikon yukleniyor, ve yukleme teklifi ASLA cikmiyordu.
+echo      Bu projenin imza hatasi: cizilen ama hicbir sey yapmayan kod --
+echo      ustelik bu sefer IDDIA EDILMIS haliyle: deploy sonrasi kontrol
+echo      listesine "ana ekrana ekle gelmeli" diye, gecmesi imkansiz bir
+echo      dogrulama adimi yazmisim. Sekiz kapinin hicbiri bir PNG
+echo      basligini okumuyor. Duzeltme: logo marka zeminine ortalanip
+echo      192x192, 512x512 ve 512x512 maskable ikonlar uretildi.
+echo  76) IKI "GUNLUK" OZELLIK FARKLI ANDA SIFIRLANIYORDU. Cark
+echo      new Date^(^).toDateString^(^) -- YEREL gece yarisi; Gunluk Meydan
+echo      Okuma ise dailyScore.todayKey^(^) -- UTC, hem de "todayKey yerel
+echo      saatle kaymaz" adli bir testle sabitlenmis. Olculdu, Istanbul
+echo      saatiyle 01:30'da: cark 10'una gecmis, gunluk hala 9'unda. Cark
+echo      artik ayni todayKey^(^)'i kullaniyor; geri sayim da ayni ana
+echo      sayiyor ^(farkli bir gece yarisina sayan sayac yalan soyler^).
+echo  77) TEK SAPLAK UC KEZ DUYURULUYORDU. Olculdu: bir slapPhotoFinish
+echo      olayinda 2.8rem buyuk harf orta ekran toast'i ^(z9998, y377-523^)
+echo      ve yeni foto finis bandi ^(z9997, y196-236^) AYNI ANDA, ayni
+echo      cumleyi, kirk piksel arayla; ustune log satiri. #notifications
+echo      bu oyunun EN YUKSEK sesli kanali ve kazanan ile baglanti kopmasi
+echo      icin ayrilmis; foto finis ikisinden de kucuk. Toast kaldirildi,
+echo      band ve log kaldi.
+echo  78) STIL SAYFASINDAKI BIR YORUM SAYIYI HATIRLAYARAK YAZMIS.
+echo      overflow-x: clip gerekcesi "bu dosyada on bir fixed katman var"
+echo      diyordu. Olculdu: dokuz body seviyesi katman, yedisi fixed,
+echo      ikisi ^(#confirm-modal, #invite-modal^) absolute. Mekanik olarak
+echo      denetlenen bir dosyada hafizadan yazilmis bir sayi.
+echo  79) Ve surum notu carki "gunluk limit" gibi anlatiyordu. Degil:
+echo      istemci tarafinda bir tarih anahtari. Olculdu -- anahtari silip
+echo      ust uste uc kez cevirmek 30 altin verdi. Altinlar yalnizca
+echo      localStorage'da, Firestore'a hic gitmiyor, yani kimseyi
+echo      etkilemiyor; ama notun bunu limit diye anlatmasi dogru degildi.
+echo.
+echo Konsey karari: 5/5 yeter sayi, 3 Kismen Savunulabilir / 2
+echo Savunulamaz, guc: Guclu. Iki muhalif yargic da itirazini TEK bir
+echo bulguya ^(75^) baglamis ve cozulunce oyunun degisecegini soylemis.
+echo.
 echo Motor, kurallar, puanlama ve Firebase islemleri EL DEGMEDI.
 echo Reklamlar hala kapali: yayinci kimligi bos oldugu surece hicbir istek yok.
 echo.
@@ -799,8 +839,13 @@ echo   - Botlarla oyna, cok yakin bir saplak yarisi kazan: ekranin ust
 echo     ortasinda "FOTO FINIS" bandi cikmali ve 2.4 saniyede kendisi
 echo     kaybolmali. Menuye donunce EKRANDA KALMAMALI
 echo   - 3 saplak ust uste yakala: desten ALEVLI parlamali
-echo   - Telefonda "Ana ekrana ekle": uygulama adi ve ikonu gelmeli,
-echo     acilista adres cubuksuz tam ekran olmali
+echo   - Telefonda "Ana ekrana ekle" / Chrome'da adres cubugundaki Yukle:
+echo     uygulama adi ERS Cards, ikon KARE ve altin wordmark olmali,
+echo     acilista adres cubuksuz tam ekran. GELMEZSE bana bildir --
+echo     ikon 512x512 kare olmadan Chrome yukleme teklifi ETMEZ ve
+echo     v3.13.0'in ilk hali tam olarak bu yuzden yuklenemiyordu.
+echo     NOT: service worker YOK, yani yuklu uygulama da CEVRIMDISI
+echo     CALISMAZ -- baglanti ister. Bu bilerek boyle ^(68. maddeye bak^).
 echo   - MEYDAN OKU ^(yeni^): bir mac bitir, zafer ekraninda "Arkadasina
 echo     meydan oku" butonuna bas. Telefonda paylasim sayfasi acilmali;
 echo     masaustunde metin PANOYA kopyalanmali ve buton "Meydan okuma

@@ -6214,8 +6214,17 @@ body.menu-screen #parallax-bg { background-position: center 15%; }
    opening the wheel AT those widths — the only path that reproduces it is
    resizing down from a wide window, which is a desktop gesture, not a phone
    one. `clip` rather than `hidden` on purpose: `hidden` would make <html> a
-   scroll container and change how `position: fixed` resolves, and this file
-   has eleven fixed overlays that depend on it not changing. */
+   scroll container and change how `position: fixed` resolves.
+
+   COUNTED, not remembered — the first draft of this comment stated a number
+   from memory, in a file this project audits mechanically, and the number
+   was wrong. There are NINE body-level overlays at runtime. Eight are static
+   in index.html; #error-modal is the ninth and errorScreen.js creates it,
+   which is why counting the markup alone gives eight. Seven resolve to
+   `fixed` (#notifications, #photo-finish-banner, #loading-overlay,
+   #connection-banner, #daily-spin-modal, #error-modal, #boot-error). Two are
+   `absolute` (#confirm-modal, #invite-modal) — measured in the browser, not
+   inferred from the stylesheet. */
 html { overflow-x: clip; }
 
 
