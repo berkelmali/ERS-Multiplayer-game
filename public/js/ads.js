@@ -42,12 +42,21 @@ import EventBus from './eventbus.js';
 
 const SCRIPT_SRC = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js';
 
+/**
+ * The narrowest width worth asking a responsive unit to fill. AdSense's own
+ * smallest standard display unit is 120px wide; below that it has nothing to
+ * return and says so by throwing.
+ */
+const MIN_AD_WIDTH = 120;
+
 export const Ads = {
     _initialized: false,
     /** Slots already filled this page load; a slot appears here exactly once. */
     _filled: new Set(),
     /** True from the moment a match starts until the player is back on a menu. */
     _inPlay: false,
+    /** Screens whose boxes had no width yet, keyed to the observer waiting. */
+    _pendingWidth: new Map(),
     _observer: null,
 
     init() {
@@ -111,35 +120,55 @@ export const Ads = {
         if (!slot && !railSlot) return 'no slot configured';
         if (this._filled.has(screenId)) return 'already filled';
 
-        // ON SCREEN, MEASURED — one predicate, every box, no exceptions.
+        // WIDE ENOUGH TO ASK FOR AN AD — one predicate, every box, no exceptions.
         //
-        // The lobby carries two kinds of box and shows exactly one of them: the
-        // side rails on a wide window, its in-column banner on a narrow one.
-        // Which is which lives in the stylesheet, and this asks the stylesheet
-        // rather than repeating RAIL_MIN_WIDTH here — a number written twice is
-        // a number that drifts, and the drift would show up as an ad request
-        // for a box no player can see, which is an invisible impression.
+        // v3.14.1 asked only `getClientRects().length > 0`, which answers "is
+        // this display:none" and nothing else. Measured on the live site in a
+        // zero-width browser pane: the lobby banner had ONE client rect — it
+        // has height from `min-height` — and a width of 0, so it passed, and
+        // AdSense answered with
         //
-        // It is also why this is applied to the banner and not only to the
-        // rails: `display: none` on the banner above the breakpoint would
-        // otherwise hide it from the player and not from AdSense.
-        const onScreen = el => el.getClientRects().length > 0;
+        //     TagError: adsbygoogle.push() error: No slot size for availableWidth=0
+        //
+        // That is not a cosmetic error. `_filled` is added before the units are
+        // created, so the screen had spent its one fill on a request the ad
+        // network refused, and no later layout could get it back.
+        //
+        // The question AdSense actually asks is how WIDE the box is, so that is
+        // the question asked here — against the shape being requested, not a
+        // number invented for the occasion: a rail must fit its 160, a
+        // responsive banner must clear the narrowest standard display unit.
+        //
+        // The predicate still covers the original job. `display: none` gives no
+        // client rects, so the banner above RAIL_MIN_WIDTH and the rails below
+        // it are refused exactly as before — the stylesheet is still the one
+        // deciding which of the two the lobby shows, and this file still does
+        // not repeat its breakpoint.
+        const usable = (el, need) =>
+            el.getClientRects().length > 0 && el.getBoundingClientRect().width >= need;
 
         const jobs = [];
         if (slot) {
             const host = document.querySelector(`#${screenId} .ad-slot`);
-            if (host && onScreen(host)) jobs.push({ host, slot });
+            if (host && usable(host, MIN_AD_WIDTH)) jobs.push({ host, slot });
         }
         if (railSlot) {
             for (const host of document.querySelectorAll(`.ad-rail-slot[data-ad-screen="${screenId}"]`)) {
-                if (onScreen(host)) jobs.push({ host, slot: railSlot, fixed: RAIL_SIZE });
+                if (usable(host, RAIL_SIZE.w)) jobs.push({ host, slot: railSlot, fixed: RAIL_SIZE });
             }
         }
         // Deliberate: this is decided ONCE, at the moment the screen is first
         // opened. Widening the window afterwards does not add rails, because
         // re-running fills to chase a resize is impression churn — the same
         // AdSense policy line this file refuses to cross for screen changes.
-        if (jobs.length === 0) return 'no container in the markup';
+        //
+        // A box with no width yet is the one exception, and it is not a resize:
+        // nothing was filled, nothing was marked, and the screen is owed a fill
+        // it never got. _watchForWidth completes that one, once.
+        if (jobs.length === 0) {
+            this._watchForWidth(screenId);
+            return 'no usable box yet';
+        }
 
         this._filled.add(screenId);
         for (const job of jobs) {
@@ -177,5 +206,43 @@ export const Ads = {
             }
         }
         return 'filled';
+    },
+
+    /**
+     * Fill a screen ONCE, when its boxes first have a real width.
+     *
+     * Not a resize handler. It exists for one situation: a screen was opened,
+     * its boxes were there, and they had no width yet — a tab restored in the
+     * background, a pane that has not been laid out. Nothing was filled and
+     * nothing was marked, so the screen is still owed its single fill, and
+     * without this it would never get one: `_maybeFill` runs at boot and on a
+     * screen becoming active, and neither happens again for a lobby that is
+     * already the active screen.
+     *
+     * It disconnects the moment it succeeds, and refuses to arm twice, so it
+     * cannot become the impression churn the comment above rules out.
+     */
+    _watchForWidth(screenId) {
+        if (this._pendingWidth.has(screenId)) return 'already waiting';
+        if (typeof ResizeObserver !== 'function') return 'no ResizeObserver';
+
+        const hosts = [
+            document.querySelector(`#${screenId} .ad-slot`),
+            ...document.querySelectorAll(`.ad-rail-slot[data-ad-screen="${screenId}"]`)
+        ].filter(Boolean);
+        if (hosts.length === 0) return 'no container in the markup';
+
+        const stop = () => {
+            const ro = this._pendingWidth.get(screenId);
+            if (ro) ro.disconnect();
+            this._pendingWidth.delete(screenId);
+        };
+        const observer = new ResizeObserver(() => {
+            if (this._filled.has(screenId)) return stop();
+            if (this._maybeFill(screenId) === 'filled') stop();
+        });
+        this._pendingWidth.set(screenId, observer);
+        for (const host of hosts) observer.observe(host);
+        return 'waiting for a width';
     }
 };
