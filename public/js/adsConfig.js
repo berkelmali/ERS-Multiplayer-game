@@ -25,7 +25,9 @@
 /**
  * Your AdSense publisher id, e.g. 'ca-pub-1234567890123456'.
  *
- * LIVE since v3.14.0, after the site was approved. It was empty through six
+ * Enabled since v3.14.0. Enabling requests does not mean the site is approved:
+ * on 2026-09-10 the owner reported AdSense status "Getting ready" and live
+ * units returned "unfilled". It was empty through six
  * releases on purpose: while empty, `ads.js` loads nothing at all — no script
  * tag, no network request, no cookie — because a placeholder tag on a live
  * site is a bad look during AdSense review, and an unconfigured slot is just

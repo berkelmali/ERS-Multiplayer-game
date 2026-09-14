@@ -1687,11 +1687,99 @@ await step('ads land on menus, and on no measured screen', async () => {
         if (r.w !== '160px' || r.h !== '600px') throw new Error(`a rail is ${r.w} x ${r.h}, want 160px x 600px`);
     }
     for (const b of seen.units.filter(u => !String(u.where).startsWith('RAIL:'))) {
-        if (b.format !== 'auto') throw new Error(`the banner on ${b.where} asked for ${b.format}`);
+        if (b.format !== 'horizontal') throw new Error(`the banner on ${b.where} asked for ${b.format}`);
+        if (b.fullWidth !== 'false') throw new Error(`the banner on ${b.where} can escape its padded column`);
         if (b.w || b.h) throw new Error(`the banner on ${b.where} was given a fixed size`);
     }
     if (!adRequests.length) throw new Error('ads are on and nothing was ever requested');
     console.log(`         ${seen.units.length} units (${rails.length} rails), 1 script, 0 on a measured screen`);
+});
+
+await step('no panel puts a control outside its own box', async () => {
+    // v3.14.4, found on the LIVE site at 1536px with the Slap IQ panel open:
+    //
+    //     #slapiq-panel        600 wide
+    //     .slapiq-actions      558 wide, display:flex, direction ROW
+    //       button reset       190
+    //       .ad-slot           558   <- width:100% of the row, flex-shrink:0
+    //       button back        111 , at x = 1252 — 294px OUTSIDE the panel
+    //
+    // The ad box had been wedged BETWEEN the two buttons since v3.0.0. In a row
+    // its `width: 100%` is a WIDTH, so the row always wanted 859px of the 558 it
+    // had; nothing showed because the box could still shrink. v3.14.3 set
+    // `flex: 0 0 auto` — right for the column it was written for, fatal here —
+    // and the Back button left the panel.
+    //
+    // The assertion is deliberately not about ads. A panel is a box; nothing
+    // inside it may stick out of it. That catches this and every other break of
+    // the same shape, including in panels that have no ad at all.
+    const seen = await page.evaluate(() => {
+        const ids = ['shop-panel', 'rules-panel', 'slapiq-panel', 'leaderboard-panel',
+                     'about-panel', 'account-panel', 'settings-panel', 'privacy-panel'];
+        const active = [...document.querySelectorAll('.screen.active')].map(s => s.id);
+        const report = [];
+        for (const id of ids) {
+            const p = document.getElementById(id);
+            if (!p) continue;
+            document.querySelectorAll('.screen.active').forEach(s => s.classList.remove('active'));
+            p.classList.add('active');
+            void p.offsetHeight;
+            const pb = p.getBoundingClientRect();
+            let worst = null;
+            for (const el of p.querySelectorAll('*')) {
+                let b = el.getBoundingClientRect();
+                if (b.width === 0 && b.height === 0) continue;
+                // What the player can SEE, not what the box model says. A
+                // decorative sheen deliberately wider than the tile it sweeps
+                // is not a defect: the tile's `overflow: hidden` already cuts
+                // it. So intersect with every clipping ancestor first — the
+                // shop's .card-skin-shimmer is exactly this case, and without
+                // this the step reports 68px of overflow that nobody can see.
+                let clipped = false;
+                // Up to but NOT including the panel: the panel's own clipping
+                // is what this step is measuring against, so letting it into
+                // the intersection would make the assertion unfailable.
+                for (let a = el.parentElement; a && a !== p; a = a.parentElement) {
+                    if (getComputedStyle(a).overflow === 'visible') continue;
+                    const ab = a.getBoundingClientRect();
+                    const left = Math.max(b.left, ab.left), right = Math.min(b.right, ab.right);
+                    const top = Math.max(b.top, ab.top), bottom = Math.min(b.bottom, ab.bottom);
+                    if (right <= left || bottom <= top) { clipped = true; break; }
+                    b = { left, right, top, bottom, width: right - left, height: bottom - top };
+                }
+                if (clipped) continue;
+                // Sideways only: a panel scrolls vertically on purpose.
+                const over = Math.round(Math.max(b.right - pb.right, pb.left - b.left));
+                if (over > 2 && (!worst || over > worst.over)) {
+                    worst = { over, el: el.tagName.toLowerCase()
+                        + (el.id ? '#' + el.id : '')
+                        + (typeof el.className === 'string' && el.className
+                            ? '.' + el.className.trim().split(/\s+/).join('.') : '') };
+                }
+            }
+            const ad = p.querySelector('.ad-slot');
+            const par = ad && ad.parentElement;
+            const ps = par && getComputedStyle(par);
+            report.push({ id, width: Math.round(pb.width), worst,
+                adParentIsRow: !!(ps && ps.display.includes('flex') && !ps.flexDirection.startsWith('column')) });
+        }
+        document.querySelectorAll('.screen.active').forEach(s => s.classList.remove('active'));
+        for (const id of active) { const el = document.getElementById(id); if (el) el.classList.add('active'); }
+        return report;
+    });
+
+    const spilled = seen.filter(s => s.worst);
+    if (spilled.length) {
+        const w = spilled[0];
+        throw new Error(`${w.id}: ${w.worst.el} hangs ${w.worst.over}px outside a ${w.width}px panel`);
+    }
+    // The cause, pinned apart from the symptom: a box whose width is 100% and
+    // whose shrink factor is 0 cannot be a flex-ROW item.
+    const inRow = seen.filter(s => s.adParentIsRow);
+    if (inRow.length)
+        throw new Error(`the ad box on ${inRow.map(s => s.id).join(', ')} is a flex-ROW item: `
+            + 'its 100% width is a width there, and it will push its siblings out');
+    console.log(`         ${seen.length} panels, nothing outside its box, no ad box in a row`);
 });
 
 await step('a phone gets the lobby banner, and no rails', async () => {
@@ -1746,6 +1834,37 @@ await step('a phone gets the lobby banner, and no rails', async () => {
     } finally {
         await phone.close();
     }
+});
+
+await step('a mobile creative keeps its full height after AdSense rewrites the host', async () => {
+    const mobile = await ctx.newPage();
+    try {
+        await mobile.setViewportSize({ width: 375, height: 812 });
+        await mobile.goto(base + '/', { waitUntil: 'domcontentloaded' });
+        await mobile.waitForSelector('#main-menu ins.adsbygoogle', { state: 'attached' });
+        // The ad network is stubbed. Reproduce its observed DOM writes without
+        // requesting real impressions, and exercise both banner and square fill.
+        for (const height of [100, 375]) {
+            const box = await mobile.evaluate((height) => {
+                const host = document.querySelector('#main-menu .ad-slot');
+                const ins = host.querySelector('ins');
+                host.style.setProperty('height', 'auto', 'important');
+                host.style.setProperty('min-height', '0', 'important');
+                ins.style.height = height + 'px';
+                ins.style.width = '100%';
+                ins.setAttribute('data-ad-status', 'filled');
+                const h = host.getBoundingClientRect();
+                const i = ins.getBoundingClientRect();
+                const footer = document.getElementById('game-version').getBoundingClientRect();
+                return { hostHeight: h.height, adHeight: i.height,
+                    inside: i.left >= h.left - 1 && i.right <= h.right + 1,
+                    below: footer.top >= i.bottom - 1,
+                    overflow: document.documentElement.scrollWidth - innerWidth };
+            }, height);
+            if (box.hostHeight < height - 1 || box.adHeight < height - 1 || !box.inside || !box.below || box.overflow > 1)
+                throw new Error('creative clipped or overlapped: ' + JSON.stringify(box));
+        }
+    } finally { await mobile.close(); }
 });
 
 await step('a zero-width lobby does not burn its one fill', async () => {

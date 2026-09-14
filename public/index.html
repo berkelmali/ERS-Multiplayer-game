@@ -28,7 +28,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.14.2">
+    <link rel="stylesheet" href="style.css?v=3.14.4">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0) — must stay INLINE and must stay in <head>.
@@ -157,7 +157,7 @@
         <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
              never on a screen where anything is being timed — see adsConfig.js. -->
         <div class="ad-slot" aria-hidden="true"></div>
-        <div id="game-version">Berk Elmalı · v3.14.2
+        <div id="game-version">Berk Elmalı · v3.14.4
             <button id="btn-about" class="link-btn" data-i18n="aboutButton">About</button>
             <button id="btn-privacy" class="link-btn" data-i18n="privacyButton">Privacy</button>
         </div>
@@ -259,11 +259,19 @@
     <div id="slapiq-panel" class="screen scrollable-screen">
         <h2 data-i18n="slapIqTitle">🧠 Slap IQ</h2>
         <div id="slapiq-body" class="rules-content" style="text-align:left;"></div>
+        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
+             never on a screen where anything is being timed — see adsConfig.js.
+             v3.14.4: this used to sit BETWEEN the two buttons, inside
+             .slapiq-actions, which is a flex ROW. In a row the box's 100% width
+             is a WIDTH, so the row measured 190 + 558 + 111 against 558px of
+             space and pushed the Back button 294px outside the panel. It was
+             invisible while .ad-slot could shrink; v3.14.3 stopped it shrinking
+             — correctly, for the column it was written for — and the row broke.
+             Every other panel puts the unit here, between the content and the
+             buttons, as a child of the panel COLUMN. So does this one now. -->
+        <div class="ad-slot" aria-hidden="true"></div>
         <div class="slapiq-actions">
             <button id="btn-slapiq-reset" class="btn secondary" data-i18n="slapIqReset">Reset stats</button>
-        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
-             never on a screen where anything is being timed — see adsConfig.js. -->
-        <div class="ad-slot" aria-hidden="true"></div>
             <button id="btn-slapiq-back" class="btn secondary" data-i18n="back">Back</button>
         </div>
     </div>
@@ -1091,7 +1099,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.14.2"></script>
+    <script type="module" src="js/main.js?v=3.14.4"></script>
 </body>
 
 </html>

@@ -4612,7 +4612,11 @@ body.high-legibility .stat-value {
     max-width: 728px;
     margin: 14px auto 4px;
     min-height: 0;              /* nothing reserved until a slot is actually filled */
-    overflow: hidden;
+    /* AdSense can set height:auto!important and min-height:0!important.
+       Keep the actual creative's natural height in the flex column rather
+       than shrinking its host into the space left by the menu controls. */
+    flex: 0 0 auto;
+    overflow: visible;
 }
 
 .ad-slot.filled {
@@ -4621,6 +4625,16 @@ body.high-legibility .stat-value {
 }
 
 .ad-slot .adsbygoogle { display: block; width: 100%; }
+
+/* A responsive creative can be taller than the viewport's remaining room.
+   Keep the footer after it in document flow, including on tall phones where
+   the old short-screen-only footer rule did not apply. */
+#main-menu > .ad-slot.filled + #game-version {
+    position: static;
+    flex: 0 0 auto;
+    margin: 20px auto 0;
+    text-align: center;
+}
 
 @media (max-width: 480px) {
     .ad-slot.filled { min-height: 60px; }
