@@ -3,7 +3,7 @@
     "lobbyRooms": {
       "$tableId": {
         ".read": "auth != null",
-        ".write": "auth != null && (!data.exists() || data.child('hostId').val() === auth.uid || data.child('playerIds').child(auth.uid).exists() || newData.child('hostId').val() === auth.uid || newData.child('playerIds').child(auth.uid).exists())",
+        ".write": "auth != null && (!data.exists() ? (newData.child('hostId').val() === auth.uid && newData.child('playerIds').child(newData.child('hostId').val()).exists()) : (!newData.exists() ? (data.child('hostId').val() === auth.uid || data.child('playerIds').child(auth.uid).exists()) : ((data.child('hostId').val() === auth.uid || data.child('playerIds').child(auth.uid).exists() || (data.child('gameState').child('status').val() === 'waiting' && newData.child('playerIds').child(auth.uid).exists())) && newData.child('tableId').val() === data.child('tableId').val() && newData.child('playerIds').child(newData.child('hostId').val()).exists())))",
         "players": {
           ".validate": "newData.hasChildren()"
         }
