@@ -192,8 +192,10 @@ export const Ads = {
                 ins.style.height = job.fixed.h + 'px';
             } else {
                 ins.style.display = 'block';
-                ins.setAttribute('data-ad-format', 'auto');
-                ins.setAttribute('data-full-width-responsive', 'true');
+                // Keep the unit inside the padded, scrollable menu column.
+                // Full-width expansion can escape that column and be clipped.
+                ins.setAttribute('data-ad-format', 'horizontal');
+                ins.setAttribute('data-full-width-responsive', 'false');
             }
             job.host.appendChild(ins);
             job.host.classList.add('filled');

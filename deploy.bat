@@ -891,6 +891,33 @@ echo icinde: o anda getClientRects^(^) BIR dikdortgen donduruyordu --
 echo yani eski yuklem "evet" derdi.
 echo   2060 test, 8 kaynak kapisi, smoke yesil.
 echo   14/14 mutant yakalandi.
+echo.
+echo  98) v3.14.4 -- SLAP IQ PANELINDE "GERI" DUGMESI PANELIN DISINDA.
+echo      Canlida olculdu, 1536px, Slap IQ acik:
+echo        #slapiq-panel    600 genis
+echo        .slapiq-actions  558 genis, display:flex, yon SATIR
+echo          buton sifirla  190
+echo          .ad-slot       558  ^<- satirda "width:100%%" bir GENISLIKTIR
+echo          buton geri     111 , x = 1252 -- panelin 294px DISINDA
+echo      Reklam kutusu v3.0.0'dan beri iki dugmenin ARASINDA duruyordu.
+echo      Gorunmuyordu, cunku kutu hala buzusebiliyordu: satir onu
+echo      eziyor, dugmeler yerinde kaliyordu. v3.14.3 kutuya
+echo      "flex: 0 0 auto" verdi -- yazildigi SUTUN icin dogru, satir
+echo      icin olumcul -- ve Geri dugmesi panelden cikti. Tek ozellik,
+echo      iki farkli ebeveyn, zit anlamlar.
+echo.
+echo  99) Duzeltme isaretlemede, CSS'te degil: reklam kutusu artik
+echo      .slapiq-actions'in DISINDA, icerik ile dugme satiri arasinda,
+echo      panel SUTUNUNUN cocugu olarak -- diger her panelde oldugu gibi.
+echo      CSS'e dokunulmadi, sitenin genel yapisi ayni.
+echo.
+echo      Iki yeni kontrol: test bolum 63 isaretlemeyi tariyor ve hicbir
+echo      reklam kutusunun satir-flex bir ebeveyni olmadigini dogruluyor
+echo      ^(4 mutant, 4'u de yakalandi^); smoke sekiz paneli tek tek acip
+echo      "panelin disina tasan hicbir sey yok" diyor -- kirpan atalari
+echo      hesaba katarak, yani magazadaki suslu parilti yanlis alarm
+echo      vermiyor.
+echo   2074 test, 9 kaynak kapisi, smoke yesil ^(8 panel temiz^).
 echo ================================================================
 echo.
 echo ADSENSE PANELINDE YAPILMASI GEREKEN -- KODLA ZORLANAMAZ:
@@ -922,7 +949,10 @@ echo   AD_RAIL_SLOT = '' sadece raylari kapatir. Iki durumu da olcen
 echo   testler hala calisiyor.
 echo.
 echo DEPLOY SONRASI KONTROL (bunlar sadece tarayicida dogrulanabilir):
-echo   - Ana menude surum yazisi v3.14.2 olmali
+echo   - Ana menude surum yazisi package.json'daki surumle AYNI olmali
+echo     ^(bu satir bilerek bir surum numarasi YAZMIYOR: uc surum boyunca
+echo      v3.14.2'de kaldi ve kimse fark etmedi -- kendi kendini eskiten
+echo      bir kontrol, kontrol degildir^)
 echo   - / yanitinda Cache-Control: no-store olmali
 echo   - HESAP PANELI ^(bu surumun ana isi^): giris yap, sonra bak --
 echo     amblem ALTIN HALKALI YUVARLAK olmali, 12px bir maca isareti degil
