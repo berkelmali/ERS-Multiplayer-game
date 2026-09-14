@@ -920,6 +920,100 @@ echo      vermiyor.
 echo   2074 test, 9 kaynak kapisi, smoke yesil ^(8 panel temiz^).
 echo ================================================================
 echo.
+echo ================================================================
+echo v3.15.0 -- LOBI KURALI, YAZILMAK ISTENEN VERIYE BAKIP KARAR
+echo VERIYORDU. Bu surum HOSTING'de davranis degistirmiyor; sadece
+echo surum etiketi ve testler. Asil is database.rules.json'da ve
+echo AYRI bir komutla gidiyor:   deploy-db-rules.bat
+echo.
+echo  100^) Gonderilen kural soyle bitiyordu:
+echo         ... ^|^| newData.child^('hostId'^).val^(^) === auth.uid
+echo         ... ^|^| newData.child^('playerIds'^).child^(auth.uid^).exists^(^)
+echo       newData = YAZILMAK ISTENEN veri. Yani uid'sini hostId
+echo       alanina koyan bir yazma, o yazmaya izin verilip
+echo       verilmeyecegine karar eden kontrolu KENDI geciriyordu.
+echo       Giris yapmis HERHANGI biri, hic katilmadigi bir masayi,
+echo       MAC SIRASINDA bile, komple uzerine yazabiliyordu --
+echo       gameState.roomId dahil, ki diger istemciler oyun odasina
+echo       onu takip ederek giriyor.
+echo.
+echo  101^) Yeni kural uc dal:
+echo         OLUSTURMA ^(veri yok^)      -- ancak kendini host yazarak
+echo         SILME     ^(yeni veri yok^) -- host ya da masada oturan
+echo         GUNCELLEME                -- host, masada oturan, ya da
+echo           masa hala 'waiting' iken kendini EKLEYEN biri ^(gercek
+echo           katilim^). Ustune tableId degismez, ve yazmanin host
+echo           ilan ettigi kisi masada oturuyor olmak zorunda.
+echo       Yetki artik `data`dan okunuyor; `newData` yalnizca "bu bir
+echo       katilim mi" sorusunu cevapliyor.
+echo.
+echo  102^) YENI KAPI 10/10: tools/rules-test.mjs -- bu projede
+echo       kurallari OKUMAK yerine CALISTIRAN ilk kapi. Gercek
+echo       Firebase emulator'unde, sifir yeni bagimlilikla ^(REST ve
+echo       emulator'un kabul ettigi imzasiz token^). Uc sey yapiyor:
+echo         a. ONCE KENDINI SINIYOR: izin verilen ve reddedilen bir
+echo            yazmayi ayirt edebildigini kanitlamadan hicbir kurali
+echo            yargilamiyor. Token sahteciligi calismasaydi her
+echo            iddia BOSA gecerdi -- v3.7.7'nin hic calismayan
+echo            kapisi tam olarak buydu.
+echo         b. 16 senaryo: cumleler, boolean'lar degil.
+echo         c. 6 MUTANT: kuralin kasten bozulmus kopyalari.
+echo            Yakalanmayan bir mutant varsa kapi DUSER.
+echo       deploy-db-rules.bat once bu kapiyi kosuyor; kapi dusekse
+echo       deploy hic baslamiyor.
+echo.
+echo  103^) Ve Java'siz yari: test bolum 64, her `npm test`te.
+echo       Diskteki kural, tools/lobby-rule.mjs'teki adlandirilmis
+echo       parcalardan olusan ifadeyle BIREBIR ayni olmali. Boylece
+echo       JSON'daki tek satirlik boolean ile testlerin akil
+echo       yurutttugu ifade birbirinden kayamiyor.
+echo       6 mutasyon calistirildi, 6'si da yakalandi.
+echo.
+echo DURUST SINIR -- BU SURUM COK OYUNCULUYU GUVENLI YAPMAZ:
+echo   Kapatilan sey lobi ele gecirme. gameRooms kurali DEGISMEDI ve
+echo   hala soyle: odada oturan her oyuncu odanin TAMAMINI yazabilir
+echo   -- baskasinin eli, yigin, winnerId dahil. Bu bilerek boyle
+echo   birakildi: host-yetkili bir gameRooms, bugun OLMAYAN bir tek
+echo   ariza noktasi yaratir ^(host'un sekmesi arka plana atilirsa
+echo   mac durur^) ve kendi turunu hak ediyor. Bir test bunu OLUMSUZ
+echo   bicimde sabitliyor, ki bu surum oldugundan buyuk anlatilmasin.
+echo   KALAN RISK: masa kodunu bilen biri, masa 'waiting' iken
+echo   bekleme odasini hala karistirabilir. Ele gecirme degil,
+echo   karistirma.
+echo ================================================================
+echo.
+echo.
+echo ================================================================
+echo v3.15.1 -- YENI KURALIN YAKALADIGI ILK SEY KENDI ISTEMCIMIZ OLDU.
+echo.
+echo  104^) Canlida bildirildi: host olarak "Masadan Ayril"a basinca
+echo       PERMISSION_DENIED cikti, ikinci basista gecti gibi gorundu.
+echo       Sebep: leaveTable TEK bir gecis icin IKI yazma yapiyordu.
+echo       Birincisi ^(handlePlayerDisconnect^) hostlugu devrediyor ve
+echo       bekleme odasinda bizi players listesinden CIKARIYOR.
+echo       Ikincisi masayi tekrar yaziyordu -- yani masanin artik
+echo       listelemedigi bir istemci masayi duzenliyordu. v3.15.0
+echo       kurali bunu reddetti ve REDDETMEKTE HAKLIYDI. Ikinci
+echo       basista "calismis" gorunmesinin sebebi de yapacak bir sey
+echo       kalmamasiydi.
+echo.
+echo  105^) Duzeltme kuralda degil istemcide: her iki ayrilma dali da
+echo       yazmadan ONCE hala masada oturup oturmadigini kontrol
+echo       ediyor. MAC SIRASINDA handlePlayerDisconnect bizi silmek
+echo       yerine 'disconnected' isaretledigi icin oradaki kaldirma
+echo       hala is yapiyor -- o yuzden bu bir silme degil, bir bekci.
+echo.
+echo       DURUST SINIR: emulator kapisi bunu YAKALAYAMAZDI. O kapi
+echo       KURALI, elle yazilmis yazmalara karsi sinar; UYGULAMANIN
+echo       yaptigi yazma SIRASINI degil. Bu gercek bir bosluk. Onu
+echo       kapatacak sey smoke'u emulator'e baglamak, ve o kendi
+echo       turunu hak ediyor. Simdilik bolum 64, iki ayrilma dalinin
+echo       da bekcisiz yazamayacagini sabitliyor ^(3 mutasyon, 3'u de
+echo       yakalandi^) ve rules-test'e o yazmanin reddedildigini
+echo       soyleyen bir senaryo eklendi.
+echo   2136 test, 9 kaynak kapisi, smoke yesil; kural kapisi 25/25.
+echo ================================================================
+echo.
 echo ADSENSE PANELINDE YAPILMASI GEREKEN -- KODLA ZORLANAMAZ:
 echo   Otomatik reklamlar ^(Auto ads^) bu site icin KAPALI kalmali.
 echo   Acik oldugunda Google birimi sayfanin ISTEDIGI yerine koyar --

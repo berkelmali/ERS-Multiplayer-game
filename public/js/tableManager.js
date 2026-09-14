@@ -464,6 +464,26 @@ export const TableManager = {
                     const snapCheck = await getDoc(tableRef);
                     if (snapCheck.exists()) {
                         const latestData = snapCheck.data();
+                        // v3.15.1 — LEAVING IS ONE TRANSITION, AND THIS WAS THE
+                        // SECOND WRITE OF IT.
+                        //
+                        // handlePlayerDisconnect above has already migrated the
+                        // host AND, in the waiting room, removed us from
+                        // `players`. So by the time we get here the table says:
+                        // someone else is host, and we are not seated. Writing
+                        // it again is a client that has left the table editing
+                        // the table — which is exactly what the v3.15.0 rule
+                        // refuses, and it surfaced as PERMISSION_DENIED on the
+                        // first press of Leave. The second press appeared to
+                        // work only because there was nothing left to do.
+                        //
+                        // The rule is right; the double write was wrong. During
+                        // a MATCH handlePlayerDisconnect keeps us in the list as
+                        // 'disconnected' rather than removing us, so there the
+                        // removal below is still the thing that does the work —
+                        // which is why this is a guard and not a deletion.
+                        if (!latestData.players.some(p => p.uid === uid)) return;
+
                         let newPlayers = latestData.players.filter(p => p.uid !== uid);
                         await updateDoc(tableRef, {
                             players: newPlayers,
@@ -491,6 +511,11 @@ export const TableManager = {
                     }
                 }
             } else {
+                // Same guard, for the same reason: another client's presence
+                // watcher may have removed us first. Then there is nothing to
+                // write, and writing anyway is a stranger editing a table.
+                if (!data.players.some(p => p.uid === uid)) return;
+
                 let newPlayers = data.players.filter(p => p.uid !== uid);
                 await updateDoc(tableRef, {
                     players: newPlayers,
