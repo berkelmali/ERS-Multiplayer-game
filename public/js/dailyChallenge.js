@@ -84,6 +84,11 @@ export const DailyChallenge = {
     seed: 0,
     record: null,         // { date, score, reflex, won, at }
     scenario: null,       // today's inherited position (see dailyScenario.js)
+    // A PAST board, armed from a ?daily= link and never scored. Held apart from
+    // dateKey/seed/scenario on purpose: those three decide which day the record
+    // is written under, and a shared link must never be able to move them. See
+    // armReplay() and startRun().
+    replay: null,         // { dateKey, seed, scenario } | null
     _initialized: false,
 
     init() {
@@ -149,6 +154,10 @@ export const DailyChallenge = {
         if (play) {
             play.addEventListener('click', () => this.startRun());
         }
+        const replay = document.getElementById('btn-daily-replay');
+        if (replay) {
+            replay.addEventListener('click', () => this.startRun({ replay: true }));
+        }
 
         EventBus.on('gameOver', (winnerId) => {
             if (!this.active) return;
@@ -174,6 +183,32 @@ export const DailyChallenge = {
             this.record = null;
             this.loadRecord();
         }
+    },
+
+    /**
+     * Arms a past day's board, from a shared ?daily= link.
+     *
+     * WHAT THIS MUST NOT DO, and the reason the replay lives in its own field:
+     * dateKey is the key the local record is written under. If a shared link
+     * could move it, a friend's link would cost the player their one real
+     * attempt at TODAY's challenge — a loss they cannot undo that day, in
+     * exchange for a board that was never theirs. So nothing here touches
+     * dateKey, seed, scenario or record; a replay run also forces scored=false,
+     * and stop()/finishRun() already write no record when scored is false.
+     *
+     * Today's own date is not a replay. It is just today, and the normal,
+     * scored run is what the player should get.
+     *
+     * @param {string} dateKey "YYYY-MM-DD"
+     * @returns {boolean} true when a past board was armed
+     */
+    armReplay(dateKey) {
+        this.replay = null;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ''))) return false;
+        if (dateKey === todayKey()) return false;
+        const seed = seedForDate(dateKey);
+        this.replay = { dateKey, seed, scenario: buildScenario(seed) };
+        return true;
     },
 
     /**
@@ -242,6 +277,15 @@ export const DailyChallenge = {
                 : (Localization.get('dailyPlay') || "Play today's deal");
         }
 
+        // The shared-board offer. Hidden unless armReplay() found a PAST day,
+        // so the ordinary panel is exactly what it was before v3.16.5.
+        const offer = document.getElementById('daily-replay-offer');
+        if (offer) {
+            offer.style.display = this.replay ? '' : 'none';
+            const when = document.getElementById('daily-replay-date');
+            if (when && this.replay) when.innerText = this.replay.dateKey;
+        }
+
         this.renderScenarioBrief();
     },
 
@@ -290,24 +334,31 @@ export const DailyChallenge = {
     // Running
     // -----------------------------------------------------------------------
 
-    startRun() {
-        this.refreshDate();
+    startRun({ replay = false } = {}) {
+        // A replay deliberately skips refreshDate(): that call is what moves
+        // dateKey, and a shared link may not move it. See armReplay().
+        const board = (replay && this.replay) ? this.replay : null;
+        if (!board) this.refreshDate();
         this.active = true;
-        this.scored = !this.hasPlayedToday();
+        // Never scored for a replay, and the board is not today's, so the
+        // one-attempt rule is untouched either way.
+        this.scored = board ? false : !this.hasPlayedToday();
         this._settled = false;
         this.startedAt = Date.now();
+        const runSeed = board ? board.seed : this.seed;
+        const runScenario = board ? board.scenario : this.scenario;
 
         // Determinism switches, ALL of them reverted in `stop()`. The saved
         // rule set matters: without restoring it, a player who runs the Daily
         // Challenge would silently lose their own House Rules for the rest of
         // the session, because the scored run forces the classic set.
         this._savedRules = { ...HouseRules.local };
-        Rng.seed(this.seed);
-        Rng.setCoordSource((...coords) => hashRandom(this.seed, ...coords));
+        Rng.seed(runSeed);
+        Rng.setCoordSource((...coords) => hashRandom(runSeed, ...coords));
         // ONE place now sets the difficulty in force, and BOTH the bot tuning and
         // the turn timer read it. Before this, the timer read the player's own
         // setting: Easy gave 20 s per turn and Hard 10 s, on the same scored seed.
-        MatchContext.difficultyOverride = this.scenario ? this.scenario.difficulty : 'hard';
+        MatchContext.difficultyOverride = runScenario ? runScenario.difficulty : 'hard';
         // Suppresses the personal settings that would otherwise buy score —
         // today that is `fastAnimations`. See matchContext.js for where the line
         // is drawn and what is deliberately left alone.
@@ -323,7 +374,7 @@ export const DailyChallenge = {
         document.body.classList.add('game-screen');
 
         UIManager.resetOfflineUI();
-        GameManager.startBotGame({ daily: true, scenario: this.scenario });
+        GameManager.startBotGame({ daily: true, scenario: runScenario });
         EventBus.emit('gameStateChanged', 'gameplay');
 
         UIManager.showNotification(

@@ -4657,12 +4657,21 @@ body.high-legibility .stat-value {
       ancestor of theirs carries a transform (`.screen` does) that would turn
       `fixed` into `absolute` under their feet.
 
-   3. THE GUTTER IS MEASURED, NOT GUESSED. The column is 600px wide and centred,
-      so its edge sits at `50% - 300px`. A rail is 160px wide with a 24px gap:
-      300 + 24 + 160 = 484px from centre. At the 1200px breakpoint that leaves
-      116px of margin at each window edge — the rails never touch the edge and
-      never reintroduce the horizontal scrollbar v3.10.0 spent a release
-      removing.
+   3. THE CLEARANCE IS MEASURED, NOT GUESSED. v3.14.0 pinned each rail to the
+      COLUMN — `50% - 484px`, i.e. 300 (half the column) + 24 (gap) + 160 (rail).
+      That held a constant 24px gap and let the rails drift inward as the window
+      grew: at 1920px each sat 476px from the window edge with the whole outer
+      half of the screen empty. Reported from the live site.
+
+      v3.16.4 pins them to the WINDOW instead: 24px from each edge. The
+      arithmetic that matters is now the other one. The worst case is the
+      NARROWEST window that shows a rail — 1200px — where a rail occupies
+      24…184px and the column starts at 300px: 116px of clearance, and it only
+      grows from there, so a rail can never reach the column. Both invariants
+      this was always about are unchanged and still measured by smoke at
+      several widths: a rail never overlaps the column, and a rail never hangs
+      off the window (which would bring back the horizontal scrollbar v3.10.0
+      spent a release removing).
 
    1200px is also written in adsConfig.js as RAIL_MIN_WIDTH, and a test asserts
    the two agree. */
@@ -4677,8 +4686,8 @@ body.high-legibility .stat-value {
     pointer-events: none;    /* only a filled unit takes clicks; see .ad-rail-slot */
 }
 
-.ad-rail-left  { left: calc(50% - 484px); }
-.ad-rail-right { right: calc(50% - 484px); }
+.ad-rail-left  { left: 24px; }
+.ad-rail-right { right: 24px; }
 
 .ad-rail-slot {
     width: 160px;
@@ -4717,6 +4726,19 @@ body.high-legibility .stat-value {
        hidden here is not merely invisible: it is never requested. */
     #main-menu .ad-slot { display: none; }
 }
+
+/* ---------- Shared Daily board offer (v3.16.5) -------------------------- */
+/* Shown only when a ?daily= link armed a PAST day. It is the quieter of the two
+   controls on purpose: the scored run is what the player came for, and this one
+   cannot be scored at all. The divider says "separate thing" without a second
+   card — the panel already has enough surfaces. */
+.daily-replay-offer {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--panel-border);
+}
+.daily-replay-offer .daily-blurb { margin-bottom: 10px; }
+.daily-replay-offer strong { color: var(--primary); }
 
 /* ---------- Privacy policy link and panel ------------------------------ */
 

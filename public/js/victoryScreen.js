@@ -4,6 +4,8 @@ import EventBus from './eventbus.js';
 import { GameState } from './game.js';
 import { StreakTracker } from './streakTracker.js';
 import { ResultCard } from './resultCard.js';
+import { formatDailyUrl } from './inviteLink.js';
+import { todayKey } from './dailyScore.js';
 
 export const VictoryScreen = {
     init() {
@@ -247,10 +249,22 @@ export const VictoryScreen = {
         const key = reflex === null
             ? (won ? 'shareTextWinNoReflex' : 'shareTextLossNoReflex')
             : (won ? 'shareTextWin' : 'shareTextLoss');
+        // v3.16.5: the link is TODAY'S BOARD, not the homepage.
+        //
+        // The stats above are from whatever match just ended, which is often
+        // not the Daily Challenge at all. So the sentence keeps the two apart:
+        // the numbers are mine, the link is the board that is the same for
+        // everyone today. Claiming the friend gets this exact deal would be
+        // false for a bots match and false again after UTC midnight.
+        //
+        // formatDailyUrl returns "" for anything that is not a date, and the
+        // fallback is the origin — a share must never carry half a URL.
+        const dailyUrl = formatDailyUrl(todayKey(), window.location.origin)
+            || window.location.origin;
         return Localization.get(key)
             .replace('{cards}', String(cards))
             .replace('{reflex}', String(reflex))
-            .replace('{url}', window.location.origin);
+            .replace('{url}', dailyUrl);
     },
 
     show(winnerId) {
