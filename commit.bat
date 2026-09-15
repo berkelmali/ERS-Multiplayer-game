@@ -1,20 +1,19 @@
 @echo off
 REM ============================================================
-REM  commit.bat -- v3.16.0 + v3.16.1 + v3.16.2 calismasini
-REM  kayda gecirir.
+REM  commit.bat -- v3.16.4, v3.16.5, v3.16.6 ve v3.16.7'yi kayda gecirir.
 REM
 REM  NEDEN AYRI BIR DOSYA: deploy.bat commit ATMAZ (bilerek --
 REM  yayina almak ile kayda gecirmek ayri kararlardir), ve
 REM  Claude'un bu makinede git calistirma yolu 8 Eylul Windows
-REM  guncellemesinden beri kapali. Yani bu uc surum diske
-REM  yazildi, hosting yayina girdi, ama git agacinda hala
-REM  "degismis dosya" olarak duruyor.
+REM  guncellemesinden beri kapali.
 REM
-REM  UC SURUM TEK COMMIT: v3.16.1 ve v3.16.2, v3.16.0'in canlida
-REM  acilan iki yarasini kapatiyor. Ayri commit'ler tarihte
-REM  menude ayni hedefi iki kere gosteren, ve 12 sayfayi
-REM  onbellege birakan ara noktalar birakirdi; oyle noktalar
-REM  olmasin diye birlikte giriyorlar.
+REM  BU COMMIT'TE KONSEY TUTANAGI DA VAR: COUNCIL-v3.16.5.md.
+REM  v3.16.5'in ILK hali konseyde oldu -- link tarihi tasiyordu
+REM  ama uygulama yine BUGUNUN tahtasini aciyordu. Puansiz tekrar
+REM  o itirazin cevabidir; tutanak neden boyle oldugunu tasir.
+REM
+REM  v3.16.7 site baytlarina DOKUNMAZ: sadece deploy.bat'in kendi
+REM  notlarinin sirasini ve girintisini onarir. Surum bumplanmadi.
 REM
 REM  NOT: cmd.exe heredoc DESTEKLEMEZ, o yuzden mesaj coklu -m
 REM  ile veriliyor. Her -m bir paragraf olur.
@@ -36,12 +35,11 @@ echo ============================================================
 pause >nul
 
 REM ------------------------------------------------------------
-REM  GIZLI DOSYA KAPISI.
-REM  .gitignore firebaseConfig.js'i disarida tutuyor, AMA gitignore
-REM  yalnizca IZLENMEYEN dosyalari susturur. Bir dosya bir kere
-REM  commit'e girdiyse, sonradan gitignore'a yazmak onu geri
-REM  cikarmaz -- git add -A onu yine sahneler. Bu yuzden burada
-REM  inanmak yerine SORULUYOR.
+REM  GIZLI DOSYA KAPISI. .gitignore firebaseConfig.js'i disarida
+REM  tutuyor, AMA gitignore yalnizca IZLENMEYEN dosyalari susturur.
+REM  Bir dosya bir kere commit'e girdiyse sonradan gitignore'a
+REM  yazmak onu geri cikarmaz. Bu yuzden burada inanmak yerine
+REM  SORULUYOR.
 REM ------------------------------------------------------------
 echo.
 echo === Gizli dosya kapisi ===
@@ -78,19 +76,16 @@ echo   Sahnede kimlik dosyasi yok -- tamam.
 echo.
 
 git commit ^
- -m "seo: v3.16.0 -- the site had navigation for people and none for crawlers" ^
- -m "AdSense refused the site for 'insufficient content or content quality'. The stated bar is enough valuable content and good navigational elements, so before writing a word of new content I measured what a fetcher actually receives. index.html contained zero anchors. The rules, the about text and the privacy policy were all there, in localization.js, in four languages -- but they lived behind click handlers on buttons, inside panels toggled by a CSS class. A crawler runs no click handlers. It saw one page. Worse, firebase.json rewrote every unmatched path to /index.html, so a typo answered 200 OK with the whole game: an unlimited supply of duplicates of the single page it could already see." ^
- -m "The fix is generated, not written. tools/build-content-pages.mjs reads the panel structure out of index.html and the text out of localization.js and emits 12 pages -- rules, about and privacy in en, tr, de and ru. There is no second copy of the rules anywhere in this repo; change the dictionary and the pages change with it, or the drift gate fails the build. The generator parses with a balanced-tag scanner rather than a regex, because a bare regex takes the FIRST close tag and silently truncates a nested section. Each page carries a complete self-referencing hreflang set, a canonical, and the site's own type scale." ^
- -m "Two findings the generator made about itself on its first run, both kept as permanent checks. (1) The dictionary was being read lazily, and Localization.get reads a mutable module-level currentLang -- it answers in whatever language was set LAST, so all four languages came out identical. Values are now snapshotted per language, and a probe throws if rWinTitle is not different in all four. (2) The CLI wrote files at import time; the test suite imports this module, so running the tests would have regenerated the 12 files and the drift gate could never have gone red. It is now behind a pathToFileURL run-directly guard -- comparing import.meta.url against argv[1] directly is always false on Windows." ^
- -m "Around them: public/404.html, so an unmatched path is a real 404 with links back to somewhere real instead of a 200 that looks like a duplicate; sitemap.xml generated from the same list as the pages; robots.txt pointing at it; and the catch-all rewrite deleted. Nothing depended on that rewrite -- the invite link is /?join=CODE, a query on the root, not a path." ^
- -m "v3.16.1 -- the menu offered the same three destinations twice, and that was mine. v3.16.0 added a three-link footer nav to a menu that already had About and Privacy controls, so the live page read About, Privacy, Game Rules, About, Privacy. Reported from a screenshot with the duplicates underlined. The nav is deleted; instead the two controls that were already there became real anchors pointing at the generated pages, with preventDefault in the handlers so a normal click still opens the in-app panel and a middle click opens the page. Those two are now the only anchors in the document. The gate written for this catches the class, not the instance: no two controls in the menu may carry the same label." ^
- -m "Same release, second report: /tr/rules looked far worse than the rules tab inside the game. True -- I had dressed the generated pages in a generic dark stylesheet of my own. They are now built from style.css's own tokens: the same Outfit weights from the same Google Fonts URL, the same panel background and hairline border, the same section fill and radius, the Egyptian artwork behind them. A gate compares the generated design tokens against style.css, so changing the site theme fails the build until the pages follow. One bug found while doing it: the artwork was fetching 200 and was never visible -- body carried an opaque background, which paints over a negative-z-index ::before. The ground moved to html and body went transparent." ^
- -m "v3.16.2 -- a cache rule that reads correctly and matches nothing. firebase.json sent no-store to the HTML glob, and that is the header Hosting matches against the REQUEST path. cleanUrls is on, so these pages are requested extensionless, as /tr/rules: a glob ending in .html could not match them. Twelve pages generated from a dictionary that will keep changing were the only pages on the site a CDN was free to hold. A rule keyed on the language and slug lists now covers them, and section 65 fails if the generator's lists ever grow past what that rule spells out." ^
- -m "The gates. deploy.bat is 12 now: 10/12 regenerates the pages and fails if the tree differs from a fresh generation, 11/12 runs tools/check-links.mjs, 12/12 deploys. check-links.mjs had been sitting in this repo since August and deploy.bat had NEVER called it -- on its first-ever execution it found that all 12 generated pages were requesting /assets/favicon.png, a file that does not exist. It now understands cleanUrls, so /en/rules resolves to en/rules.html rather than reading as a broken link. Test section 65 covers the rest: pages exist per language and carry that language's text, hreflang complete and self-referencing, sitemap matches disk, no catch-all rewrite, hosting keys inside firebase-tools' own schema allow-list, design tokens match style.css, both handlers preventDefault." ^
- -m "One correction inside section 65 is worth naming, because it is this project's recurring defect in its purest form. The cache-header gate held its own hardcoded list of languages eight lines above the thing it was checking, so adding a fifth language would have passed a gate whose entire job is to notice a fifth language. A gate whose expectation is a copy of the thing it checks is not a gate. The lists are now imported from the generator; the same mutation breaks 12 tests." ^
- -m "Two measurement failures from this stretch, recorded because the conclusions were only as good as the instrument. I read firebase-tools' hosting schema truncated to the first 12 of 15 keys and briefly called a valid key a violation. And after shipping v3.16.2 I fetched the site root, was told v3.15.1, and diagnosed a stale CDN -- but that path has carried no-store for months and cannot be cached, so the stale thing was my own fetch. That diagnosis was retracted. The v3.16.2 fix itself stands because it was read out of firebase.json, not out of the fetch." ^
- -m "HONEST LIMIT. The adversarial council returned PARTIALLY DEFENSIBLE (Strong, 3-2) on this work, and the objection it accepted no answer to is the one Google actually wrote: they said content, and what I built is navigation. 8 of the 12 pages are under 350 words and four of them are translations of the other four. Crawlability was a real defect and it is fixed -- but a crawler that can now reach twelve thin pages has been given access, not substance. The content round is the answer and it is not in this commit. The generator is in place precisely so that round is a dictionary edit." ^
- -m "2344 tests, 12 source gates, smoke green; all three releases live." ^
+ -m "feat: v3.16.4-v3.16.7 -- rails to the window edge, a share button that actually shares a board, and the repair of the file that reports all of it" ^
+ -m "v3.16.4: the ad rails sat 24px off a 600px column, which put them in the middle of a wide window instead of at its edge. They are now anchored to the viewport (left: 24px / right: 24px). The gate that covers this does not hold a typed number: it reads RAIL_MIN_WIDTH, the column width, the inset and the rail width out of style.css and DERIVES the clearance, so a future change to any one of them moves the assertion with it. v3.16.2 shipped a gate carrying its own hardcoded copy of the thing it checked and the one mutation it existed to catch went straight through; that is the mistake this shape exists to not repeat." ^
+ -m "v3.16.5: 'Challenge a friend' sent a brag plus a link to the homepage. The brag is a number of cards taken, and a number of cards taken is only a comparable claim on the Daily Challenge, where every player is dealt the same position from the same seed. The link now carries that day: /?daily=YYYY-MM-DD, read at boot from location.search." ^
+ -m "THE COUNCIL'S FATAL OBJECTION, and it killed the proposal as submitted: the link carried the date but the code opened TODAY'S board regardless. People open messages hours later -- usually the next day -- so the late click is not the edge case, it is the product, and the version submitted would have handed those players a different deal from the one the message described. A link that does not lead to your game, dressed up as a challenge. So a past date now arms an UNSCORED REPLAY of that exact board, offered beside today's." ^
+ -m "The dangerous edge is precise: a replayed board recorded under today's key costs the player their real daily attempt, and cannot be undone that day -- worse than the defect being fixed. Two properties carry it and both are pinned statically in gate 67 rather than read by eye: this.scored = board ? false : ... and if (!board) this.refreshDate(); -- refreshDate is what moves dateKey, so skipping it for a replay is the whole guard. COUNCIL-v3.16.5.md: PARTIALLY DEFENSIBLE (Strong, 4-1), five conditions. Condition 4 says the two share buttons were NOT merged: canShare({files}) is false on most desktop browsers, so the merged control's normal desktop behaviour would have been a fallback doing two different things from one press. Condition 5 says claim coherence, not conversion -- there is no analytics in this project, so no outcome claim survives." ^
+ -m "v3.16.6: the v3.16.5 deploy went green and then printed '---' is not recognized as an internal or external command, seven times, at the operator. Nothing on the site broke, which is exactly the point -- the file whose ONE job is to say what changed was garbling that job while the other eleven gates stayed green. Cause: I anchored an insertion on the TEXT of a line instead of the WHOLE line, so the insert landed mid-line and orphaned the second half; cmd read the orphan as a command. Gate 68 now classifies every line in deploy.bat: each one is blank or begins with a command. The list is a whitelist on purpose -- it will fail the day someone uses a cmd verb it does not name, and the alternative, guessing which indented text is obviously prose, is how the defect got in." ^
+ -m "v3.16.7: THE REPAIR ITSELF WAS INCOMPLETE, and the gate could not see it. Prefixing echo to each orphan made every line executable and gate 68 went green -- but the split had also MOVED blocks, so the file still printed its notes in the wrong order: notes 124-126 sat under the AdSense checklist, and the tail of the v3.16.0 checklist (language picker, /de/about, 404, sitemap, robots) had fallen below v3.16.5's block with three lines of lost indentation. Executability and order are two properties; the gate measured one. The new measurement is the property that was actually violated: note numbers must INCREASE down the file -- 137, 138, 124, 125, 126 is not a sequence, it is a moved block -- plus every header at the same indent. The blocks were put back in numeric order." ^
+ -m "AND THE FIRST RULE I WROTE FOR THAT GATE WAS FALSE. It said: notes first, then the checklist. The file refused it immediately -- the old DEPLOY SONRASI KONTROL list has sat in the middle of the numbered notes for many releases and belongs there. So the gate was fitted to the file; the file was not bent to fit the gate. A gate that would force a correct document to move is not a gate, it is a second defect waiting for an author with less patience." ^
+ -m "NOT YET CONFIRMED BY THE OPERATOR, and it is the one that matters: the replay must be played end to end on a past date and the panel's stored result for today must be UNCHANGED afterwards. Gate 67 pins the two source properties, not the composed behaviour -- the ERS-14 council asked for a smoke-level test of the whole path and it is not written yet. The ad-blocker/font check from v3.16.3 and the rails-at-1199px check are also still unreported." ^
+ -m "2428 tests, 12 source gates, smoke green; v3.16.4-v3.16.6 live, v3.16.7 is operator-file only." ^
  -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>" ^
  -m "Claude-Session: https://claude.ai/code/session_017harRa9aGfvK83QPxoAVxt"
 

@@ -29,7 +29,7 @@ import { DailyChallenge } from './dailyChallenge.js';
 import { NetQuality } from './netQuality.js';
 import { renderRulesBadge } from './rulesBadge.js';
 import { Ads } from './ads.js';
-import { parseInviteCode, savePendingInvite, consumePendingInvite, peekPendingInvite, clearPendingInvite } from './inviteLink.js';
+import { parseInviteCode, parseDailyDate, savePendingInvite, consumePendingInvite, peekPendingInvite, clearPendingInvite } from './inviteLink.js';
 import { ERR, classifyError, readOnline } from './errorCodes.js';
 import { ErrorScreen } from './errorScreen.js';
 import { ConnectionBanner } from './connectionBanner.js';
@@ -240,6 +240,31 @@ document.addEventListener('DOMContentLoaded', () => {
         savePendingInvite(bootCode, sessionStorage);
         if (window.history && window.history.replaceState) {
             window.history.replaceState(null, '', window.location.pathname);
+        }
+    }
+
+    // A shared Daily Challenge board (v3.16.5): ?daily=YYYY-MM-DD.
+    //
+    // THE INVITE WINS. A URL carrying both is a table invite that happens to
+    // mention a date; the invite is time-critical and someone is waiting at the
+    // other end, while a board is not going anywhere. A test pins this ordering.
+    //
+    // Nothing here is stored, expired, peeked or consumed. The invite path
+    // needed all of that because a code is a claim on a live table across an
+    // auth round-trip; a date is a signpost, and if the tab is reloaded without
+    // it, nothing was lost. So this sits OUTSIDE the invite machinery rather
+    // than growing it.
+    if (!bootCode) {
+        const sharedDay = parseDailyDate(window.location);
+        if (sharedDay) {
+            // armReplay() refuses today's own date and returns false: a link to
+            // today is just a link to today, and the player should get the
+            // normal scored run rather than an unscored replay of it.
+            DailyChallenge.armReplay(sharedDay);
+            DailyChallenge.openPanel();
+            if (window.history && window.history.replaceState) {
+                window.history.replaceState(null, '', window.location.pathname);
+            }
         }
     }
 

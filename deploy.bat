@@ -1355,10 +1355,137 @@ echo     masaustunde metin PANOYA kopyalanmali ve buton "Meydan okuma
 echo     kopyalandi!" demeli. Yapistirdiginda metinde KART SAYISI ve
 echo     REFLEKS olmali; "0" ya da "9999" GORUNMEMELI
 echo.
-echo   --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
+echo  --- v3.16.3 -- BOOT AGI CALISAN BIR OYUNU GIZLIYORDU ---
+echo  118) Boot aginin kendi yorumu "yalnizca uygulamayi YUKLEYEMEME
+echo       sayilir" diyordu. Kosulu bunu soylemiyordu: tagName SCRIPT
+echo       ya da LINK. Head'de dort LINK var ve yalnizca BIRI uygulama.
+echo  119) Yani Google Fonts'u engelleyen her ag -- bazi reklam
+echo       engelleyicileri, bazi kurum ve okul aglari, Cin -- calisan
+echo       bir oyun yerine "baglantiniz koptu" diyen tam ekran bir
+echo       hata goruyordu. Baglantilari kopmus degildi.
+echo  120) Fatal kume artik tam olarak: AYNI KAYNAKTAN bir script, ve
+echo       AYNI KAYNAKTAN bir rel=stylesheet. Karsilastirma string
+echo       oneki degil, new URL().origin. Fatal olmaktan cikan hata
+echo       SESSIZLESMIYOR: URL'si kaydediliyor ve 12 saniyelik yedek
+echo       tetiklenirse onun metnine ekleniyor.
+echo  121) KAPI 66: tahminin kopyasini tutmuyor. Script'i csp-hash'in
+echo       KENDI cikaricisiyla index.html'den aliyor, vm icinde GERCEK
+echo       baytlari calistiriyor, ve link vakalarini BELGEDEN okuyor --
+echo       yarin eklenen besinci link kendiliginden kapsam icinde.
+echo       3 mutasyon denendi, 3'u de yakalandi.
+echo  122) TUZAK: bu script'e firebase.json sha256'si ile izin veriliyor
+echo       (script-src'de unsafe-inline yok). Tek karakter degisirse
+echo       hash bayatlar -- ki bu v3.7.0-v3.7.4 hatasidir, boot agi bes
+echo       surum boyunca CSP tarafindan bloke edilmisti. Hash ELLE
+echo       yazilmadi: node tools\csp-hash.mjs --write
+echo  123) DURUST SINIR: tarayici seviyesinde ONCE/SONRA kiyasi ALTI
+echo       denemede temiz uretilemedi. Olcum sunu dogruladi: font
+echo       hatasi 92ms'de geliyor, boot 739ms'de -- yani mekanizma
+echo       gercek. Ama "eski kosul canli tarayicida fatal oluyor" tek
+echo       bir kosuda gosterilemedi. Degisiklik KAYNAK okumasina ve
+echo       gercek baytlari calistiran 66. kapiya dayaniyor.
+
+echo.
+echo  --- SEARCH CONSOLE SAHIPLIGI (surum degil, isaret) ---
+echo  124) index.html'e google-site-verification meta etiketi eklendi.
+echo       Google'in ONERDIGI yol yuklenen bir HTML dosyasidir; o yol
+echo       BU SITEDE kullanilamaz: cleanUrls acik, yani /googleXXX.html
+echo       istegi uzantisiz haline 301 ile yonlendiriliyor ve dogrulayici
+echo       token'i istedigi yolda bekliyor. v3.16.2'nin onbellek kuralini
+echo       hicbir seye eslestirmeyen mekanizmanin ta kendisi: Hosting
+echo       ISTEK YOLUNA gore davranir. Meta etiketinin yolu yok.
+echo  125) Surum numarasi BUMPLANMADI. Bu bir davranis degisikligi degil;
+echo       bumplasam style.css?v= ve main.js?v= de degisir ve hicbir sey
+echo       degismemisken herkese yeniden indirtir.
+echo  126) KAPI: etiketin varligi ve token'in gercek oldugu artik test
+echo       ediliyor -- yayinci kimligiyle ayni sebeple. Dusmesi sessizdir:
+echo       bugun hicbir sey bozulmaz, mulk haftalar sonra dogrulanmamis
+echo       duruma duser ve sitemap okunmayi birakir. 1 mutasyon denendi
+echo       (etiket silindi), 2 test kirildi.
+echo.
+echo.
+echo  --- v3.16.4 / v3.16.5 -- RAYLAR VE GERCEK BIR MEYDAN OKUMA ---
+echo  127) v3.16.4: yan raylar artik pencere kenarinda (24px), menu
+echo       sutununa yapisik degil. Eskisi sutuna sabitti ve pencere
+echo       buyudukce ICERI kayiyordu: 1920px'de her ray kenardan 476px
+echo       uzaktaydi, ekranin dis yarisi bombostu. Canlidan bildirildi.
+echo  128) KAPI ezberden kontrol etmiyor artik: sayilari style.css ve
+echo       adsConfig.js'ten OKUYUP en dar pencerede (1200px) acikligi
+echo       hesapliyor -- 116px. Rayi 500px iceri alan mutasyon
+echo       "-360px clear" diye kirildi.
+echo  129) v3.16.5: "Challenge a friend" artik ana sayfayi degil GUNUN
+echo       TAHTASINI gonderiyor: ?daily=YYYY-MM-DD. Konsey karari
+echo       ERS-14, Kismen Savunulabilir ^(Guclu, 4-1^).
+echo  130) KONSEYIN OLDURUCU ITIRAZI: link tarihi tasiyor ama uygulama
+echo       yine BUGUNUN tahtasini aciyorsa, arkadas ertesi gun tikladiginda
+echo       mesajdaki sayilarin ait oldugu tahtayi OYNAYAMIYOR. Yani ayni
+echo       kusur, ustune makine. Cozum: gecmis bir tarih icin panel o
+echo       tahtayi PUANSIZ tekrar oynatma olarak sunuyor.
+echo  131) GUVENLIK: paylasilan bir link, oyuncunun BUGUNKU tek puanli
+echo       hakkini harcayamaz. Kayit this.dateKey altina yaziliyor;
+echo       replay onu HIC ellemiyor, kendi alaninda duruyor ve
+echo       scored=false zorluyor. 3 mutasyon denendi, 3'u de yakalandi.
+echo  132) DURUST SINIR: konsey "gecmis bir tarihi OYNAYIP kaydin
+echo       degismedigini dogrulayan bir test" istedi. O test smoke'a ait
+echo       ^(gercek tarayici^); suite dailyChallenge.js'i METIN olarak
+echo       okuyor. 67. bolum guvenligin dayandigi IKI ozelligi kanitliyor,
+echo       bilesik davranisi degil. Kalan yarim ROADMAP.md'de.
+echo  133) Metin de duzeltildi: istatistikler oyuncunun kendi macindan,
+echo       link gunun ortak tahtasindan. Ikisi ayri cumlede, cunku
+echo       botlara karsi oynanan bir mac gunun tahtasi DEGILDIR.
+echo  134) Paylasim butonlari BIRLESTIRILMEDI. Konsey 4. kosulu:
+echo       canShare^({files}^) masaustu tarayicilarin cogunda false, yani
+echo       birlesik butonun NORMAL masaustu davranisi yedek yol olurdu --
+echo       ve o yedek tek basista iki farkli sey yapardi.
+
+echo.
+echo  --- v3.16.6 -- DEPLOY NOTLARININ KENDISI BOZUKTU ---
+echo  135) v3.16.5 deploy'u yesil gecti ve sonra operatorun konsoluna
+echo       yedi kez sunu yazdi: '---' is not recognized as an internal
+echo       or external command. Sitede hicbir sey bozulmadi -- ki asil
+echo       nokta bu: tek isi neyin degistigini SOYLEMEK olan dosya tam
+echo       o isi bozarken diger on bir kapi yesil kaldi.
+echo  136) SEBEP: surum notlarini eklerken bir satirin TAMAMINA degil
+echo       METNINE tutundum. Yerlestirme satirin ORTASINA dustu ve
+echo       "echo ... v3.16.0" satiri ikiye bolundu; ikinci yarisi
+echo       sahipsiz kaldi. cmd o sahipsiz satiri komut sanip
+echo       calistirmaya calisti. Iki satir da "echo echo." oldu, yani
+echo       ekrana "echo" kelimesini yazdi.
+echo  137) v3.7.6'da AYNI SEKLIN obur yuzu yakalanmisti: kacak bir
+echo       yonlendirme karakteri bir surum notunu yutmustu. Ders
+echo       tekrar ediyor -- deploy.bat CALISTIRILAN duz yazidir, ve
+echo       echo'sunu kaybeden duz yazi bir komuttur.
+echo  138) KAPI 68: dosyadaki HER satir ya bostur ya bir komutla baslar.
+echo       Liste bir beyaz liste ve bu bilerek boyle: yarin listede
+echo       olmayan bir cmd fiili kullanilirsa kapi duser ve bir satir
+echo       eklenir. Alternatifi -- hangi girintili metnin besbelli duz
+echo       yazi oldugunu tahmin etmek -- bu hatanin giris yoluydu.
+echo       2 mutasyon denendi, 2'si de yakalandi.
+echo  139) O ONARIMIN KENDISI EKSIKTI: her satiri calistirilabilir
+echo       yapti -- kapi yesil dondu -- ama SIRAYI geri getirmedi.
+echo       124-126 numarali notlar AdSense kontrol listesinin ALTINDA
+echo       kaldi; v3.16.0 listesinin kuyrugu ^(dil secici, /de/about,
+echo       404, sitemap, robots^) v3.16.5'in altina dusmustu ve uc
+echo       satir girintisini kaybetmisti. Yani dosya calisiyordu ama
+echo       hala yanlis seyi soyluyordu -- asil isi bu.
+echo  140) KAPI 68 bunu GOREMEZ: calistirilabilirligi olcer, sirayi
+echo       degil. Eklenen olcum tam da ihlal edilen ozelliktir:
+echo       not numaralari dosyada ARTAN gitmeli. 137, 138, 124, 125,
+echo       126 bir sira degil, yer degistirmis bir bloktur. Ayrica tum
+echo       basliklar ayni girintide olmali. 1 mutasyon denendi
+echo       ^(bozuk sira^), yakalandi.
+echo  141) ILK denedigim kural YANLISTI: "once notlar, sonra kontrol
+echo       listesi". Dosya onu hemen curuttu -- 1198'deki eski DEPLOY
+echo       SONRASI KONTROL listesi notlarin TAM ORTASINDA duruyor ve
+echo       orada olmasi dogru. Kapiyi dosyaya uydurmak yerine dosyayi
+echo       kapiya uydurmaya kalksaydim, calisan bir seyi bozacaktim.
+echo       Surum BUMPLANMADI: sitenin tek bir bayti degismedi;
+echo       degisen, operatorun okudugu sayfa.
+echo.
+echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
-echo   - Surum satirinda ^(Berk Elmali - v3.16.2^) About ve Privacy
+echo   - Surum satirinda ^(Berk Elmali - v3.16.6^) About ve Privacy
 echo     yazilari duruyor olmali -- ve BIR KEZ. Menude "Game Rules",
 echo     "About" ya da "Privacy" IKI KEZ goruyorsan v3.16.0 hali
 echo     kalmis demektir, bana bildir
@@ -1381,5 +1508,32 @@ echo     gonder, sonra /en/rules icin "URL denetimi" .. "Dizine
 echo     ekleme istegi". Google sayfalari gormeden AdSense de gormez
 echo   - ADSENSE PANELI ^(kodla yapilamaz^): Siteler .. ers-card-game
 echo     .web.app .. yeniden inceleme iste. Inceleme 2-4 HAFTA surebilir
+echo.
+echo  --- v3.16.3 ------------------------------------------------
+echo   - OYUN ACILIYOR MU? Asil kontrol bu. Boot agi daraltildi; bir
+echo     hata yaptiysam belirtisi ya hic acilmayan bir oyun ya da bos
+echo     ekrandan sonra gelen Uygulama baslatilamadi ekranidir
+echo   - Reklam engelleyicin varsa ACIK BIRAK ve bir kez yenile:
+echo     googleapis.com engelli olsa bile OYUN ACILMALI. Yazi tipi
+echo     yedege duser, gorunum biraz degisir -- ama oyun gelir
+echo.
+echo   - SEARCH CONSOLE: sag tik .. "Sayfa kaynagini goruntule", Ctrl+F ile
+echo     google-site-verification ara. GORUNMUYORSA deploy eskidir ve
+echo     Search Console "dogrulanamadi" der -- once burayi kontrol et,
+echo     Google'a degil. Goruyorsan Search Console'da Dogrula'ya bas,
+echo     sonra Site haritalari .. sitemap.xml .. Gonder (13 URL olmali)
+echo.
+echo  --- v3.16.5 ------------------------------------------------
+echo   - Bir mac bitir, "Arkadasina meydan oku"ya bas. Kopyalanan
+echo     metindeki link /?daily=BUGUN olmali, ciplak ana sayfa DEGIL
+echo   - O linki YENI bir sekmede ac: Gunluk Meydan Okuma paneli
+echo     acilmali. Bugunun tarihi oldugu icin PUANSIZ teklif CIKMAMALI
+echo   - Linkteki tarihi DUNE cevirip ac: bu sefer altta "O tahtayi
+echo     oyna ^(puansiz^)" teklifi CIKMALI ve tarih dogru yazmali
+echo   - O puansiz tahtayi OYNA ve bitir. Sonra paneli tekrar ac:
+echo     "Bugunku sonucun" DEGISMEMIS olmali. Degistiyse bana bildir --
+echo     bu, oyuncunun gunluk hakkini yiyen tek hatadir
+echo   - Raylar: pencereyi genislet, raylar KENARDA olmali; 1199px'e
+echo     daralt, kaybolmali ve yatay kaydirma CIKMAMALI
 echo.
 pause

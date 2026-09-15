@@ -13,6 +13,15 @@
          The real tag is loaded by js/ads.js, on menu screens only, and only
          once adsConfig.js carries a publisher id. -->
     <meta name="google-adsense-account" content="ca-pub-7456321071922775">
+    <!-- Search Console ownership, by META TAG and not by the uploaded HTML file
+         Google offers first. That file would be fetched at /googleXXXX.html —
+         and firebase.json runs cleanUrls: true, which 301-redirects every .html
+         request to its extensionless form. The verifier expects the token at
+         the path it asked for, not one redirect away. Same mechanism that made
+         the v3.16.2 cache rule match nothing: the REQUEST path is what Hosting
+         acts on. A meta tag has no path, so it has no way to go wrong.
+         Static, like the line above it: no request, no script, no cookie. -->
+    <meta name="google-site-verification" content="OKgDU6fV-k2QLyimxOD0582gAV-X2mzjwqfos6BQqrk">
     <title>Egyptian Rat Screw</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
     <meta name="description" content="Play Egyptian Rat Screw with friends or bots. Practice your reflexes, discover slap patterns and take on the daily challenge.">
@@ -28,34 +37,86 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.16.2">
+    <link rel="stylesheet" href="style.css?v=3.16.6">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
-    <!-- BOOT SAFETY NET (v3.7.0) — must stay INLINE and must stay in <head>.
-         index.html loads exactly one script: the js/main.js module. main.js has
-         30+ static imports, three of them gstatic Firebase URLs. If any single
-         one fails to fetch or parse, main.js never evaluates a statement, and a
-         handler registered inside main.js is never registered at all — which is
-         precisely the case it would exist to catch. A separate .js file has the
-         same failure mode one hop away, so this net has no src and no imports.
-         It is the only code in the app guaranteed to run. -->
+    <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
+         must stay in <head>. index.html loads exactly one script: the js/main.js
+         module. main.js has 30+ static imports, three of them gstatic Firebase
+         URLs. If any single one fails to fetch or parse, main.js never evaluates
+         a statement, and a handler registered inside main.js is never registered
+         at all — which is precisely the case it would exist to catch. A separate
+         .js file has the same failure mode one hop away, so this net has no src
+         and no imports. It is the only code in the app guaranteed to run.
+
+         v3.16.3 — WHAT THIS NET IS NOT ALLOWED TO DO. Until now the test was
+         `tagName === 'SCRIPT' || tagName === 'LINK'`, which does not implement
+         the sentence below it. <head> carries four <link> elements and only ONE
+         of them is the app: style.css. So on any network that blocks
+         googleapis.com — several ad blockers, some corporate and school
+         networks, China — a stylesheet the game does not need could raise a
+         full-screen notice telling the user their connection had dropped.
+
+         The fatal set is now exactly: a same-origin <script>, and a same-origin
+         rel="stylesheet". Everything else is warned about and recorded, rather
+         than raising a notice of its own.
+
+         WHAT IS ACTUALLY ESTABLISHED, and what is not — because an earlier draft
+         of this comment claimed a measurement that did not hold up, and a false
+         "measured" in a source file is worse than no claim at all:
+           · The source reading is exact: the old condition called reveal() for
+             ANY <link>, and the document has three non-essential ones.
+           · Test section 66 runs THESE BYTES in a vm sandbox against link cases
+             read out of this document. Old condition: 5 of 5 links fatal. New:
+             exactly 1. Three mutations were tried and all three were caught.
+           · In a real Chromium, a cross-origin stylesheet failure was confirmed
+             to deliver an error event to the window at 92ms, while boot
+             completed at 739ms — so the event does reach this net before
+             __ersBooted is set.
+           · NOT established: an end-to-end before/after in a live browser. Six
+             attempts failed on the harness, not on the subject (a same-origin
+             URL, a stubbed stylesheet that removed #boot-error's display:none,
+             a blocked port, and a stand-in for main.js that booted too early).
+             The change rests on the two points above it, not on that.
+           · Only the Google Fonts row was ever in question. rel="icon" and
+             rel="manifest" are fetched by browser subsystems that may never
+             fire an element error at all; they are narrowed on principle, and
+             no behaviour change is claimed for them.
+
+         BEFORE YOU EDIT ANY BYTE OF THE SCRIPT BELOW: firebase.json admits it by
+         the sha256 of its exact bytes — script-src carries no 'unsafe-inline'.
+         Change one character and the hash goes stale, and a stale hash is not
+         cosmetic: it is the v3.7.0–v3.7.4 bug, where this net was CSP-blocked on
+         every production load for five releases and the error screen could not
+         open at the one moment it was needed. Regenerate, never retype:
+             node tools/csp-hash.mjs --write                                  -->
     <script>
         (function () {
             var shown = false;
+            var skipped = [];
             function reveal(detail) {
                 if (shown) return;
                 shown = true;
+                var text = String(detail == null ? '' : detail);
+                if (skipped.length) { text += ' | also failed: ' + skipped.join(', '); }
                 function paint() {
                     var el = document.getElementById('boot-error');
                     if (!el) return;
                     var d = el.querySelector('.boot-error-tech');
-                    if (d && detail) { d.textContent = String(detail).slice(0, 300); }
+                    if (d && text) { d.textContent = text.slice(0, 300); }
                     var btn = document.getElementById('boot-error-reload');
                     if (btn) { btn.addEventListener('click', function () { location.reload(); }); }
                     el.style.display = 'flex';
                 }
                 if (document.body) { paint(); }
                 else { document.addEventListener('DOMContentLoaded', paint); }
+            }
+            // Same origin, decided by the URL parser and not by a string prefix.
+            // `**/*.html` failing to match `/tr/rules` was this same mistake in a
+            // different file: a pattern standing in for a comparison.
+            function isOwn(url) {
+                try { return new URL(url, location.href).origin === location.origin; }
+                catch (err) { return false; }
             }
             // Only a failure to LOAD the app counts here. Once main.js has run,
             // it installs the real handlers and clears this flag, so ordinary
@@ -64,8 +125,25 @@
             window.addEventListener('error', function (e) {
                 if (window.__ersBooted) return;
                 var t = e && e.target;
-                var isResource = t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK');
-                reveal(isResource ? ('failed to load ' + (t.src || t.href)) : (e && e.message));
+                if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+                    var url = t.src || t.href || '';
+                    var required = isOwn(url) &&
+                        (t.tagName === 'SCRIPT' || t.rel === 'stylesheet');
+                    if (!required) {
+                        // Not fatal must not mean invisible. The recorded list
+                        // only ever reaches a screen if the 12s backstop fires
+                        // — i.e. only when the app ALSO failed, which is when
+                        // this URL is least interesting. So say it out loud now,
+                        // where a developer or a bug report can still find it.
+                        if (skipped.length < 4) { skipped.push(url); }
+                        try { console.warn('[ers] optional resource failed, continuing:', url); }
+                        catch (err) { /* a console is not a dependency */ }
+                        return;
+                    }
+                    reveal('failed to load ' + url);
+                    return;
+                }
+                reveal(e && e.message);
             }, true);
             window.addEventListener('unhandledrejection', function (e) {
                 if (window.__ersBooted) return;
@@ -184,7 +262,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.16.2
+        <div id="game-version">Berk Elmalı · v3.16.6
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -273,6 +351,19 @@
                 <span id="daily-your-best">—</span>
             </div>
             <button id="btn-daily-play" class="btn primary vibrant-play" data-i18n="dailyPlay">Play today's deal</button>
+            <!-- SHARED BOARD (v3.16.5). Revealed only when a ?daily= link armed a
+                 PAST day. It is deliberately the second button and the quieter
+                 one: the scored run is what the player came for, and a link from
+                 a friend must not be able to spend today's single attempt.
+                 DailyChallenge.startRun({ replay: true }) forces scored=false. -->
+            <div id="daily-replay-offer" class="daily-replay-offer" style="display:none;">
+                <p class="daily-blurb">
+                    <span data-i18n="dailyReplayIntro">A friend shared the board from</span>
+                    <strong id="daily-replay-date">—</strong>.
+                    <span data-i18n="dailyReplayNote">That day is over, so it is not scored.</span>
+                </p>
+                <button id="btn-daily-replay" class="btn secondary" data-i18n="dailyReplayPlay">Play that board (not scored)</button>
+            </div>
         </div>
         <h3 class="daily-sub" data-i18n="dailyBoard">Today's Board</h3>
         <!-- Filled by DailyChallenge.renderBoardTrust(); hides itself the day
@@ -1126,7 +1217,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.16.2"></script>
+    <script type="module" src="js/main.js?v=3.16.6"></script>
 </body>
 
 </html>

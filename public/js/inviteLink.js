@@ -29,6 +29,42 @@ export function parseInviteCode(locationLike) {
 }
 
 /**
+ * Parses a Daily Challenge date from a query (?daily=YYYY-MM-DD).
+ *
+ * Lives beside parseInviteCode because it answers the same question about the
+ * same object, and because the two must be told apart at boot: a URL carrying
+ * BOTH is an invite, and a test pins that. It shares nothing else with the
+ * invite path — no storage, no expiry, no consume/peek distinction — because
+ * a date is not a claim on anything. It is a signpost.
+ *
+ * The shape is validated but the date is NOT bounded here. A caller decides
+ * what a past date means; this function only refuses something that is not a
+ * date. Returning "2026-02-30" is deliberate: the seed is a hash of the string,
+ * so an impossible day still produces a real, reproducible board, and refusing
+ * it here would be a second calendar implementation nobody asked for.
+ *
+ * @param {{ search?: string }} locationLike
+ * @returns {string|null} "YYYY-MM-DD", or null if missing/malformed
+ */
+export function parseDailyDate(locationLike) {
+    if (!locationLike) return null;
+    const search = typeof locationLike.search === 'string' ? locationLike.search : '';
+    const m = search.match(/[?&]daily=(\d{4}-\d{2}-\d{2})(?:[^\d]|$)/);
+    return m ? m[1] : null;
+}
+
+/**
+ * Builds the canonical challenge URL for a Daily Challenge date.
+ * @param {string} dateKey "YYYY-MM-DD"
+ * @param {string} origin e.g. "https://ers-card-game.web.app"
+ * @returns {string} "" when the date is not a date — never a half-built URL
+ */
+export function formatDailyUrl(dateKey, origin = '') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ''))) return '';
+    return `${origin}/?daily=${dateKey}`;
+}
+
+/**
  * Builds a canonical invite URL for a given table ID.
  * @param {string} tableId
  * @param {string} origin e.g. "https://ers-card-game.web.app"
