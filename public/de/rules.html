@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Spielregeln — Egyptian Rat Screw</title>
+    <meta name="description" content="Egyptian Rat Screw im Browser — die vollständigen Regeln, wie die Seite funktioniert und welche Daten sie speichert.">
+    <link rel="canonical" href="https://ers-card-game.web.app/de/rules">
+    <link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/rules">
+    <link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/rules">
+    <link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/rules">
+    <link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/rules">
+    <link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/rules">
+    <link rel="icon" type="image/png" href="/assets/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+:root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --muted: rgba(230, 237, 243, 0.62);
+        --primary: #58a6ff;
+        --gold: #f59e0b;
+        --gold-bright: #ffd700;
+        --panel-bg: rgba(22, 27, 34, 0.75);
+        --panel-border: rgba(255, 255, 255, 0.08);
+        --panel-shadow: rgba(0, 0, 0, 0.6);
+        --panel-glow: rgba(88, 166, 255, 0.15);
+    }
+    * { box-sizing: border-box; }
+    /* The ground lives on <html>, NOT on body. body::before below is a negative
+       z-index child; body does not create a stacking context, so that layer is
+       painted into the ROOT context — above html's background but BELOW body's.
+       Give body a background and it covers the artwork completely, which is
+       exactly what the first draft of this page did: the image loaded, returned
+       200, and was never seen. */
+    html { background: var(--bg); }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--fg);
+        font-family: 'Outfit', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-size: 16px;
+        line-height: 1.7;
+        background: transparent;
+    }
+    /* The menu artwork, fixed and dimmed. It is what makes this page belong to
+       the game rather than merely link to it. Behind a scrim, because the text
+       has to stay readable on top of a photograph. */
+    body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background:
+            linear-gradient(rgba(13, 17, 23, 0.72) 0%, rgba(13, 17, 23, 0.9) 45%, rgba(13, 17, 23, 0.97) 100%),
+            /* 62%, not "top": the artwork has the painted EGYPTIAN RAT SCREW
+               wordmark across its upper third, and at "top" it sits directly
+               behind this page's own header text. Pushed down, the header reads
+               against the table and the pyramids instead. */
+            url("/assets/menu.jpg") center 62% / cover no-repeat;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 72px; }
+
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+
+    /* --- header ------------------------------------------------------------ */
+    .site-head { display: flex; flex-wrap: wrap; align-items: baseline;
+                 justify-content: space-between; gap: 10px 20px; margin-bottom: 28px; }
+    .wordmark {
+        font-weight: 900; font-size: 0.95rem; letter-spacing: 2.5px;
+        text-transform: uppercase;
+        background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .wordmark:hover { text-decoration: none; filter: brightness(1.15); }
+    .site-nav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9rem; }
+    .site-nav [aria-current] { color: var(--fg); font-weight: 700; }
+
+    /* --- the card, lifted from .rules-content ------------------------------ */
+    .panel {
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        padding: 1.75rem;
+        box-shadow: 0 16px 40px var(--panel-shadow), 0 0 20px var(--panel-glow);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
+    h1 {
+        font-size: 1.6rem; font-weight: 900; letter-spacing: 1.5px;
+        text-transform: uppercase; text-align: center; text-wrap: balance;
+        margin: 0 0 1.5rem; padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    /* .rules-section, to the pixel */
+    .rules-section {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin: 0 0 10px;
+    }
+    .rules-section:last-child { margin-bottom: 0; }
+    h2 {
+        font-size: 0.95rem; font-weight: 700; letter-spacing: 0.5px;
+        color: var(--primary); margin: 0 0 6px; line-height: 1.4;
+    }
+    p { margin: 0 0 0.6rem; }
+    p:last-child { margin-bottom: 0; }
+    ul { margin: 10px 0 0; padding-left: 20px; }
+    li { margin-bottom: 4px; }
+    li:last-child { margin-bottom: 0; }
+    strong { color: #fff; }
+    .privacy-updated { color: var(--muted); font-size: 0.85rem; margin: 0 0 1rem; }
+
+    /* --- call to action, from .btn.primary --------------------------------- */
+    .play {
+        display: inline-block; margin: 1.75rem 0 0;
+        background: var(--primary); color: #fff;
+        font-weight: 700; font-size: 1rem;
+        padding: 12px 26px; border-radius: 12px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), background 0.25s;
+    }
+    .play:hover { background: #3fb950; transform: translateY(-2px); text-decoration: none; }
+    .cta { text-align: center; }
+
+    /* --- footer ------------------------------------------------------------ */
+    .site-foot {
+        margin-top: 28px; padding-top: 18px;
+        border-top: 1px solid var(--panel-border);
+        display: flex; flex-wrap: wrap; align-items: center;
+        justify-content: space-between; gap: 10px 20px;
+        font-size: 0.85rem; color: var(--muted);
+    }
+    .langs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .langs a {
+        border: 1px solid var(--panel-border); border-radius: 999px;
+        padding: 3px 11px; color: var(--muted);
+    }
+    .langs a:hover { color: var(--fg); border-color: var(--primary); text-decoration: none; }
+
+    @media (max-width: 480px) {
+        body { font-size: 15px; }
+        .wrap { padding: 22px 14px 56px; }
+        .panel { padding: 1.25rem; border-radius: 14px; }
+        h1 { font-size: 1.3rem; letter-spacing: 1px; }
+        .site-head { gap: 8px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .play { transition: none; }
+        .play:hover { transform: none; }
+    }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <header class="site-head">
+            <a class="wordmark" href="/">Egyptian Rat Screw</a>
+            <nav class="site-nav" aria-label="Auf dieser Seite">
+                <span aria-current="page">Spielregeln</span>
+                <a href="/de/about">Über das Spiel</a>
+                <a href="/de/privacy">Datenschutz</a>
+            </nav>
+        </header>
+        <main class="panel">
+            <h1>Spielregeln</h1>
+            <div class="rules-section">
+            <h2 data-i18n="rWinTitle">🏆 Wie man gewinnt</h2>
+            <p data-i18n="rWinDesc">Sammle <strong>alle 52 Karten</strong>, um das Spiel zu gewinnen. Karten werden unten an dein Deck angefügt, wenn du den Stapel gewinnst.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rLoseTitle">💀 Wie man verliert</h2>
+            <p data-i18n="rLoseDesc">Wenn du deine letzte Karte spielst oder ablegst und <strong>dich nicht zurückklatschen kannst</strong>, scheidest du aus. Du kannst auch mit 0 Karten noch auf den Stapel klatschen – ein erfolgreicher Klatscher ermöglicht es dir, durch "Zurückklatschen" wieder aufzuerstehen!</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rGameplayTitle">🃏 Spielablauf</h2>
+            <p data-i18n="rGameplayDesc">Die Spieler legen abwechselnd im Uhrzeigersinn die oberste Karte ihres Decks offen auf den Ablagestapel. Das Ziel ist es, durch gültige Klatscher oder gewonnene Herausforderungen alle Karten zu sammeln.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rChalTitle">⚔️ Bildkarten-Herausforderungen (J / Q / K / A)</h2>
+            <p data-i18n="rChalDesc">Das Ausspielen einer Bildkarte zwingt den nächsten Spieler, mit einer eigenen Bildkarte zu antworten:</p>
+            <ul>
+            <li data-i18n="rChalJ"><strong>Bube (J)</strong> — 1 Chance zu antworten</li>
+            <li data-i18n="rChalQ"><strong>Dame (Q)</strong> — 2 Chancen zu antworten</li>
+            <li data-i18n="rChalK"><strong>König (K)</strong> — 3 Chancen zu antworten</li>
+            <li data-i18n="rChalA"><strong>Ass (A)</strong> — 4 Chancen zu antworten</li>
+            </ul>
+            <p data-i18n="rChalEnd">Spielt der Verteidiger alle seine Chancen ohne Bildkarte aus, gewinnt der Angreifer den gesamten Stapel. Spielt der Verteidiger eine Bildkarte, kehrt sich die Herausforderung um und der Angreifer muss nun verteidigen.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rSlapTitle">👋 Klatsch-Regeln</h2>
+            <p data-i18n="rSlapDesc">Jeder Spieler kann jederzeit auf den Stapel klatschen. Ein Klatscher bei einem gültigen Muster gewinnt den Stapel. Ein Klatscher bei einem ungültigen Muster kostet eine Strafkarte (wird verbrannt).</p>
+            <ul>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapD">🟡 <strong>Doppel</strong> — Zwei Karten desselben Ranges hintereinander. <em>z.B. 7 → 7</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card red"><span class="val">7</span><span class="suit">♦</span></div>
+            <div class="mini-card black"><span class="val">7</span><span class="suit">♣</span></div>
+            </div>
+            </li>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapT">🟠 <strong>Zehner</strong> — Zwei Zahlenkarten (Wert 10 oder niedriger), die zusammen 10 ergeben. <em>z.B. 3 → 7</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card red"><span class="val">3</span><span class="suit">♥</span></div>
+            <div class="mini-card black"><span class="val">7</span><span class="suit">♠</span></div>
+            </div>
+            </li>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapM">💍 <strong>Heirat</strong> — König (K) und Dame (Q) nebeneinander (egal in welcher Reihenfolge). <em>z.B. K → Q oder Q → K</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card black"><span class="val">K</span><span class="suit">♣</span></div>
+            <div class="mini-card red"><span class="val">Q</span><span class="suit">♥</span></div>
+            </div>
+            </li>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapS">🥪 <strong>Sandwich</strong> — Zwei Karten desselben Ranges mit genau einer Karte dazwischen. <em>z.B. 8 → 5 → 8</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card black"><span class="val">8</span><span class="suit">♠</span></div>
+            <div class="mini-card red"><span class="val">5</span><span class="suit">♦</span></div>
+            <div class="mini-card black"><span class="val">8</span><span class="suit">♣</span></div>
+            </div>
+            </li>
+            </ul>
+            
+            <!-- Generated from RULE_DEFS by rulesPanel.js — see ruleDoc.js.
+            Deliberately inside the Slap Rules section rather than a
+            section of its own: these are more patterns, not a new topic. -->
+            <div id="optional-rules" class="optional-rules"></div>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rBurnTitle">🔥 Strafkarten</h2>
+            <p data-i18n="rBurnDesc">Ein <strong>ungültiger Klatscher</strong> zwingt dich, eine Karte von deiner Hand abzuwerfen – sie kommt auf einen separaten Strafstapel. Wenn jemand den Stapel gewinnt, werden die Strafkarten ganz unten an das Deck des Gewinners angefügt, noch vor den gespielten Karten.</p>
+            </div>
+            
+            <div class="rules-section"
+            style="border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rTimeoutTitle">⏱️ AFK / Inaktivitäts-Timeout</h2>
+            <p data-i18n="rTimeoutDesc">Wenn ein Spieler nicht innerhalb der erlaubten Zeit eine Karte spielt (Leicht: 20 Sek., Mittel: 15 Sek., Schwer: 10 Sek., Herausforderer: 15 Sek.), <strong>verbrennt er automatisch eine Karte</strong> und der Zug geht an den nächsten Spieler über.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #58a6ff; background: rgba(88, 166, 255, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rCalibTitle">📊 Reflexgeschwindigkeits-Analyse</h2>
+            <p data-i18n="rCalibDesc">Jeder erfolgreiche Klatscher erfasst Ihre Reaktionszeit in Millisekunden! Sehen Sie sich Ihre beste Reflexgeschwindigkeit und Ihre persönliche Entwicklungsgrafik direkt in Ihrem Profil an. Vergleichen Sie Ihre Geschwindigkeit mit den Challenger-Bots (die auch im Mehrspielermodus aktiv sind)!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #ffd700; background: rgba(255, 215, 0, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rPerfectTitle">🎯 Perfekter Klatscher (Perfect Slap)</h2>
+            <p data-i18n="rPerfectDesc">Ein Klatschen sehr nahe an der Mitte des Stapels (innerhalb von 15 Pixeln) löst einen <strong>Perfekten Klatscher</strong>-Bonus aus! Erzeugt spezielle Neon-Sternenpartikel und erhöht die Tonhöhe des Sound-Synthesizers.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #ff5722; background: rgba(255, 87, 34, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rShieldTitle">🛡️ Verbrennungsschild (Combustion Shield)</h2>
+            <p data-i18n="rShieldDesc">Eine Serie von <strong>3 erfolgreichen Klatschern</strong> (nur Klatscher) aktiviert ein feuriges <strong>Verbrennungsschild</strong>, das <strong>30 Sekunden</strong> lang gilt! Jeder weitere erfolgreiche Klatscher innerhalb dieser 30 Sekunden setzt die Schilddauer zurück — der Zähler auf deinem Deck springt dann wieder auf 30. Wenn du bei aktivem Schild falsch klatschst, zerbricht das Schild und schützt dein Deck einmal pro Aktivierung vor dem Verlust einer Karte.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rReconTitle">🔄 Wiederverbindung & Bot-Übernahme</h2>
+            <p data-i18n="rReconDesc">Wenn Ihre Verbindung im Mehrspielermodus unterbrochen wird, übernimmt vorübergehend ein Bot Ihren Platz, damit das Spiel weitergeht. Sie haben eine Schonfrist, um die Verbindung wiederherzustellen und die Kontrolle über Ihr Deck und Ihre aktiven Streaks nahtlos wieder zu übernehmen!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #a855f7; background: rgba(168, 85, 247, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rSpecTitle">👁️ Zuschauermodus & Zurückklatschen</h2>
+            <p data-i18n="rSpecDesc">Eliminiert? Gehen Sie noch nicht! Sie wechseln in den Zuschauermodus, in dem Sie das Spiel verfolgen, schnelle Chat-Emojis senden und jederzeit versuchen können, sich <strong>zurückzuklatschen</strong>. Ein erfolgreicher Klatscher belebt Sie mit dem Stapel wieder!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #06b6d4; background: rgba(6, 182, 212, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rSpeedHUDTitle">⚡ Reflexgeschwindigkeit & HUD-Abzeichen</h2>
+            <p data-i18n="rSpeedHUDDesc">Jeder erfolgreiche Klatscher zeigt Ihre Reaktionszeit in Millisekunden im Aktionsprotokoll an. Ein Klatschen unter 400 ms gewährt einen <strong>Schnellen Klatsch</strong>-Bonus und zeigt dynamische Geschwindigkeitsabzeichen (⚡ GÖTTLICH, ☄️ BLITZ, etc.) im HUD!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #ec4899; background: rgba(236, 72, 153, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rProfileStatsTitle">📈 Spielverlauf & SVG-Analysen</h2>
+            <p data-i18n="rProfileStatsDesc">Besuchen Sie Ihr Profil, um Ihren vollständigen Spielverlauf, die gewonnenen Karten und eine interaktive SVG-Grafik zu sehen, die Ihre Reaktionszeitkurve im Laufe der Zeit zeigt.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rOriginTitle">📜 Woher das Spiel kommt</h2>
+            <p data-i18n="rOriginDesc">Egyptian Rat Screw ist eine Schlag-Variante von <strong>Beggar-My-Neighbour</strong>, einem alten englischen Kinderspiel, in dem Spieler reihum Karten ablegen und eine Bildkarte den nächsten Spieler zu einer Strafzahlung zwingt. Die Schlaghälfte stammt aus der Slapjack-Familie. Die Kombination reist unter einer langen Namensliste — ERS, ERF, Egyptian War, Bloodystump, Ratslap — und es gibt keinen belegten Bericht darüber, woher das "Egyptian" kommt. Das Spiel verbreitete sich, indem es an Küchentischen beigebracht wurde, nicht indem es veröffentlicht wurde; diesen Teil hat niemand aufgeschrieben.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rHouseVaryTitle">🏠 Warum alle andere Regeln spielen</h2>
+            <p data-i18n="rHouseVaryDesc">Weil es mündlich weitergegeben wurde, spielt fast jede Gruppe einen etwas anderen Satz. Paare und Sandwiches sind nahezu universell; Zehner, Ehen, Oben-Unten und Vierer-Folge sind die, über die gestritten wird. Statt Partei zu ergreifen, macht dieses Spiel Schalter daraus: Die vier klassischen Muster sind standardmäßig an, drei weitere bleiben aus, bis du sie einschaltest, und der Tisch, an den du dich setzen willst, zeigt <em>vor</em> der ersten Karte, welcher Satz gilt — damit niemand eine Hausregel dadurch entdeckt, dass er einen Stapel an sie verliert.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rStrategyTitle">🎯 Was dich wirklich besser macht</h2>
+            <p data-i18n="rStrategyDesc">Ein falscher Schlag kostet eine Karte von der Unterseite deines Stapels. Die günstigste Verbesserung ist also nicht, <em>schneller</em> zu schlagen — sondern bei unsicheren Mustern seltener zu schlagen. Zehner werden am häufigsten übersehen: Die beiden Karten müssen exakt zehn ergeben und Bildkarten zählen nicht, was man leicht einen Schlag zu spät bemerkt. Achte darauf, wie der Stapel wächst, statt auf die gespielte Karte; ein Fünf-Karten-Stapel ist mehrere Züge Risiko wert, ein Zwei-Karten-Stapel nicht. Und solange eine Schlagserie dich schützt, bricht ein falscher Schlag nur den Schild, statt eine Karte zu verbrennen — auf einer Serie ist ein Grenzfall-Schlag also mehr wert als sonst.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rDailyRulesTitle">🗓️ Warum die Tägliche Herausforderung für alle gleich ist</h2>
+            <p data-i18n="rDailyRulesDesc">Die Austeilung des Tages wird aus dem Datum selbst erzeugt, nicht aus einem Wurf auf dem Server — jeder Spieler weltweit startet also aus derselben Position mitten in der Partie, mit denselben Karten auf denselben Händen. Auch die Form des Szenarios und die Bot-Schwierigkeit sind Funktionen des Datums. Während ein gewerteter Lauf läuft, werden deine eigenen Einstellungen übersteuert — Zugzeit, Animationsgeschwindigkeit und Regelsatz gehören dem Tag, nicht dir. Sonst würde eine mildere Einstellung auf identischem Brett eine höhere Punktzahl erkaufen, und die Bestenliste würde Vorlieben statt Reflexe sortieren.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #a78bfa; background: rgba(167, 139, 250, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rPersonalityTitle">🎭 Bot-Persönlichkeiten</h2>
+            <p data-i18n="rPersonalityDesc">Jeder Platz spielt anders: <strong>Blitz</strong> ist schnell und blufft oft, <strong>Chaos</strong> ist völlig unberechenbar, und <strong>Kobra</strong> ist geduldig und liegt selten falsch. Gleiche Schwierigkeit, drei verschiedene Gegner.</p>
+            </div>
+            <div class="cta"><a class="play" href="/">Spiel starten</a></div>
+        </main>
+        <footer class="site-foot">
+            <span>Berk Elmalı · Egyptian Rat Screw</span>
+            <div class="langs">
+                <a href="/en/rules" hreflang="en">English</a>
+                <a href="/tr/rules" hreflang="tr">Türkçe</a>
+                <a href="/ru/rules" hreflang="ru">Русский</a>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

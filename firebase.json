@@ -10,12 +10,6 @@
       "**/*.json",
       "**/*.env"
     ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ],
     "headers": [
       {
         "source": "/",
@@ -28,6 +22,15 @@
       },
       {
         "source": "**/*.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/@(en|tr|de|ru)/@(rules|about|privacy)",
         "headers": [
           {
             "key": "Cache-Control",

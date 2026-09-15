@@ -13,7 +13,7 @@ setlocal
 cd /d "%~dp0"
 
 echo.
-echo === 1/10  Birim testleri ===
+echo === 1/12  Birim testleri ===
 call node test_gameLogic.mjs
 if errorlevel 1 (
     echo.
@@ -23,7 +23,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo === 2/10  Sunucu kural kopyasi senkron mu ===
+echo === 2/12  Sunucu kural kopyasi senkron mu ===
 call node tools\sync-rules.mjs
 if errorlevel 1 (
     echo Kural senkronu basarisiz. Deploy iptal edildi.
@@ -32,7 +32,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo === 3/10  Skor sinirlari firestore.rules ile ayni mi ===
+echo === 3/12  Skor sinirlari firestore.rules ile ayni mi ===
 call node tools\check-score-bounds.mjs
 if errorlevel 1 (
     echo Skor sinirlari ayristi. Deploy iptal edildi.
@@ -41,7 +41,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo === 4/10  Dort dilde de metin eksik mi ===
+echo === 4/12  Dort dilde de metin eksik mi ===
 call node tools\check-locales.mjs
 if errorlevel 1 (
     echo Ceviri anahtari eksik ya da cift tanimli. Deploy iptal edildi.
@@ -50,7 +50,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo === 5/10  Hata ekrani yapisal kontrolu ===
+echo === 5/12  Hata ekrani yapisal kontrolu ===
 REM  #error-modal .screen ya da .modal-overlay sinifini ALMAMALI.
 REM  .modal-overlay tek basina display ve position vermiyor (onlar .screen'den
 REM  geliyor), .screen ise dort ayri dosyada toplu temizleniyor. Ikisi de hata
@@ -64,7 +64,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo === 6/10  Satir ici script CSP tarafindan calistirilabiliyor mu ===
+echo === 6/12  Satir ici script CSP tarafindan calistirilabiliyor mu ===
 REM  v3.7.0-v3.7.4 arasi head etiketindeki boot safety net HER yuklemede
 REM  tarafindan bloke edildi: "Uygulama baslatilamadi" ekrani tam da
 REM  gerektigi anda yoktu. Cozum hash, ama hash script'in TAM BAYTLARI
@@ -82,7 +82,7 @@ REM  deploy.bat'in KENDI onayi: gorunmuyorsa kapi calismamis demektir.
 echo check-csp-hash: OK
 
 echo.
-echo === 7/10  Lobi stili yasayan seyleri mi bicimlendiriyor ===
+echo === 7/12  Lobi stili yasayan seyleri mi bicimlendiriyor ===
 REM  v3.8.0'da lobby.css projeye SIFIR kapsamla girdi ve hicbir seyle
 REM  eslesmeyen uc kural tasidi: .lobby-edition, .lobby-suit ve
 REM  h1 icindeki span. Bir "edition" satiri, dev maca simgesi ve
@@ -98,7 +98,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo === 8/10  Markup, var olmayan bir sinifi mi cagiriyor ===
+echo === 8/12  Markup, var olmayan bir sinifi mi cagiriyor ===
 REM  check-lobby'nin TERSI. O, hicbir seyle eslesmeyen CSS'i yakalar.
 REM  Bu, hicbir CSS'i olmayan markup'i yakalar -- ve pahali olan buymus.
 REM  v3.8.0 hesap paneline bir "oyuncu karti" ekledi ve markup'i HIC
@@ -123,7 +123,7 @@ REM  "N classes in markup" satiri) YUKARIDA GORUNMUYORSA kapi calismamistir;
 REM  errorlevel 0 gormek yeterli DEGILDIR.
 
 echo.
-echo === 9/10  Vaat edilen olay gercekten gonderiliyor mu ===
+echo === 9/12  Vaat edilen olay gercekten gonderiliyor mu ===
 REM  Dokuz kapinin dokuzu da ya kaynak metnine ya yerlesime bakiyordu.
 REM  Hicbiri oyuncunun umursadigi soruyu sormuyordu: SOZ VERDIGIN SEY
 REM  OLUYOR MU? Bunun bedeli 'resurrected' oldu. Kural sayfasi dort
@@ -148,7 +148,51 @@ if errorlevel 1 (
 )
 
 echo.
-echo === 10/10  Firebase Hosting deploy ===
+echo === 10/12  Icerik sayfalari kaynaklariyla ayni mi ===
+REM  15 Eylul 2026: AdSense basvurusu "icerik" gerekcesiyle geri geldi.
+REM  Olculen sebep kod degildi: public/ icinde TEK bir html vardi, ve
+REM  index.html'de SIFIR tane 'a href' vardi. Hakkinda/Kurallar/Gizlilik
+REM  display:none panellerdi, her gezinme 'button' + JS idi. Bir insan icin
+REM  calisiyor, JavaScript calistirmayan hicbir sey icin var degil.
+REM  Google'in cubugu aynen: "enough valuable content ... and navigational
+REM  elements". Icerik vardi; gezinme render oluyor ve HIC BIR SEY yapmiyordu.
+REM
+REM  Sayfalar artik URETILIYOR: index.html'in yapisi + localization.js'in
+REM  metni .. /en /tr /de /ru altinda 12 sayfa. Yani kurallarin ikinci bir
+REM  kopyasi YOK. Bu kapi tam da bunu korur: uretici bellekte yeniden
+REM  calisir ve diskteki dosya bir bayt bile farkliysa deploy'u durdurur.
+REM  Aksi halde localization.js'te duzeltilen bir kural oyuncuya yeni,
+REM  Google'a gecen ayinki metni gostermeye devam ederdi.
+call node tools\build-content-pages.mjs --check
+if errorlevel 1 (
+    echo Uretilen icerik sayfalari bayat. Once sunu calistir:
+    echo     node tools\build-content-pages.mjs
+    echo Deploy iptal edildi.
+    pause
+    exit /b 1
+)
+
+echo.
+echo === 11/12  Her yerel baglanti bir dosyaya mi cikiyor ===
+REM  DIKKAT: tools\check-links.mjs Agustos'tan beri REPODA DURUYORDU ve
+REM  deploy.bat onu HIC CAGIRMIYORDU -- check-error-modal'in v3.7.3'te
+REM  yakalanan hatasinin aynisi, bir yil sonra ayni dosyada. Calismayan bir
+REM  kapi, olmayan kapidan beterdir: yesil gorunur.
+REM
+REM  Bugun ilk kez calistirildiginda dort dakika icinde gercek bir hata
+REM  buldu: uretilen 12 sayfanin hepsi /assets/favicon.png istiyordu ve o
+REM  dosya hic var olmamisti. Simdi cleanUrls'i de biliyor (/en/rules ..
+REM  public/en/rules.html) ve uretilen sayfalarin baglantilarini da tarar.
+call node tools\check-links.mjs
+if errorlevel 1 (
+    echo Var olmayan bir dosyaya baglanti var.
+    echo Deploy iptal edildi.
+    pause
+    exit /b 1
+)
+
+echo.
+echo === 12/12  Firebase Hosting deploy ===
 REM  SURUM SABIT, --non-interactive ZORUNLU.
 REM
 REM  "@latest" her calistirmada npm registry'ye gidip surumu yeniden cozuyordu.
@@ -1011,7 +1055,116 @@ echo       turunu hak ediyor. Simdilik bolum 64, iki ayrilma dalinin
 echo       da bekcisiz yazamayacagini sabitliyor ^(3 mutasyon, 3'u de
 echo       yakalandi^) ve rules-test'e o yazmanin reddedildigini
 echo       soyleyen bir senaryo eklendi.
-echo   2136 test, 9 kaynak kapisi, smoke yesil; kural kapisi 25/25.
+echo.
+echo  --- v3.16.0 -- SITENIN HIC BAGLANTISI YOKTU --------------------
+echo  106^) 15 Eylul 2026: AdSense basvurusu "icerik" gerekcesiyle geri
+echo       geldi. Kodda bir hata aranmadan once OLCULDU:
+echo         public/ icinde html dosyasi ....... 1
+echo         index.html'deki 'a href' sayisi ... 0
+echo         taranabilir URL .................... 1
+echo         statik metin ....... ~1750 kelime, HEPSI display:none
+echo       panellerin icinde. Google'in cubugu aynen sudur: "enough
+echo       valuable content ... and navigational elements". Icerik
+echo       vardi. Gezinme ise render oluyor ve HIC BIR SEY yapmiyordu:
+echo       her dugme bir button + JS handler, ve JavaScript
+echo       calistirmayan hicbir sey icin takip edilecek tek bag yok.
+echo       Bu projenin en eski hata sinifi, bu kez oyuncuya degil
+echo       inceleyene dogrultulmus.
+echo  107^) Ikinci sorun firebase.json'daydi: '**' her eslesmeyen yolu
+echo       /index.html'e yaziyordu. Yani yanlis yazilmis HER adres
+echo       404 degil, 200 + oyunun tamami donduruyordu -- tek gercek
+echo       sayfasi olan bir siteye sinirsiz kopya uretmenin en ucuz
+echo       yolu. Rewrite kaldirildi, public/404.html geldi. Davet
+echo       linki koke takilan bir sorgu ^(/?join=KOD^) oldugu icin
+echo       hicbir sey ona dayanmiyordu.
+echo  108^) Cozum YAZILMADI, URETILDI: tools/build-content-pages.mjs
+echo       index.html'in YAPISINI ve localization.js'in METNINI alip
+echo       /en /tr /de /ru altinda 12 sayfa cikariyor -- kurallar,
+echo       hakkinda, gizlilik. Yani kurallarin ikinci bir kopyasi YOK.
+echo       Her sayfada kendi canonical'i, dort dilin hreflang'i,
+echo       x-default, gorunur dil secici ve gercek bir footer var.
+echo       sitemap.xml ayni ureticiden cikiyor, robots.txt onu
+echo       gosteriyor. index.html'e uc gercek bag eklendi -- dosyanin
+echo       tamamindaki tek 'a href' onlar.
+echo  109^) YENI KAPI 10/12: uretici bellekte yeniden calisir ve
+echo       diskteki dosya bir bayt farkliysa deploy durur. Aksi halde
+echo       localization.js'te duzeltilen bir kural oyuncuya yeni,
+echo       Google'a gecen ayinki metni gosterirdi. 5 mutasyon denendi
+echo       ^(footer silindi, bir sayfa elle degistirildi, rewrite geri
+echo       kondu, footer display:none yapildi, bir hreflang atildi^);
+echo       5'i de yakalandi.
+echo  110^) YENI KAPI 11/12: tools/check-links.mjs Agustos'tan beri
+echo       repoda duruyordu ve deploy.bat onu HIC CAGIRMIYORDU --
+echo       check-error-modal'in ayni hatasi, ayni dosyada. Ilk kez
+echo       calistirildiginda gercek bir hata buldu: uretilen 12
+echo       sayfanin hepsi var olmayan bir favicon istiyordu. Artik
+echo       cleanUrls'i biliyor ve uretilen sayfalari da tariyor.
+echo.
+echo       DURUST SINIR: bunlarin hicbiri "icerik" eklemez. Metin
+echo       ayni metin; yalnizca artik gorulebiliyor. Google'in
+echo       istedigi sey buysa yeter, ama asil kaldirac hala ozgun
+echo       icerik yazmak -- o bir sonraki tur.
+echo.
+echo  --- v3.16.1 -- BIR FOOTER, ALTINDA DURDUGU MENUYU TEKRARLADI ---
+echo  111^) v3.16.0 surum yazisinin ALTINA uc bagli ayri bir nav koydu.
+echo       Tarayici robotu icin dogruydu, oyuncu icin yanlis: menu artik
+echo       "Game Rules"i IKI kez, "About" ve "Privacy"yi de IKI kez
+echo       gosteriyordu, bir satir arayla. Canlidan bir saat icinde
+echo       bildirildi. Altinda durdugu gezinmeyi tekrarlayan bir footer
+echo       footer degil, ikinci bir menudur.
+echo  112^) O nav silindi. Yerine, SATIRDA ZATEN DURAN iki kontrol
+echo       button'dan 'a href'e yukseltildi. Ekranda hicbir sey oynamadi:
+echo       ayni etiket, ayni stil, ayni tiklama davranisi -- main.js
+echo       gezinmeyi iptal edip paneli eskisi gibi aciyor. Degisen tek
+echo       sey, JavaScript calistirmayan bir seyin artik takip edecek bir
+echo       bagi olmasi. Yeni arayuz hic gerekmemis.
+echo       Bu CLOAKING DEGIL: /en/about ve /en/privacy, actiklari panelle
+echo       AYNI metni tasiyor, ayni kaynaktan uretiliyor.
+echo  113^) YENI KAPI, hatanin kendisini degil SINIFINI tutuyor: menudeki
+echo       hicbir kontrol, oradaki baska bir kontrolun etiketini
+echo       tasiyamaz. "About iki kez" oyuncunun gordugu sey budur ve
+echo       About adi gecmeden kontrol edilebilir. Ayri bir kapi da
+echo       preventDefault'u sabitliyor -- o dusunce oyuncu, uygulamada
+echo       kalmasi gereken tek kontrol tarafindan disari atilir.
+echo  114^) VE SAYFALARIN TASARIMI: v3.16.0 onlari jenerik koyu bir
+echo       stille giydirmisti -- sistem yazi tipi, duz gri kartlar.
+echo       Butun yapisal kapilar yesildi; canlidan "tasarim bizim
+echo       kurallar sekmemizden cok daha kotu" diye geldi, ve dogruydu.
+echo       Artik her deger style.css'ten ALINIYOR, burada secilmiyor:
+echo       Outfit 400/700/900, .rules-content cam paneli, .rules-section
+echo       kartlari, .panel-title dizgisi, ve menunun arkaplan gorseli.
+echo       Kapi bunu olcuyor: oyunun temasi degisirse sayfalar takip
+echo       edene kadar deploy durur.
+echo       Ilk denemede gorsel GORUNMEDI: body'ye opak bir background
+echo       verilmisti ve negatif z-index'li ::before katmanini orttu --
+echo       resim yuklendi, 200 dondu, hic gorulmedi. Bu projenin imza
+echo       hatasinin gorsel hali. body artik seffaf, zemin html'de.
+echo.
+echo  --- v3.16.2 -- URETILEN SAYFALARIN HIC ONBELLEK KURALI YOKTU ---
+echo  115) v3.16.1 deploy'u temiz gecti ve canli /tr/rules HALA v3.16.0
+echo       tasarimini gosterdi -- farkli bir sorgu parametresiyle bile.
+echo       15 dosya yuklendi ve bu tam olarak degisen 15 dosyaydi, yani
+echo       dosyalar gitmisti. Arada bir onbellek vardi.
+echo  116) SEBEP: headers.source ISTEK YOLUNA karsi eslesir. cleanUrls
+echo       acik oldugu icin bu sayfalar /tr/rules diye isteniyor --
+echo       UZANTISIZ. Yani projedeki her sayfanin dayandigi '**/*.html'
+echo       kurali bunlarin HICBIRINI yakalayamiyor. '**' kuralina
+echo       dusuyorlar, o da Cache-Control yazmiyor, ve Firebase'in kendi
+echo       varsayilani devreye giriyor. cleanUrls'i acip onbellek
+echo       kuralini .html uzerinden yazmak: dogru okunan, hicbir seyle
+echo       eslesmeyen kural. Bu dosyanin adini koydugu hata sinifi.
+echo  117) Sayfalar artik kendi kuralini tasiyor, digerleriyle ayni
+echo       no-store politikasiyla. Kapi kuralin dil ve sayfa listesini
+echo       URETICIDEN okuyor: bir dil eklenip header guncellenmezse
+echo       deploy durur.
+echo       VE O KAPI ILK YAZILISINDA KACIRDI: beklentisini ureticiden
+echo       degil, testin sekiz satir yukarisindaki IKINCI bir elle
+echo       yazilmis listeden aliyordu. Besinci dil ekleyen mutasyon
+echo       ikisi de birbiriyle uyustugu icin gecti. Beklentisi kendi
+echo       kopyasi olan bir kapi, kapi degildir. Liste artik
+echo       genMod.LANGS ve genMod.PAGES'ten turetiliyor; ayni mutasyon
+echo       simdi 12 testi birden kiriyor.
+echo   2339 test, 11 kaynak kapisi, smoke yesil; kural kapisi 25/25.
 echo ================================================================
 echo.
 echo ADSENSE PANELINDE YAPILMASI GEREKEN -- KODLA ZORLANAMAZ:
@@ -1201,5 +1354,32 @@ echo     meydan oku" butonuna bas. Telefonda paylasim sayfasi acilmali;
 echo     masaustunde metin PANOYA kopyalanmali ve buton "Meydan okuma
 echo     kopyalandi!" demeli. Yapistirdiginda metinde KART SAYISI ve
 echo     REFLEKS olmali; "0" ya da "9999" GORUNMEMELI
+echo.
+echo   --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
+echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
+echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
+echo   - Surum satirinda ^(Berk Elmali - v3.16.2^) About ve Privacy
+echo     yazilari duruyor olmali -- ve BIR KEZ. Menude "Game Rules",
+echo     "About" ya da "Privacy" IKI KEZ goruyorsan v3.16.0 hali
+echo     kalmis demektir, bana bildir
+echo   - About'a tikla: eskisi gibi PANEL acilmali, sayfa DEGISMEMELI.
+echo     Adres cubugu /en/about'a giderse preventDefault dusmus demektir
+echo   - About'a ORTA TUSLA tikla ^(ya da yeni sekmede ac^): bu sefer
+echo     ayri bir sayfa acilmali -- koyu zemin, Misir gorseli, cam
+echo     panel, ustte altin wordmark, en altta dil secici
+echo   - Acilan sayfada dil secicideki Turkce'ye bas: metin Turkce
+echo     olmali ve adres /tr/rules olmali
+echo   - /de/about ve /ru/privacy adreslerini elle yaz: acilmali
+echo   - ers-card-game.web.app/olmayanbirsey yaz: 404 SAYFASI cikmali.
+echo     OYUN ACILIRSA rewrite geri gelmis demektir, bana bildir
+echo   - ers-card-game.web.app/sitemap.xml: 13 adet loc gormelisin
+echo   - ers-card-game.web.app/robots.txt: en altta Sitemap satiri
+echo   - Ana sayfada sag tik .. "Sayfa kaynagini goruntule", Ctrl+F ile
+echo     'a href' ara: IKI tane cikmali. Sifir cikarsa deploy eski
+echo   - GOOGLE SEARCH CONSOLE ^(kodla yapilamaz^): sitemap.xml'i
+echo     gonder, sonra /en/rules icin "URL denetimi" .. "Dizine
+echo     ekleme istegi". Google sayfalari gormeden AdSense de gormez
+echo   - ADSENSE PANELI ^(kodla yapilamaz^): Siteler .. ers-card-game
+echo     .web.app .. yeniden inceleme iste. Inceleme 2-4 HAFTA surebilir
 echo.
 pause

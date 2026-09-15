@@ -9,3 +9,8 @@
 # Nothing here is hidden. The game is a single page; there is nothing to exclude.
 User-agent: *
 Allow: /
+
+# v3.16.0 — the site is no longer one page. Twelve generated content pages
+# live under /en/, /tr/, /de/ and /ru/; the sitemap lists all of them with
+# their hreflang alternates.
+Sitemap: https://ers-card-game.web.app/sitemap.xml

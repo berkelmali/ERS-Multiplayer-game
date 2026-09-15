@@ -183,7 +183,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAbout = document.getElementById('btn-about');
     const screenAbout = document.getElementById('about-panel');
     if (btnAbout && screenAbout) {
-        btnAbout.addEventListener('click', () => {
+        // v3.16.1 — this control is an <a href="/en/about"> now, not a <button>.
+        // preventDefault is what keeps it a panel: without it the click opens
+        // the panel AND navigates, so the player is thrown out of the app by the
+        // one element whose job is to keep them in it. The href is there for
+        // whatever does not run JavaScript; the handler is there for people.
+        btnAbout.addEventListener('click', (e) => {
+            e.preventDefault();
             screenMenu.classList.remove('active');
             screenAbout.classList.add('active');
         });
@@ -199,7 +205,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnPrivacy = document.getElementById('btn-privacy');
     const screenPrivacy = document.getElementById('privacy-panel');
     if (btnPrivacy && screenPrivacy) {
-        btnPrivacy.addEventListener('click', () => {
+        // v3.16.1 — an <a href="/en/privacy">, same as About above. Same reason
+        // for the same preventDefault.
+        btnPrivacy.addEventListener('click', (e) => {
+            e.preventDefault();
             screenMenu.classList.remove('active');
             screenPrivacy.classList.add('active');
         });
