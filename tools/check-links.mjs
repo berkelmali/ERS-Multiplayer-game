@@ -25,11 +25,48 @@ const problems = [];
 
 const exists = (p) => existsSync(p) && statSync(p).isFile();
 
+// v3.16.0 — `cleanUrls: true` means Hosting answers `/en/rules` with the file
+// `public/en/rules.html`. Read the flag rather than assume it: if cleanUrls is
+// ever turned off, every extensionless link on the site breaks at once, and
+// this gate should be what says so instead of the live 404 page.
+const hostingCfg = JSON.parse(readFileSync(join(root, 'firebase.json'), 'utf8')).hosting || {};
+const cleanUrls = hostingCfg.cleanUrls === true;
+
+/** Does Hosting have a file to answer this in-site reference with? */
+const servable = (ref) =>
+    exists(join(pub, ref)) ||
+    exists(join(pub, ref, 'index.html')) ||
+    (cleanUrls && !/\.[a-z0-9]+$/i.test(ref) && exists(join(pub, `${ref}.html`)));
+
+/** Every in-site reference a page makes, normalised. */
+function* localRefs(src) {
+    for (const m of src.matchAll(/(?:src|href)="(?!https?:|data:|mailto:|#)([^"]+)"/g)) {
+        const ref = m[1].split('?')[0].split('#')[0].replace(/^\//, '');
+        if (ref !== '') yield [ref, m[1]];          // href="/" is the site root
+    }
+}
+
 // --- 1. index.html -------------------------------------------------------
 const html = readFileSync(join(pub, 'index.html'), 'utf8');
-for (const m of html.matchAll(/(?:src|href)="(?!https?:|data:|mailto:|#)([^"]+)"/g)) {
-    const ref = m[1].split('?')[0].replace(/^\//, '');
-    if (!exists(join(pub, ref))) problems.push(`index.html → ${m[1]}`);
+for (const [ref, raw] of localRefs(html)) {
+    if (!servable(ref)) problems.push(`index.html → ${raw}`);
+}
+
+// --- 1b. the generated content pages --------------------------------------
+// These are the only other pages that carry links, and their links are what
+// turn twelve files into one navigable site. A typo in the generator's nav
+// would leave a crawler exactly where it was before this release: on a page
+// with nothing to follow.
+const generatedPages = readdirSync(pub, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .flatMap((d) => readdirSync(join(pub, d.name))
+        .filter((f) => f.endsWith('.html'))
+        .map((f) => `${d.name}/${f}`));
+
+for (const page of generatedPages) {
+    for (const [ref, raw] of localRefs(readFileSync(join(pub, page), 'utf8'))) {
+        if (!servable(ref)) problems.push(`${page} → ${raw}`);
+    }
 }
 
 // --- 2. ES-module imports ------------------------------------------------

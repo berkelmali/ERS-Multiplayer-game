@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Oyun Kuralları — Egyptian Rat Screw</title>
+    <meta name="description" content="Tarayıcıda Egyptian Rat Screw — kuralların tamamı, sitenin nasıl çalıştığı ve hangi verileri tuttuğu.">
+    <link rel="canonical" href="https://ers-card-game.web.app/tr/rules">
+    <link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/rules">
+    <link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/rules">
+    <link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/rules">
+    <link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/rules">
+    <link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/rules">
+    <link rel="icon" type="image/png" href="/assets/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+:root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --muted: rgba(230, 237, 243, 0.62);
+        --primary: #58a6ff;
+        --gold: #f59e0b;
+        --gold-bright: #ffd700;
+        --panel-bg: rgba(22, 27, 34, 0.75);
+        --panel-border: rgba(255, 255, 255, 0.08);
+        --panel-shadow: rgba(0, 0, 0, 0.6);
+        --panel-glow: rgba(88, 166, 255, 0.15);
+    }
+    * { box-sizing: border-box; }
+    /* The ground lives on <html>, NOT on body. body::before below is a negative
+       z-index child; body does not create a stacking context, so that layer is
+       painted into the ROOT context — above html's background but BELOW body's.
+       Give body a background and it covers the artwork completely, which is
+       exactly what the first draft of this page did: the image loaded, returned
+       200, and was never seen. */
+    html { background: var(--bg); }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--fg);
+        font-family: 'Outfit', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-size: 16px;
+        line-height: 1.7;
+        background: transparent;
+    }
+    /* The menu artwork, fixed and dimmed. It is what makes this page belong to
+       the game rather than merely link to it. Behind a scrim, because the text
+       has to stay readable on top of a photograph. */
+    body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background:
+            linear-gradient(rgba(13, 17, 23, 0.72) 0%, rgba(13, 17, 23, 0.9) 45%, rgba(13, 17, 23, 0.97) 100%),
+            /* 62%, not "top": the artwork has the painted EGYPTIAN RAT SCREW
+               wordmark across its upper third, and at "top" it sits directly
+               behind this page's own header text. Pushed down, the header reads
+               against the table and the pyramids instead. */
+            url("/assets/menu.jpg") center 62% / cover no-repeat;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 72px; }
+
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+
+    /* --- header ------------------------------------------------------------ */
+    .site-head { display: flex; flex-wrap: wrap; align-items: baseline;
+                 justify-content: space-between; gap: 10px 20px; margin-bottom: 28px; }
+    .wordmark {
+        font-weight: 900; font-size: 0.95rem; letter-spacing: 2.5px;
+        text-transform: uppercase;
+        background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .wordmark:hover { text-decoration: none; filter: brightness(1.15); }
+    .site-nav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9rem; }
+    .site-nav [aria-current] { color: var(--fg); font-weight: 700; }
+
+    /* --- the card, lifted from .rules-content ------------------------------ */
+    .panel {
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        padding: 1.75rem;
+        box-shadow: 0 16px 40px var(--panel-shadow), 0 0 20px var(--panel-glow);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
+    h1 {
+        font-size: 1.6rem; font-weight: 900; letter-spacing: 1.5px;
+        text-transform: uppercase; text-align: center; text-wrap: balance;
+        margin: 0 0 1.5rem; padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    /* .rules-section, to the pixel */
+    .rules-section {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin: 0 0 10px;
+    }
+    .rules-section:last-child { margin-bottom: 0; }
+    h2 {
+        font-size: 0.95rem; font-weight: 700; letter-spacing: 0.5px;
+        color: var(--primary); margin: 0 0 6px; line-height: 1.4;
+    }
+    p { margin: 0 0 0.6rem; }
+    p:last-child { margin-bottom: 0; }
+    ul { margin: 10px 0 0; padding-left: 20px; }
+    li { margin-bottom: 4px; }
+    li:last-child { margin-bottom: 0; }
+    strong { color: #fff; }
+    .privacy-updated { color: var(--muted); font-size: 0.85rem; margin: 0 0 1rem; }
+
+    /* --- call to action, from .btn.primary --------------------------------- */
+    .play {
+        display: inline-block; margin: 1.75rem 0 0;
+        background: var(--primary); color: #fff;
+        font-weight: 700; font-size: 1rem;
+        padding: 12px 26px; border-radius: 12px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), background 0.25s;
+    }
+    .play:hover { background: #3fb950; transform: translateY(-2px); text-decoration: none; }
+    .cta { text-align: center; }
+
+    /* --- footer ------------------------------------------------------------ */
+    .site-foot {
+        margin-top: 28px; padding-top: 18px;
+        border-top: 1px solid var(--panel-border);
+        display: flex; flex-wrap: wrap; align-items: center;
+        justify-content: space-between; gap: 10px 20px;
+        font-size: 0.85rem; color: var(--muted);
+    }
+    .langs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .langs a {
+        border: 1px solid var(--panel-border); border-radius: 999px;
+        padding: 3px 11px; color: var(--muted);
+    }
+    .langs a:hover { color: var(--fg); border-color: var(--primary); text-decoration: none; }
+
+    @media (max-width: 480px) {
+        body { font-size: 15px; }
+        .wrap { padding: 22px 14px 56px; }
+        .panel { padding: 1.25rem; border-radius: 14px; }
+        h1 { font-size: 1.3rem; letter-spacing: 1px; }
+        .site-head { gap: 8px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .play { transition: none; }
+        .play:hover { transform: none; }
+    }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <header class="site-head">
+            <a class="wordmark" href="/">Egyptian Rat Screw</a>
+            <nav class="site-nav" aria-label="Bu sitede">
+                <span aria-current="page">Oyun Kuralları</span>
+                <a href="/tr/about">Hakkında</a>
+                <a href="/tr/privacy">Gizlilik Politikası</a>
+            </nav>
+        </header>
+        <main class="panel">
+            <h1>Oyun Kuralları</h1>
+            <div class="rules-section">
+            <h2 data-i18n="rWinTitle">🏆 Nasıl Kazanılır</h2>
+            <p data-i18n="rWinDesc">Oyunu kazanmak için <strong>tüm 52 kartı</strong> toplayın. Ortadaki desteyi kazandığınızda kartlar destenizin en altına eklenir.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rLoseTitle">💀 Nasıl Kaybedilir</h2>
+            <p data-i18n="rLoseDesc">Son kartınızı oynadığınızda veya yaktığınızda ve <strong>oyuna geri şaplayamazsanız</strong> elenirsiniz. 0 kartınız olsa bile ortadaki desteye şaplak atabilirsiniz — başarılı bir şaplak "şaplayarak geri dönmenizi" ve dirilmenizi sağlar!</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rGameplayTitle">🃏 Oynanış</h2>
+            <p data-i18n="rGameplayDesc">Oyuncular sırayla saat yönünde destelerinin en üstündeki kartı yüzü yukarı bakacak şekilde ortadaki yığına oynarlar. Amaç, geçerli şaplaklar veya kazanılan meydan okumalar yoluyla tüm kartları toplamaktır.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rChalTitle">⚔️ Resimli Kart Meydan Okumaları (J / Q / K / A)</h2>
+            <p data-i18n="rChalDesc">Bir resimli kart oynamak, sonraki oyuncuyu kendi resimli kartıyla yanıt vermeye zorlar:</p>
+            <ul>
+            <li data-i18n="rChalJ"><strong>Vale (J)</strong> — Yanıtlamak için 1 şans</li>
+            <li data-i18n="rChalQ"><strong>Kız (Q)</strong> — Yanıtlamak için 2 şans</li>
+            <li data-i18n="rChalK"><strong>Papaz (K)</strong> — Yanıtlamak için 3 şans</li>
+            <li data-i18n="rChalA"><strong>As (A)</strong> — Yanıtlamak için 4 şans</li>
+            </ul>
+            <p data-i18n="rChalEnd">Savunan oyuncu tüm şanslarını resimli kart olmadan kullanırsa, saldıran oyuncu tüm desteyi kazanır. Savunan oyuncu resimli bir kart oynarsa, meydan okuma tersine döner ve saldıran oyuncu artık savunma yapmalıdır.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rSlapTitle">👋 Şaplak Kuralları</h2>
+            <p data-i18n="rSlapDesc">Herhangi bir oyuncu istediği zaman ortadaki desteye şaplak atabilir. Geçerli bir düzene şaplak atmak desteyi kazandırır. Geçersiz bir düzene şaplak atmak size bir yanık kartına (ceza) mal olur.</p>
+            <ul>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapD">🟡 <strong>Çiftler</strong> — Art arda aynı değere sahip iki kart. <em>örn. 7 → 7</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card red"><span class="val">7</span><span class="suit">♦</span></div>
+            <div class="mini-card black"><span class="val">7</span><span class="suit">♣</span></div>
+            </div>
+            </li>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapT">🟠 <strong>Onlular</strong> — Toplamı 10 eden iki sayı kartı (10 veya daha düşük). <em>örn. 3 → 7</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card red"><span class="val">3</span><span class="suit">♥</span></div>
+            <div class="mini-card black"><span class="val">7</span><span class="suit">♠</span></div>
+            </div>
+            </li>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapM">💍 <strong>Evlilik</strong> — Yan yana Papaz (K) ve Kız (Q) (herhangi bir sırada). <em>örn. K → Q veya Q → K</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card black"><span class="val">K</span><span class="suit">♣</span></div>
+            <div class="mini-card red"><span class="val">Q</span><span class="suit">♥</span></div>
+            </div>
+            </li>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapS">🥪 <strong>Sandviç</strong> — Aralarında tam olarak bir kart bulunan aynı değere sahip iki kart. <em>örn. 8 → 5 → 8</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card black"><span class="val">8</span><span class="suit">♠</span></div>
+            <div class="mini-card red"><span class="val">5</span><span class="suit">♦</span></div>
+            <div class="mini-card black"><span class="val">8</span><span class="suit">♣</span></div>
+            </div>
+            </li>
+            </ul>
+            
+            <!-- Generated from RULE_DEFS by rulesPanel.js — see ruleDoc.js.
+            Deliberately inside the Slap Rules section rather than a
+            section of its own: these are more patterns, not a new topic. -->
+            <div id="optional-rules" class="optional-rules"></div>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rBurnTitle">🔥 Yanık Kartlar</h2>
+            <p data-i18n="rBurnDesc"><strong>Geçersiz bir şaplak</strong>, elinizden bir kart yakmanıza neden olur — bu kart ayrı bir ceza destesine gider. Herhangi biri ortadaki desteyi kazandığında, yanık kartlar kazananın destesinin en altına, oynanan kartlardan önce eklenir.</p>
+            </div>
+            
+            <div class="rules-section"
+            style="border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rTimeoutTitle">⏱️ AFK / Bekleme Süresi</h2>
+            <p data-i18n="rTimeoutDesc">Bir oyuncu izin verilen süre içinde kart atmazsa (Kolay: 20sn, Normal: 15sn, Zor: 10sn, Şampiyon: 15sn), otomatik olarak <strong>bir kart yakar</strong> ve sıra bir sonraki oyuncuya geçer.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #58a6ff; background: rgba(88, 166, 255, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rCalibTitle">📊 Refleks Hız Analitiği</h2>
+            <p data-i18n="rCalibDesc">Her başarılı şaplak, reaksiyon sürenizi milisaniye cinsinden kaydeder! En iyi refleks sürenizi ve reaksiyon gelişim grafiğinizi profilinizden takip edebilirsiniz. Hızınızı, Çok Oyunculu Modda da devralan Şampiyon Botlarla kıyaslayabilirsiniz!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #ffd700; background: rgba(255, 215, 0, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rPerfectTitle">🎯 Mükemmel Şaplak (Perfect Slap)</h2>
+            <p data-i18n="rPerfectDesc">Orta destenin tam merkezine çok yakın (15 pikselden az sapmayla) şaplak atmak <strong>Mükemmel Şaplak</strong> bonusunu tetikler! Ekranda parlayan neon yıldızlar saçar ve ses modülatör tınısını yükseltir.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #ff5722; background: rgba(255, 87, 34, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rShieldTitle">🛡️ Yanma Kalkanı (Combustion Shield)</h2>
+            <p data-i18n="rShieldDesc">Hata yapmadan üst üste <strong>3 başarılı şaplak serisi (streak)</strong> yakalamak alevli bir <strong>Yanma Kalkanı</strong> açar! Kalkan <strong>30 saniye</strong> boyunca geçerlidir ve bu sürede her başarılı şaplak kalkan süresini sıfırlar. Kalkan aktifken hatalı şaplak atarsanız kalkan parçalanarak destenizden kart yanmasını engeller!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rReconTitle">🔄 Yeniden Bağlantı & Bot Devralması</h2>
+            <p data-i18n="rReconDesc">Çok oyunculu modda bağlantınız koparsa, oyunun durmaması için geçici olarak yerinize bir Bot geçer. Geri bağlanmanız için tanınan süre içinde oyuna tekrar katılarak elinizin ve aktif serinizin (streak) kontrolünü kaldığı yerden sorunsuz devralabilirsiniz!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #a855f7; background: rgba(168, 85, 247, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rSpecTitle">👁️ İzleyici Modu & Oyuna Şaplayarak Dönme</h2>
+            <p data-i18n="rSpecDesc">Elendiniz mi? Hemen ayrılmayın! İzleyici Modunda oyunu izlemeye devam edebilir, hızlı sohbet emojileri gönderebilir ve istediğiniz an <strong>Şaplayarak Geri Dönme</strong> girişiminde bulunabilirsiniz. Başarılı bir şaplak, ortadaki yığını alarak sizi oyuna geri döndürür!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #06b6d4; background: rgba(6, 182, 212, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rSpeedHUDTitle">⚡ Refleks Hızı & HUD Rozetleri</h2>
+            <p data-i18n="rSpeedHUDDesc">Her başarılı şaplak, reaksiyon sürenizi milisaniye cinsinden günlüğe kaydeder. 400ms altındaki şaplaklar <strong>Hızlı Şaplak</strong> bonusu kazandırır ve HUD panelinde dinamik hız rozetleri (⚡ IŞIK HIZI, ☄️ YILDIRIM, vb.) tetikler!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #ec4899; background: rgba(236, 72, 153, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rProfileStatsTitle">📈 Maç Geçmişi & SVG Analitiği</h2>
+            <p data-i18n="rProfileStatsDesc">Kullanıcı profilinizden geçmiş maçlarınızı, kazandığınız kartları ve zaman içindeki reaksiyon hızınızın gelişimini gösteren dinamik SVG bazlı grafik eğrisini inceleyebilirsiniz.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rOriginTitle">📜 Oyun nereden geliyor</h2>
+            <p data-i18n="rOriginDesc">Egyptian Rat Screw, <strong>Beggar-My-Neighbour</strong> adlı eski bir İngiliz çocuk oyununun şaplaklı bir türevi; o oyunda oyuncular sırayla kart iner ve bir resimli kart sıradaki oyuncuyu ceza ödemeye zorlar. Şaplak kısmı ise Slapjack ailesinden geliyor. Bu birleşim uzun bir isim listesiyle dolaşıyor — ERS, ERF, Egyptian War, Bloodystump, Ratslap — ve isimdeki "Egyptian"ın nereden geldiğine dair belgelenmiş bir kayıt yok. Oyun yayımlanarak değil, mutfak masalarında öğretilerek yayıldı; o kısmını kimse yazmadı.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rHouseVaryTitle">🏠 Neden herkesin kuralları farklı</h2>
+            <p data-i18n="rHouseVaryDesc">Kulaktan kulağa yayıldığı için neredeyse her grup biraz farklı bir set oynuyor. Çift ve sandviç neredeyse evrensel; onluk, evlilik, alt-üst ve dörtlü sıra ise tartışılanlar. Bu oyun taraf tutmak yerine hepsini anahtara çeviriyor: klasik dört desen varsayılan açık, üç tanesi siz açana kadar kapalı, ve oturmak üzere olduğunuz masa hangi setin geçerli olduğunu ilk kart dağıtılmadan <em>önce</em> gösteriyor — kimse bir ev kuralını deste kaybederek öğrenmesin diye.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rStrategyTitle">🎯 Sizi asıl neyin geliştirdiği</h2>
+            <p data-i18n="rStrategyDesc">Hatalı şaplak destenizin altından bir kart götürür; yani en ucuz gelişme <em>daha hızlı</em> şaplak atmak değil, emin olmadığınız desenlerde daha az şaplak atmaktır. İnsanların kaçırdığı desen onluktur: iki kartın toplamı tam olarak on olmalı ve resimli kartlar sayılmaz — bunu bir vuruş geç görmek çok kolaydır. Oynanan karta değil, destenin büyümesine bakın; beş kartlık bir deste birkaç turluk riske değer, iki kartlık deste değmez. Ayrıca şaplak seriniz sizi korurken hatalı bir şaplak kart yakmaz, yalnızca kalkanı kırar — yani seri üstündeyken sınırdaki bir şaplak normalden değerlidir.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rDailyRulesTitle">🗓️ Günlük Meydan Okuma neden herkes için aynı</h2>
+            <p data-i18n="rDailyRulesDesc">Günün dağıtımı sunucudaki bir zardan değil, tarihin kendisinden üretiliyor; bu yüzden dünyadaki her oyuncu aynı maç-ortası pozisyondan, aynı ellerde aynı kartlarla başlıyor. Senaryonun biçimi ve bot zorluğu da tarihin fonksiyonu. Puanlı koşu sürerken kendi ayarlarınız devre dışı kalıyor — tur saati, animasyon hızı ve kural seti sizin değil, günün. Aksi halde daha yumuşak bir ayar aynı masada daha yüksek puan satın alır ve liderlik tablosu refleksleri değil tercihleri sıralardı.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #a78bfa; background: rgba(167, 139, 250, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rPersonalityTitle">🎭 Bot Karakterleri</h2>
+            <p data-i18n="rPersonalityDesc">Her koltuğun kendi karakteri var: <strong>Blitz</strong> hızlı oynar ve sık blöf yapar, <strong>Kaos</strong> son derece tahmin edilemezdir, <strong>Kobra</strong> ise sabırlı ve nadiren yanılır. Aynı zorluk seviyesi, üç farklı mücadele.</p>
+            </div>
+            <div class="cta"><a class="play" href="/">Oyunu oyna</a></div>
+        </main>
+        <footer class="site-foot">
+            <span>Berk Elmalı · Egyptian Rat Screw</span>
+            <div class="langs">
+                <a href="/en/rules" hreflang="en">English</a>
+                <a href="/de/rules" hreflang="de">Deutsch</a>
+                <a href="/ru/rules" hreflang="ru">Русский</a>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

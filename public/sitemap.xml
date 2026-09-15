@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+    <url>
+        <loc>https://ers-card-game.web.app/</loc>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/en/rules</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/rules"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/rules"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/rules"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/rules"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/rules"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/tr/rules</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/rules"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/rules"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/rules"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/rules"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/rules"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/de/rules</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/rules"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/rules"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/rules"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/rules"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/rules"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/ru/rules</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/rules"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/rules"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/rules"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/rules"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/rules"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/en/about</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/about"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/about"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/about"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/about"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/about"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/tr/about</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/about"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/about"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/about"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/about"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/about"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/de/about</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/about"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/about"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/about"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/about"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/about"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/ru/about</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/about"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/about"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/about"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/about"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/about"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/en/privacy</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/privacy"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/privacy"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/privacy"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/privacy"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/privacy"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/tr/privacy</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/privacy"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/privacy"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/privacy"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/privacy"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/privacy"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/de/privacy</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/privacy"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/privacy"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/privacy"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/privacy"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/privacy"/>
+    </url>
+    <url>
+        <loc>https://ers-card-game.web.app/ru/privacy</loc>
+        <xhtml:link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/privacy"/>
+        <xhtml:link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/privacy"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/privacy"/>
+        <xhtml:link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/privacy"/>
+        <xhtml:link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/privacy"/>
+    </url>
+</urlset>

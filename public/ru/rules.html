@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Правила игры — Egyptian Rat Screw</title>
+    <meta name="description" content="Egyptian Rat Screw в браузере — полные правила, как устроен сайт и какие данные он хранит.">
+    <link rel="canonical" href="https://ers-card-game.web.app/ru/rules">
+    <link rel="alternate" hreflang="en" href="https://ers-card-game.web.app/en/rules">
+    <link rel="alternate" hreflang="tr" href="https://ers-card-game.web.app/tr/rules">
+    <link rel="alternate" hreflang="de" href="https://ers-card-game.web.app/de/rules">
+    <link rel="alternate" hreflang="ru" href="https://ers-card-game.web.app/ru/rules">
+    <link rel="alternate" hreflang="x-default" href="https://ers-card-game.web.app/en/rules">
+    <link rel="icon" type="image/png" href="/assets/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+:root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --muted: rgba(230, 237, 243, 0.62);
+        --primary: #58a6ff;
+        --gold: #f59e0b;
+        --gold-bright: #ffd700;
+        --panel-bg: rgba(22, 27, 34, 0.75);
+        --panel-border: rgba(255, 255, 255, 0.08);
+        --panel-shadow: rgba(0, 0, 0, 0.6);
+        --panel-glow: rgba(88, 166, 255, 0.15);
+    }
+    * { box-sizing: border-box; }
+    /* The ground lives on <html>, NOT on body. body::before below is a negative
+       z-index child; body does not create a stacking context, so that layer is
+       painted into the ROOT context — above html's background but BELOW body's.
+       Give body a background and it covers the artwork completely, which is
+       exactly what the first draft of this page did: the image loaded, returned
+       200, and was never seen. */
+    html { background: var(--bg); }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--fg);
+        font-family: 'Outfit', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-size: 16px;
+        line-height: 1.7;
+        background: transparent;
+    }
+    /* The menu artwork, fixed and dimmed. It is what makes this page belong to
+       the game rather than merely link to it. Behind a scrim, because the text
+       has to stay readable on top of a photograph. */
+    body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background:
+            linear-gradient(rgba(13, 17, 23, 0.72) 0%, rgba(13, 17, 23, 0.9) 45%, rgba(13, 17, 23, 0.97) 100%),
+            /* 62%, not "top": the artwork has the painted EGYPTIAN RAT SCREW
+               wordmark across its upper third, and at "top" it sits directly
+               behind this page's own header text. Pushed down, the header reads
+               against the table and the pyramids instead. */
+            url("/assets/menu.jpg") center 62% / cover no-repeat;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 72px; }
+
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+
+    /* --- header ------------------------------------------------------------ */
+    .site-head { display: flex; flex-wrap: wrap; align-items: baseline;
+                 justify-content: space-between; gap: 10px 20px; margin-bottom: 28px; }
+    .wordmark {
+        font-weight: 900; font-size: 0.95rem; letter-spacing: 2.5px;
+        text-transform: uppercase;
+        background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .wordmark:hover { text-decoration: none; filter: brightness(1.15); }
+    .site-nav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9rem; }
+    .site-nav [aria-current] { color: var(--fg); font-weight: 700; }
+
+    /* --- the card, lifted from .rules-content ------------------------------ */
+    .panel {
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        padding: 1.75rem;
+        box-shadow: 0 16px 40px var(--panel-shadow), 0 0 20px var(--panel-glow);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
+    h1 {
+        font-size: 1.6rem; font-weight: 900; letter-spacing: 1.5px;
+        text-transform: uppercase; text-align: center; text-wrap: balance;
+        margin: 0 0 1.5rem; padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    /* .rules-section, to the pixel */
+    .rules-section {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin: 0 0 10px;
+    }
+    .rules-section:last-child { margin-bottom: 0; }
+    h2 {
+        font-size: 0.95rem; font-weight: 700; letter-spacing: 0.5px;
+        color: var(--primary); margin: 0 0 6px; line-height: 1.4;
+    }
+    p { margin: 0 0 0.6rem; }
+    p:last-child { margin-bottom: 0; }
+    ul { margin: 10px 0 0; padding-left: 20px; }
+    li { margin-bottom: 4px; }
+    li:last-child { margin-bottom: 0; }
+    strong { color: #fff; }
+    .privacy-updated { color: var(--muted); font-size: 0.85rem; margin: 0 0 1rem; }
+
+    /* --- call to action, from .btn.primary --------------------------------- */
+    .play {
+        display: inline-block; margin: 1.75rem 0 0;
+        background: var(--primary); color: #fff;
+        font-weight: 700; font-size: 1rem;
+        padding: 12px 26px; border-radius: 12px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), background 0.25s;
+    }
+    .play:hover { background: #3fb950; transform: translateY(-2px); text-decoration: none; }
+    .cta { text-align: center; }
+
+    /* --- footer ------------------------------------------------------------ */
+    .site-foot {
+        margin-top: 28px; padding-top: 18px;
+        border-top: 1px solid var(--panel-border);
+        display: flex; flex-wrap: wrap; align-items: center;
+        justify-content: space-between; gap: 10px 20px;
+        font-size: 0.85rem; color: var(--muted);
+    }
+    .langs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .langs a {
+        border: 1px solid var(--panel-border); border-radius: 999px;
+        padding: 3px 11px; color: var(--muted);
+    }
+    .langs a:hover { color: var(--fg); border-color: var(--primary); text-decoration: none; }
+
+    @media (max-width: 480px) {
+        body { font-size: 15px; }
+        .wrap { padding: 22px 14px 56px; }
+        .panel { padding: 1.25rem; border-radius: 14px; }
+        h1 { font-size: 1.3rem; letter-spacing: 1px; }
+        .site-head { gap: 8px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .play { transition: none; }
+        .play:hover { transform: none; }
+    }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <header class="site-head">
+            <a class="wordmark" href="/">Egyptian Rat Screw</a>
+            <nav class="site-nav" aria-label="На этом сайте">
+                <span aria-current="page">Правила игры</span>
+                <a href="/ru/about">Об игре</a>
+                <a href="/ru/privacy">Политика конфиденциальности</a>
+            </nav>
+        </header>
+        <main class="panel">
+            <h1>Правила игры</h1>
+            <div class="rules-section">
+            <h2 data-i18n="rWinTitle">🏆 Как выиграть</h2>
+            <p data-i18n="rWinDesc">Соберите <strong>все 52 карты</strong>, чтобы выиграть игру. Выигранные карты добавляются в низ вашей колоды.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rLoseTitle">💀 Как проиграть</h2>
+            <p data-i18n="rLoseDesc">Когда вы играете или сжигаете последнюю карту и <strong>не можете успешно хлопнуть</strong>, вы выбываете. Вы всё ещё можете хлопать по колоде даже с 0 карт — успешный хлопок позволяет вам "хлопнуть и вернуться" в игру для воскрешения!</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rGameplayTitle">🃏 Ход игры</h2>
+            <p data-i18n="rGameplayDesc">Игроки по очереди по часовой стрелке выкладывают верхнюю карту своей колоды лицом вверх в центр. Цель — собрать все карты с помощью правильных хлопков или выигранных вызовов.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rChalTitle">⚔️ Вызовы картами с картинками (J / Q / K / A)</h2>
+            <p data-i18n="rChalDesc">Сыграв карту с картинкой, вы заставляете следующего игрока ответить своей картой с картинкой:</p>
+            <ul>
+            <li data-i18n="rChalJ"><strong>Валет (J)</strong> — 1 шанс ответить</li>
+            <li data-i18n="rChalQ"><strong>Дама (Q)</strong> — 2 шанса ответить</li>
+            <li data-i18n="rChalK"><strong>Король (K)</strong> — 3 шанса ответить</li>
+            <li data-i18n="rChalA"><strong>Туз (A)</strong> — 4 шанса ответить</li>
+            </ul>
+            <p data-i18n="rChalEnd">Если защищающийся использует все свои шансы без карты с картинкой, атакующий выигрывает всю колоду. Если защищающийся играет карту с картинкой, вызов переходит к атакующему, и теперь он должен защищаться.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rSlapTitle">👋 Правила хлопков</h2>
+            <p data-i18n="rSlapDesc">Любой игрок может хлопнуть по колоде в любое время. Хлопок по правильному паттерну выигрывает колоду. Хлопок по неверному паттерну стоит вам одной сгоревшей карты (штраф).</p>
+            <ul>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapD">🟡 <strong>Дубли</strong> — Две карты одного достоинства подряд. <em>напр. 7 → 7</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card red"><span class="val">7</span><span class="suit">♦</span></div>
+            <div class="mini-card black"><span class="val">7</span><span class="suit">♣</span></div>
+            </div>
+            </li>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapT">🟠 <strong>Десятки</strong> — Две числовые карты (достоинством 10 или ниже), которые в сумме дают 10. <em>напр. 3 → 7</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card red"><span class="val">3</span><span class="suit">♥</span></div>
+            <div class="mini-card black"><span class="val">7</span><span class="suit">♠</span></div>
+            </div>
+            </li>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapM">💍 <strong>Брак</strong> — Король (K) и Дама (Q) рядом друг с другом (в любом порядке). <em>напр. K → Q или Q → K</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card black"><span class="val">K</span><span class="suit">♣</span></div>
+            <div class="mini-card red"><span class="val">Q</span><span class="suit">♥</span></div>
+            </div>
+            </li>
+            <li style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span data-i18n="rSlapS">🥪 <strong>Сэндвич</strong> — Две карты одного достоинства, между которыми находится ровно одна карта. <em>напр. 8 → 5 → 8</em></span>
+            <div class="mini-card-row">
+            <div class="mini-card black"><span class="val">8</span><span class="suit">♠</span></div>
+            <div class="mini-card red"><span class="val">5</span><span class="suit">♦</span></div>
+            <div class="mini-card black"><span class="val">8</span><span class="suit">♣</span></div>
+            </div>
+            </li>
+            </ul>
+            
+            <!-- Generated from RULE_DEFS by rulesPanel.js — see ruleDoc.js.
+            Deliberately inside the Slap Rules section rather than a
+            section of its own: these are more patterns, not a new topic. -->
+            <div id="optional-rules" class="optional-rules"></div>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rBurnTitle">🔥 Сгоревшие карты</h2>
+            <p data-i18n="rBurnDesc"><strong>Неверный хлопок</strong> заставляет вас сжечь карту из вашей руки — она отправляется в отдельную штрафную стопку. Когда кто-то выигрывает колоду, сгоревшие карты добавляются в самый низ колоды победителя перед сыгранными картами.</p>
+            </div>
+            
+            <div class="rules-section"
+            style="border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rTimeoutTitle">⏱️ AFK / Время ожидания</h2>
+            <p data-i18n="rTimeoutDesc">Если игрок не делает ход в течение отведенного времени (Легко: 20 сек, Средне: 15 сек, Сложно: 10 сек, Претендент: 15 сек), он автоматически <strong>сжигает карту</strong>, и ход переходит к следующий игроку.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #58a6ff; background: rgba(88, 166, 255, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rCalibTitle">📊 Аналитика скорости рефлексов</h2>
+            <p data-i18n="rCalibDesc">Каждый успешный хлопок фиксирует время вашей реакции в миллисекундах! Смотрите свою лучшую скорость рефлексов и личный график прогресса прямо в профиле. Сравните свою скорость с ботами-претендентами (Challenger), которые также активны в мультиплеере!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #ffd700; background: rgba(255, 215, 0, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rPerfectTitle">🎯 Идеальный хлопок (Perfect Slap)</h2>
+            <p data-i18n="rPerfectDesc">Хлопок по колоде очень близко к центру (в пределах 15 пикселей) активирует бонус <strong>Идеального хлопка</strong>! Вызывает падение неоновых звездных частиц и повышает высоту тона синтезируемого звука.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #ff5722; background: rgba(255, 87, 34, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rShieldTitle">🛡️ Огненный щит (Combustion Shield)</h2>
+            <p data-i18n="rShieldDesc">Серия из <strong>3 успешных хлопков</strong> подряд (только хлопки) активирует огненный <strong>Огненный щит</strong>, который действует <strong>30 секунд</strong>! Каждый следующий успешный хлопок в эти 30 секунд обнуляет таймер щита — счётчик на вашей колоде снова покажет 30. При неверном хлопе щит разбивается и один раз за активацию защищает вашу колоду от сгоревшей карты.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rReconTitle">🔄 Переподключение и Авто-Бот</h2>
+            <p data-i18n="rReconDesc">Если соединение прервется в мультиплеере, бот временно возьмет управление на себя, чтобы матч не останавливался. У вас есть время на переподключение, чтобы бесшовно вернуть контроль над колодой и активными сериями!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #a855f7; background: rgba(168, 85, 247, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rSpecTitle">👁️ Режим Наблюдателя и Возврат</h2>
+            <p data-i18n="rSpecDesc">Выбыли из игры? Не спешите уходить! Вы переходите в Режим Наблюдателя, где можете следить за матчем, отправлять быстрые эмодзи и по-прежнему пытаться <strong>Хлопнуть и вернуться</strong> в любой момент. Успешный хлопок воскресит вас вместе со стопкой!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #06b6d4; background: rgba(6, 182, 212, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rSpeedHUDTitle">⚡ Скорость Реакции и HUD-Значки</h2>
+            <p data-i18n="rSpeedHUDDesc">Каждый успешный хлопок записывает вашу точную скорость реакции в миллисекундах. Хлопок быстрее 400мс дает бонус <strong>Быстрого хлопка</strong> и отображает динамические значки скорости (⚡ БОЖЕСТВЕННО, ☄️ МОЛНИЯ и т. д.) на панели HUD!</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #ec4899; background: rgba(236, 72, 153, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rProfileStatsTitle">📈 История Матчей и SVG-Аналитика</h2>
+            <p data-i18n="rProfileStatsDesc">Загляните в свой профиль, чтобы посмотреть историю матчей, статистику выигранных карт и интерактивный SVG-график изменения времени реакции, показывающий ваш прогресс.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rOriginTitle">📜 Откуда пришла игра</h2>
+            <p data-i18n="rOriginDesc">Egyptian Rat Screw — это вариант со шлепками игры <strong>Beggar-My-Neighbour</strong>, старой английской детской игры, где игроки по очереди выкладывают карты, а фигурная карта заставляет следующего платить штраф. Половина со шлепками пришла из семейства Slapjack. Это сочетание ходит под длинным списком названий — ERS, ERF, Egyptian War, Bloodystump, Ratslap — и никакого документального свидетельства о происхождении слова "Egyptian" нет. Игра расходилась не через публикации, а через обучение за кухонным столом; эту часть никто не записал.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rHouseVaryTitle">🏠 Почему у всех правила разные</h2>
+            <p data-i18n="rHouseVaryDesc">Поскольку игра расходилась изустно, почти каждая компания играет чуть иначе. Пары и сэндвич почти универсальны; десятки, брак, верх-низ и четыре подряд — как раз то, о чём спорят. Вместо того чтобы занять сторону, игра делает их переключателями: четыре классических узора включены по умолчанию, ещё три выключены, пока вы их не включите, а стол, за который вы садитесь, показывает действующий набор <em>до</em> первой карты — чтобы никто не узнавал домашнее правило, проиграв по нему стопку.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rStrategyTitle">🎯 Что на самом деле делает вас сильнее</h2>
+            <p data-i18n="rStrategyDesc">Ошибочный шлепок стоит карты со дна вашей колоды, поэтому самое дешёвое улучшение — не шлёпать <em>быстрее</em>, а реже шлёпать по узорам, в которых вы не уверены. Чаще всего пропускают десятки: две карты должны давать ровно десять, а фигурные не считаются — это легко увидеть на такт позже. Следите за ростом стопки, а не за сыгранной картой: стопка из пяти карт стоит нескольких ходов риска, стопка из двух — нет. И пока серия шлепков вас защищает, ошибочный шлепок ломает щит, а не сжигает карту — на серии пограничный шлепок стоит больше обычного.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rDailyRulesTitle">🗓️ Почему Ежедневное испытание одинаково для всех</h2>
+            <p data-i18n="rDailyRulesDesc">Раздача дня строится из самой даты, а не из броска на сервере, поэтому каждый игрок в мире начинает с одной и той же позиции в середине партии, с теми же картами в тех же руках. Форма сценария и сложность ботов — тоже функции даты. Пока идёт зачётный забег, ваши собственные настройки перекрываются: время хода, скорость анимации и набор правил принадлежат дню, а не вам. Иначе более мягкая настройка покупала бы более высокий результат на той же раздаче, и таблица лидеров ранжировала бы предпочтения, а не реакцию.</p>
+            </div>
+            
+            <div class="rules-section" style="border-left: 3px solid #a78bfa; background: rgba(167, 139, 250, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
+            <h2 data-i18n="rPersonalityTitle">🎭 Характеры ботов</h2>
+            <p data-i18n="rPersonalityDesc">Каждое место играет по-своему: <strong>Блиц</strong> быстрый и часто блефует, <strong>Хаос</strong> совершенно непредсказуем, а <strong>Кобра</strong> терпелива и редко ошибается. Одна сложность — три разных стиля борьбы.</p>
+            </div>
+            <div class="cta"><a class="play" href="/">Играть</a></div>
+        </main>
+        <footer class="site-foot">
+            <span>Berk Elmalı · Egyptian Rat Screw</span>
+            <div class="langs">
+                <a href="/en/rules" hreflang="en">English</a>
+                <a href="/tr/rules" hreflang="tr">Türkçe</a>
+                <a href="/de/rules" hreflang="de">Deutsch</a>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

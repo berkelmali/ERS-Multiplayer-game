@@ -28,7 +28,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.15.1">
+    <link rel="stylesheet" href="style.css?v=3.16.2">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0) — must stay INLINE and must stay in <head>.
@@ -157,9 +157,36 @@
         <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
              never on a screen where anything is being timed — see adsConfig.js. -->
         <div class="ad-slot" aria-hidden="true"></div>
-        <div id="game-version">Berk Elmalı · v3.15.1
-            <button id="btn-about" class="link-btn" data-i18n="aboutButton">About</button>
-            <button id="btn-privacy" class="link-btn" data-i18n="privacyButton">Privacy</button>
+        <!-- THE ONLY TWO <a href> IN THIS DOCUMENT, and they are the controls
+             that were already here.
+
+             v3.16.0 shipped a separate three-link <nav> under this line. It
+             worked for the crawler and was wrong for the player: the menu then
+             showed "Game Rules" twice (here and as the button above), and
+             "About" and "Privacy" twice each, one line apart. Reported from the
+             live site within the hour. A footer added beside the navigation it
+             duplicates is not a footer, it is a second menu.
+
+             v3.16.1 deletes that nav and promotes these two from <button> to
+             <a href> instead. Nothing moves on screen; the labels, the styling
+             and the click behaviour are identical, because main.js cancels the
+             navigation and opens the panel exactly as before. What changes is
+             that something which does not run JavaScript now has a link to
+             follow — which was the whole point, and it turns out it needed no
+             new user interface at all.
+
+             This is NOT cloaking: /en/about and /en/privacy carry the same text
+             as the panels these open, generated from the same source (see
+             tools/build-content-pages.mjs). A crawler and a player get the same
+             words by two different routes.
+
+             /en/ because a static href must name one language, and nothing here
+             may run inline script (the CSP has broken this site three times).
+             From either page, the header and footer nav reach all twelve — and
+             sitemap.xml lists every one of them directly. -->
+        <div id="game-version">Berk Elmalı · v3.16.2
+            <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
+            <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
     </div>
 
@@ -1099,7 +1126,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.15.1"></script>
+    <script type="module" src="js/main.js?v=3.16.2"></script>
 </body>
 
 </html>
