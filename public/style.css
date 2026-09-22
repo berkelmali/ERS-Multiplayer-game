@@ -4313,6 +4313,33 @@ body.high-legibility .stat-value {
 .iq-rule .vl { font-weight: 800; text-align: right; }
 .iq-rule .ct { opacity: 0.45; font-size: 0.78rem; text-align: right; }
 
+/* v3.17.0 — pattern mastery (council ERS-16). Same row rhythm as .iq-rule
+   above, same panel, no palette of its own: the three marks borrow the metal
+   names the game already uses, in muted tones that sit on --panel-bg. */
+.iq-mastery { list-style: none; padding: 0; margin: 0; }
+.iq-mastery-row {
+    display: grid;
+    /* Fixed note track: every row is its own grid, so an auto track would
+       let the marks drift with the note's length. */
+    grid-template-columns: minmax(84px, 1fr) auto 8.5rem;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 0.86rem;
+}
+.iq-mastery-row .ct { opacity: 0.55; font-size: 0.78rem; text-align: right; }
+.iq-marks { display: inline-flex; gap: 6px; }
+.iq-mark {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+}
+.iq-mark.mark-bronze.on { background: #b87333; border-color: #e8b06a; }
+.iq-mark.mark-silver.on { background: #b9b9c2; border-color: #f4f4f6; }
+.iq-mark.mark-gold.on { background: #d4af37; border-color: #fff0a6; }
+
 .slapiq-actions {
     display: flex;
     gap: 10px;
@@ -6097,10 +6124,25 @@ body.menu-screen #parallax-bg { background-position: center 15%; }
     top: -12px;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 26px;
-    color: #ffd700;
-    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
     z-index: 10;
+    line-height: 0;
+    /* v3.17.0: a bronze pawl on a rivet. It hinges at the rivet, so a flick
+       swings the TIP, the way a pawl riding over a peg does. */
+    transform-origin: 50% 7px;
+    transition: transform 70ms ease-out;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7));
+}
+.wheel-pawl {
+    display: block;
+}
+.wheel-pointer.is-ticking {
+    transform: translateX(-50%) rotate(var(--tick-deg, -14deg));
+}
+@media (prefers-reduced-motion: reduce) {
+    .wheel-pointer { transition: none; }
+}
+body.reduced-motion .wheel-pointer {
+    transition: none;
 }
 .daily-spin-status {
     font-size: 0.95rem;
@@ -6375,3 +6417,391 @@ html { overflow-x: clip; }
     .coin-badge { font-size: 0.85rem; padding: 6px 10px; }
 }
 
+/* --- Legends hub & the Table of the Gods (v3.18.0) -------------------------
+   The hall and the HUD sit on the shared panel surface; the gods' portraits
+   are world objects (DESIGN.md §4) and carry the theme's colour themselves. */
+.legend-section {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto 1.5rem;
+    padding: 1rem;
+    border-radius: 18px;
+    background: var(--panel-bg);
+    border: 1px solid rgba(212, 175, 55, 0.18);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+/* ERS-18 fix 4: a section heading is a panel heading (.rules-content h3),
+   not a world object — gold stays on the god and journey cards. */
+.legend-title {
+    font-size: 1.3rem;
+    color: var(--primary);
+    margin: 0.25rem 0 0.6rem;
+}
+.legend-section .mode-cards {
+    margin: 0;
+    max-width: none;
+}
+.legend-desc {
+    opacity: 0.8;
+    max-width: 62ch;
+    margin: 0 auto 1rem;
+    line-height: 1.5;
+}
+.pantheon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+}
+.god-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 12px;
+    align-items: start;
+    text-align: left;
+    padding: 12px;
+    border-radius: 16px;
+    background: var(--panel-bg);
+    border: 1px solid rgba(212, 175, 55, 0.22);
+}
+.god-card.beaten { border-color: rgba(212, 175, 55, 0.7); }
+.god-card.locked .god-portrait { filter: grayscale(0.9) brightness(0.6); }
+.god-card.locked .god-body { opacity: 0.65; }
+.god-portrait { width: 96px; height: 96px; }
+.god-art { width: 100%; height: 100%; display: block; }
+.god-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.god-name { margin: 0; font-size: 1.1rem; color: #f0d98a; }
+.god-epithet { margin: 0; font-size: 0.8rem; font-style: italic; opacity: 0.7; }
+.god-power { margin: 2px 0 0; font-size: 0.85rem; line-height: 1.4; }
+.god-meta { margin: 0; font-size: 0.75rem; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.god-body .btn { margin-top: 6px; padding: 0.5rem 0.9rem; font-size: 0.9rem; align-self: flex-start; }
+.god-amulet {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 1.3rem;
+    color: #e3b93c;
+    text-shadow: 0 0 10px rgba(227, 185, 60, 0.6);
+}
+
+#top-player.has-boss {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+}
+.boss-hud {
+    position: relative;
+    display: grid;
+    grid-template-columns: 64px auto;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 12px 6px 6px;
+    border-radius: 14px;
+    background: var(--panel-bg);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.boss-hud[hidden] { display: none; }
+.boss-portrait { width: 64px; height: 64px; }
+.boss-info { display: flex; flex-direction: column; gap: 3px; min-width: 150px; }
+.boss-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.boss-name { font-weight: 800; color: #f0d98a; letter-spacing: 0.02em; }
+.boss-hp { font-size: 0.75rem; opacity: 0.8; font-variant-numeric: tabular-nums; }
+.boss-bar {
+    height: 9px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    overflow: hidden;
+}
+.boss-bar-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #b3342a, #e3b93c);
+    transition: width 0.35s ease;
+}
+.boss-bar.low .boss-bar-fill { background: linear-gradient(90deg, #7a1a12, #b3342a); }
+.boss-extra { font-size: 0.72rem; color: #f0d98a; min-height: 0.9em; }
+.boss-power { font-size: 0.72rem; opacity: 0.75; max-width: 230px; line-height: 1.3; }
+.boss-float {
+    position: absolute;
+    right: 10px;
+    top: -4px;
+    font-weight: 900;
+    font-size: 1.1rem;
+    pointer-events: none;
+    animation: bossFloat 1.1s ease-out forwards;
+}
+.boss-float-hit { color: #ffd27a; }
+.boss-float-heal { color: #6ee7b7; }
+.boss-float-steal { color: #fca5a5; }
+@keyframes bossFloat {
+    from { transform: translateY(0); opacity: 1; }
+    to { transform: translateY(-26px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .boss-float { animation: none; opacity: 1; }
+    .boss-bar-fill { transition: none; }
+}
+@media (max-width: 520px) {
+    /* Phones: the HUD stacks above the god's deck, narrow enough to clear the
+       score pill on the right (measured at 390px). */
+    #top-player.has-boss { flex-direction: column; gap: 6px; }
+    .boss-hud { grid-template-columns: 44px auto; padding: 4px 10px 4px 4px; gap: 8px; }
+    .boss-portrait { width: 44px; height: 44px; }
+    .boss-info { min-width: 108px; }
+    .boss-name { font-size: 0.85rem; }
+    .boss-power, .boss-extra:empty { display: none; }
+}
+@media (max-width: 520px) {
+    /* The account/coin chips float over the top of every menu panel on a phone. */
+    #legends-panel > h2 { margin-top: 3.25rem; }
+}
+
+/* --- The Duat Journey (v3.18.0) ------------------------------------------ */
+.legend-best {
+    color: #f0d98a;
+    font-size: 0.9rem;
+    min-height: 1.2em;
+    margin: 0 0 0.75rem;
+}
+/* The night: the whole scene behind the table darkens and cools, and lifts
+   hour by hour (duat.js sets --duat-night from 1 in the Duat to 0 at dawn). */
+/* The game screen paints its scene on <body> itself, so the night is a
+   fixed layer above that background and below every .screen (z-index 5). */
+body.duat-journey::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    background: radial-gradient(ellipse at 50% 35%, rgba(30, 44, 96, 0.55), rgba(4, 6, 20, 0.92));
+    opacity: calc(0.85 * var(--duat-night, 1));
+    transition: opacity 1.2s ease;
+}
+/* The HUD hangs beside your deck without moving it: the deck stays centred,
+   where it always is, so the action log never slides under it. */
+body.duat-journey #bottom-player { position: relative; }
+.duat-hud {
+    position: absolute;
+    left: calc(50% + 64px);
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 11;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 200px;
+    max-width: 260px;
+    padding: 8px 12px;
+    border-radius: 14px;
+    background: var(--panel-bg);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    text-align: left;
+}
+.duat-hud[hidden] { display: none; }
+.duat-hud.dead { border-color: rgba(125, 150, 230, 0.55); }
+.duat-title { font-weight: 800; color: #f0d98a; font-size: 0.9rem; }
+.duat-hud.dead .duat-title { color: #b9c7ff; }
+.duat-pips { display: flex; gap: 4px; flex-wrap: wrap; }
+.duat-pip {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1px solid rgba(212, 175, 55, 0.45);
+    background: rgba(255, 255, 255, 0.05);
+}
+.duat-pip.on { background: #e3b93c; border-color: #fff0a6; }
+.duat-hud.dead .duat-pip { border-color: rgba(185, 199, 255, 0.45); }
+.duat-hud.dead .duat-pip.on { background: #7d8fd8; border-color: #b9c7ff; }
+.duat-line { font-size: 0.75rem; opacity: 0.8; line-height: 1.3; min-height: 1em; }
+@media (prefers-reduced-motion: reduce) {
+    body.duat-journey::after { transition: none; }
+}
+@media (max-width: 520px) {
+    .duat-hud {
+        left: 50%;
+        top: auto;
+        bottom: calc(100% + 6px);
+        transform: translateX(-50%);
+        min-width: 190px;
+        max-width: 92vw;
+        padding: 6px 10px;
+    }
+    .duat-line { display: none; }
+}
+
+/* --- The Pharaoh's Tomb (v3.18.0) ---------------------------------------- */
+#tomb-screen {
+    background: rgba(10, 14, 20, 0.55);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+}
+.tomb-container { padding-top: 3rem; }
+.tomb-table { display: flex; flex-direction: column; align-items: center; width: 100%; gap: 10px; }
+.tomb-table[hidden], .tomb-draft[hidden], #tomb-done[hidden], #tomb-intro[hidden], #tomb-progress[hidden] { display: none; }
+.tomb-guardian { display: flex; align-items: center; gap: 12px; text-align: left; }
+.tomb-portrait { width: 76px; height: 76px; }
+.tomb-guardian-info { display: flex; flex-direction: column; gap: 2px; }
+.tomb-chamber { font-size: 0.8rem; opacity: 0.75; }
+.tomb-guard-name { font-weight: 800; color: #f0d98a; font-size: 1.05rem; }
+.tomb-count { font-size: 0.8rem; opacity: 0.75; font-variant-numeric: tabular-nums; }
+.tomb-pile { width: 150px; height: 130px; margin: 6px 0 4px; cursor: pointer; touch-action: manipulation; }
+.tomb-pile .card { width: 90px; }
+.tomb-hand { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; min-height: 100px; }
+.tomb-card {
+    position: relative;
+    width: 70px;
+    height: 100px;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-radius: 12px;
+    transition: transform 0.15s ease;
+}
+.tomb-card .card { top: 0; left: 0; }
+.tomb-card:hover:not(:disabled) { transform: translateY(-6px); }
+.tomb-card:focus-visible { outline: 2px solid #f0d98a; outline-offset: 3px; }
+.tomb-card:disabled { cursor: default; opacity: 0.55; }
+.tomb-hand.your-turn .tomb-card { box-shadow: 0 0 0 2px rgba(240, 217, 138, 0.55); }
+.tomb-draft { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.tomb-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) {
+    .tomb-card { transition: none; }
+}
+
+/* --- A god at a multiplayer table (v3.18.0) ------------------------------ */
+.lobby-god {
+    width: 100%;
+    display: grid;
+    gap: 6px;
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--panel-bg);
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    text-align: left;
+}
+.lobby-god-label { color: #f0d98a; font-weight: 700; font-size: 0.9rem; }
+.lobby-god-select {
+    padding: 0.45rem 0.6rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(0, 0, 0, 0.35);
+    color: #fff;
+    font: inherit;
+}
+.lobby-god-select:disabled { opacity: 0.8; }
+.lobby-god-note { margin: 0; font-size: 0.78rem; opacity: 0.75; line-height: 1.35; min-height: 1em; }
+
+/* --- Legends: the two journey cards (v3.18.0) ------------------------------
+   Built like the god cards: an emblem, the promise, three facts, the rule,
+   the way in. The whole card is the surface; the button no longer floats
+   below a paragraph with a gap under it. */
+.mode-cards {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px;
+}
+.mode-card {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 14px;
+    align-items: start;
+    text-align: left;
+    padding: 14px;
+    border-radius: 18px;
+    background: var(--panel-bg);
+    border: 1px solid rgba(212, 175, 55, 0.22);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+.mode-duat { box-shadow: inset 0 0 0 1px rgba(111, 143, 224, 0.12), 0 8px 24px rgba(6, 10, 28, 0.35); }
+.mode-tomb { box-shadow: inset 0 0 0 1px rgba(227, 185, 60, 0.12), 0 8px 24px rgba(40, 20, 4, 0.35); }
+.mode-emblem { width: 96px; height: 96px; }
+.mode-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mode-title { margin: 0; font-size: 1.15rem; color: #f0d98a; }
+.mode-tagline { margin: 0; font-weight: 700; font-size: 0.95rem; line-height: 1.35; }
+.mode-facts {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.mode-facts li {
+    font-size: 0.75rem;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    white-space: nowrap;
+}
+.mode-desc { margin: 2px 0 0; font-size: 0.82rem; line-height: 1.5; opacity: 0.72; }
+.mode-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+.mode-foot .btn { padding: 0.55rem 1.1rem; font-size: 0.95rem; }
+.mode-best { font-size: 0.8rem; color: #f0d98a; }
+.mode-best:empty { display: none; }
+@media (max-width: 520px) {
+    .mode-card { grid-template-columns: 64px 1fr; gap: 12px; padding: 12px; }
+    .mode-emblem { width: 64px; height: 64px; }
+}
+
+
+/* Tomb intro (ERS-18 fix 3): Practice's intro, with the tomb's emblem and
+   the four rules as a list. The trap line is the one rule ERS does not have,
+   so it alone is marked. */
+.tomb-intro {
+    text-align: center;
+    padding: 0.5rem 0 1rem;
+}
+.tomb-intro-emblem {
+    width: 88px;
+    height: 88px;
+    margin: 0 auto 0.75rem;
+}
+.tomb-intro-emblem svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.tomb-rules {
+    list-style: none;
+    padding: 0;
+    margin: 0 auto 1.75rem;
+    max-width: 440px;
+    text-align: left;
+    display: grid;
+    gap: 0.55rem;
+}
+.tomb-rules li {
+    position: relative;
+    padding-left: 1.4rem;
+    line-height: 1.5;
+    opacity: 0.9;
+}
+.tomb-rules li::before {
+    content: "\25B8";
+    position: absolute;
+    left: 0.2rem;
+    color: var(--primary);
+}
+.tomb-rules li.tomb-rule-trap {
+    padding: 0.55rem 0.7rem 0.55rem 1.9rem;
+    border-radius: 10px;
+    background: rgba(244, 114, 94, 0.12);
+    border: 1px solid rgba(244, 114, 94, 0.35);
+}
+.tomb-rules li.tomb-rule-trap::before {
+    content: "\26A0";
+    left: 0.6rem;
+    top: 0.55rem;
+    color: #f4a28c;
+}

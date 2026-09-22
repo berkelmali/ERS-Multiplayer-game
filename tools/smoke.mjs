@@ -2025,7 +2025,7 @@ await step('the wheel pays the prize it stops on', async () => {
 
         const out = [];
         // Three indices, not all eight: enough to catch a constant offset,
-        // and each spin costs the animation's four seconds.
+        // and each spin costs the animation's full length (SPIN_MS).
         for (const want of [0, 3, 6]) {
             localStorage.removeItem('ers_last_spin_date');
             localStorage.removeItem('ers_spin_tier');
@@ -2034,9 +2034,13 @@ await step('the wheel pays the prize it stops on', async () => {
             const segs = DailySpin.segments;
             const real = Math.random;
             Math.random = () => (want + 0.5) / segs.length;
-            DailySpin.spin();
+            // v3.17.0: spin() resolves when the wheel has STOPPED. This used to
+            // be `await sleep(4400)` — a second copy of the animation's length,
+            // which went stale the moment the spin got heavier. Waiting on the
+            // spin itself cannot go stale.
+            const turning = DailySpin.spin();
             Math.random = real;
-            await sleep(4400);
+            await turning;
             out.push({ want, saw: indexUnderPointer(segs.length),
                        prize: `${segs[want].coins} ${segs[want].type}` });
             DailySpin.close();
@@ -2166,6 +2170,186 @@ await step('the privacy panel opens, reads, and closes', async () => {
     await page.click('#btn-privacy-back');
     await page.waitForSelector('#main-menu.active', { timeout: 5000 });
     console.log(`         ${p.words} words, names AdSense, gives an address, carries no ad`);
+});
+
+// v3.18.0: the Table of the Gods, through its real hall button and the real
+// slap path. A slap wounds the god (you in full, a priest by half), the god's
+// own pile heals Bastet, the fall ends the match in your favour through the
+// ONE gameOver event, and leaving hands back the seat, its name and the rules.
+await step('the Pantheon: slaps wound the god, it heals, it falls, and everything is handed back', async () => {
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    await page.click('[data-god="bastet"]');
+    await page.waitForSelector('#game-container.active', { timeout: 8000 });
+    const r = await page.evaluate(async () => {
+        const { PantheonMode, DAMAGE, ALLY_SHARE } = await import('./js/pantheon.js');
+        const { HouseRules } = await import('./js/houseRules.js');
+        const { AIController } = await import('./js/ai.js');
+        const { default: EventBus } = await import('./js/eventbus.js');
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+        const GS = window.GameState;
+        const out = {};
+        let overs = [];
+        const onOver = (w) => overs.push(w);
+        EventBus.on('gameOver', onOver);
+        await sleep(300);
+        out.hudShown = !document.getElementById('boss-hud').hidden;
+        out.seatName = document.getElementById('p2-name').textContent.trim();
+        out.locked = HouseRules.lockedBy;
+        out.godSeat = !!AIController.seatConfig[2];
+        const dbl = () => [{ rank: 7, suit: 'clubs' }, { rank: 7, suit: 'hearts' }];
+        const slapAs = async (seat) => { await sleep(650); GS.pile = dbl(); GS.burnPile = []; GS.slap(seat); };
+        const hp0 = PantheonMode.hp;
+        await slapAs(0); out.heroHit = hp0 - PantheonMode.hp;
+        const hp1 = PantheonMode.hp;
+        await slapAs(1); out.priestHit = hp1 - PantheonMode.hp;
+        const hp2 = PantheonMode.hp;
+        await slapAs(2); out.bastetHeal = PantheonMode.hp - hp2;
+        out.expectHero = DAMAGE.doubles; out.expectPriest = Math.round(DAMAGE.doubles * ALLY_SHARE);
+        PantheonMode.hp = 4;
+        await slapAs(0);
+        await sleep(100);
+        out.overs = overs.slice();
+        out.defeatedStored = !!PantheonMode.store.defeated.bastet;
+        EventBus.off && EventBus.off('gameOver', onOver);
+        return out;
+    });
+    // Leave through the victory screen's menu button, the ordinary way out.
+    await page.waitForSelector('#victory-screen.active', { timeout: 8000 });
+    await page.click('#btn-victory-menu');
+    await page.waitForSelector('#main-menu.active', { timeout: 8000 });
+    const after = await page.evaluate(async () => {
+        await new Promise(res => setTimeout(res, 300));
+        const { HouseRules } = await import('./js/houseRules.js');
+        const { AIController } = await import('./js/ai.js');
+        const { MatchContext } = await import('./js/matchContext.js');
+        return { locked: HouseRules.lockedBy, godSeat: !!AIController.seatConfig[2], names: MatchContext.seatNames,
+            hudHidden: document.getElementById('boss-hud').hidden };
+    });
+    if (!r.hudShown || r.seatName !== 'Bastet') throw new Error('the god did not take the seat: ' + JSON.stringify(r));
+    if (r.locked !== 'pantheon' || !r.godSeat) throw new Error('the god\'s rules or speed were not in force: ' + JSON.stringify(r));
+    if (r.heroHit !== r.expectHero) throw new Error(`your Double took ${r.heroHit}, want ${r.expectHero}`);
+    if (r.priestHit !== r.expectPriest) throw new Error(`a priest's Double took ${r.priestHit}, want ${r.expectPriest}`);
+    if (r.bastetHeal !== r.expectHero) throw new Error(`Bastet's pile healed ${r.bastetHeal}, want ${r.expectHero}`);
+    if (r.overs.length !== 1 || r.overs[0] !== 0) throw new Error('the fall did not end the match once, in your favour: ' + JSON.stringify(r.overs));
+    if (!r.defeatedStored) throw new Error('the amulet was not recorded');
+    if (after.locked !== null || after.godSeat || after.names !== null || !after.hudHidden) throw new Error('leaving did not hand everything back: ' + JSON.stringify(after));
+    console.log(`         hero -${r.heroHit}, priest -${r.priestHit}, Bastet +${r.bastetHeal}, fell -> gameOver(0) once, amulet kept, all handed back`);
+});
+
+// v3.18.0: the Duat Journey, through its real button and the real slap path.
+// You start with no cards and the eliminated screen must NOT cover the table;
+// a wrong slap from the Duat costs a round (Ammit); a good slap resurrects
+// you through the engine's own path and passes the first gate; the twelfth
+// gate ends the match in your favour; leaving hands everything back.
+await step('the Duat: start dead, Ammit bites, slap back to life, reach dawn, hand back', async () => {
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    await page.click('#btn-duat-start');
+    await page.waitForSelector('#game-container.active', { timeout: 8000 });
+    const r = await page.evaluate(async () => {
+        const { DuatMode } = await import('./js/duat.js');
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+        const GS = window.GameState;
+        const out = {};
+        await sleep(300);
+        out.startCards = GS.players[0].length;
+        out.eliminatedFlag = GS.humanEliminated;
+        out.victoryUp = document.getElementById('victory-screen').classList.contains('active');
+        out.hudDead = document.getElementById('duat-hud').classList.contains('dead') && !document.getElementById('duat-hud').hidden;
+        out.names = [1, 2, 3].map(i => document.getElementById(`p${i}-name`).textContent.trim());
+        const p0 = DuatMode.progress;
+        GS.pile = [{ rank: 3, suit: 'clubs' }, { rank: 9, suit: 'hearts' }]; GS.slap(0);
+        out.ammit = DuatMode.progress - p0;
+        await sleep(650);
+        GS.pile = [{ rank: 7, suit: 'clubs' }, { rank: 7, suit: 'hearts' }]; GS.burnPile = []; GS.slap(0);
+        await sleep(50);
+        out.risenCards = GS.players[0].length;
+        out.dead = DuatMode.dead;
+        out.hour = DuatMode.hour;
+        out.resurrections = GS.stats.resurrections;
+        DuatMode.hour = 11;
+        await sleep(650);
+        GS.pile = [{ rank: 5, suit: 'clubs' }, { rank: 5, suit: 'hearts' }]; GS.burnPile = []; GS.slap(0);
+        await sleep(50);
+        out.over = GS.gameOver;
+        out.dawns = DuatMode.store.dawns;
+        return out;
+    });
+    await page.waitForSelector('#victory-screen.active', { timeout: 8000 });
+    await page.click('#btn-victory-menu');
+    await page.waitForSelector('#main-menu.active', { timeout: 8000 });
+    const after = await page.evaluate(async () => {
+        await new Promise(res => setTimeout(res, 300));
+        const { MatchContext } = await import('./js/matchContext.js');
+        const { GameManager } = await import('./js/gameManager.js');
+        return { owns: MatchContext.ownsElimination, names: MatchContext.seatNames, rematch: GameManager.rematchOptions,
+            night: document.body.classList.contains('duat-journey'), hudHidden: document.getElementById('duat-hud').hidden };
+    });
+    if (r.startCards !== 0 || !r.eliminatedFlag) throw new Error('the journey did not start in the Duat: ' + JSON.stringify(r));
+    if (r.victoryUp) throw new Error('the eliminated screen covered the table the player must slap into');
+    if (!r.hudDead || r.names.join() !== 'Ba,Ka,Akh') throw new Error('the Duat is not shown: ' + JSON.stringify(r));
+    if (r.ammit !== 1) throw new Error(`a wrong slap from the Duat cost ${r.ammit} rounds, want 1`);
+    if (r.risenCards < 2 || r.dead || r.hour !== 1 || r.resurrections !== 0) throw new Error('the slap did not resurrect through the engine (and the entry must not count as a comeback, ERS-18 fix 5): ' + JSON.stringify(r));
+    if (!r.over || r.dawns < 1) throw new Error('the twelfth gate did not end the night: ' + JSON.stringify(r));
+    if (after.owns || after.names !== null || after.rematch !== null || after.night || !after.hudHidden) throw new Error('leaving did not hand everything back: ' + JSON.stringify(after));
+    console.log(`         0 cards and no eliminated screen, Ammit -1 round, risen with ${r.risenCards} cards (hour 1), dawn -> win, all handed back`);
+});
+
+// v3.18.0: the Pharaoh's Tomb, through its real buttons. Three cards face up;
+// clicking one lays it; the guardian answers on its tier's clock; and not one
+// shared match event fires, so the tomb cannot reach Slap IQ or the boards.
+await step('the Tomb: a hand face up, a card laid, the guardian answers, nothing shared fires', async () => {
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    const r = await page.evaluate(async () => {
+        const { TombMode } = await import('./js/tomb.js');
+        const { default: EventBus } = await import('./js/eventbus.js');
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+        const fired = [];
+        const realEmit = EventBus.emit.bind(EventBus);
+        EventBus.emit = (name, ...a) => { fired.push(name); return realEmit(name, ...a); };
+        const out = {};
+        try {
+            document.getElementById('btn-tomb-start').click();
+            await sleep(100);
+            const intro = document.getElementById('tomb-intro');
+            out.intro = !!intro && !intro.hidden && intro.offsetHeight > 0
+                && document.getElementById('tomb-table').hidden
+                && document.querySelectorAll('#tomb-intro .tomb-rules li').length === 4
+                && !!document.querySelector('#tomb-intro-emblem svg');
+            document.getElementById('btn-tomb-go').click();
+            await sleep(200);
+            out.introGone = intro.hidden && intro.offsetHeight === 0;
+            out.screen = document.getElementById('tomb-screen').classList.contains('active');
+            out.hand = document.querySelectorAll('#tomb-hand .tomb-card').length;
+            out.portrait = !!document.querySelector('#tomb-portrait svg');
+            const s = TombMode.state;
+            // Lay the first card that neither opens a challenge nor completes a pattern.
+            const i = Math.max(0, s.you.hand.findIndex(c => c.rank < 11));
+            document.querySelectorAll('#tomb-hand .tomb-card')[i].click();
+            out.afterLay = TombMode.state.pile.length;
+            const t0 = performance.now();
+            while (performance.now() - t0 < 4000 && TombMode.state && TombMode.state.pile.length < 2 && !TombMode.state.over) await sleep(20);
+            out.guardAnswered = TombMode.state.pile.length >= 2 || TombMode.state.over !== null || TombMode.state.pile.length === 0;
+            document.getElementById('btn-tomb-exit').click();
+            await sleep(100);
+            out.menu = document.getElementById('main-menu').classList.contains('active');
+        } finally {
+            EventBus.emit = realEmit;
+        }
+        const shared = ['cardPlayed', 'pileWon', 'gameOver', 'gameStarted', 'invalidSlap', 'slapAttempt', 'challengeStarted', 'slapExplained', 'masteryMarkEarned'];
+        out.leaked = fired.filter(n => shared.includes(n));
+        return out;
+    });
+    if (!r.intro) throw new Error('the tomb did not open on its rules: ' + JSON.stringify(r));
+    if (!r.introGone) throw new Error('the rules stayed up after the torch was lit: ' + JSON.stringify(r));
+    if (!r.screen || r.hand !== 3 || !r.portrait) throw new Error('the tomb did not open on a guardian and three cards: ' + JSON.stringify(r));
+    if (r.afterLay !== 1) throw new Error('clicking a card did not lay it: ' + JSON.stringify(r));
+    if (!r.guardAnswered) throw new Error('the guardian never played: ' + JSON.stringify(r));
+    if (!r.menu) throw new Error('leaving the tomb did not return to the menu');
+    if (r.leaked.length) throw new Error('shared match events fired: ' + r.leaked.join(', '));
+    console.log('         rules first, then a hand of 3 face up, a card laid, the guardian answered, back to menu, 0 shared events');
 });
 
 // Firebase is stubbed, so its own failures are expected noise. Anything else

@@ -33,6 +33,8 @@ import { HouseRules } from './houseRules.js';
 import { explainSlap, matchSlap, RULE_DEFS } from './slapRules.js';
 import { Settings } from './settings.js';
 import { reflexDelta } from './reflexDelta.js';
+import { MatchContext, difficultyInForce } from './matchContext.js';
+import { CardSkins } from './cardSkins.js';
 
 const STORE_KEY = 'ersSlapForensics';
 const STORE_VERSION = 1;
@@ -44,13 +46,64 @@ const REFLEX_FLOOR_MS = 260;   // scores 1.0
 const REFLEX_CEIL_MS = 900;    // scores 0.0
 const MIN_SAMPLE = 10;         // below this, IQ reports "calibrating"
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * PATTERN MASTERY (v3.17.0, council ERS-16, DESIGN.md §5)
+ *
+ * Slap IQ was a REPORT — a score and a bar per pattern, with nothing to aim at.
+ * The council's product seat had it on record: "Kazanma dışında başarı metriği
+ * yok". Mastery turns the per-pattern bar into a goal: three marks per pattern,
+ * earned on how many of that pattern you actually caught.
+ *
+ * The panel approved it only as amended, and each amendment is a rule here:
+ *
+ *   WINDOW     judged on the last MASTERY_WINDOW chances, not on lifetime
+ *              counters. A lifetime ratio stops moving after a few hundred
+ *              samples; a goal that cannot move is decoration. (O1)
+ *   STANDARD   only chances on Medium and above, in multiplayer, or in the
+ *              Daily Challenge count. On Easy the bots leave more time, so the
+ *              same mark would mean something smaller. Easy still coaches and
+ *              still fills the Slap IQ bars; it just earns no marks — and the
+ *              panel says so. (O2, DESIGN.md P4)
+ *   LEDGER     earned marks live in `stats.marks`, which Reset does NOT clear.
+ *              A mark pays once per device, ever. Reset clears statistics, not
+ *              the history of having earned something. (O3, DESIGN.md P3)
+ *   BANDS      the thresholds are the Slap IQ grade bands the game already
+ *              used (B 55 / A 70 / S 85), read from GRADE_BANDS — one place.
+ *   GRANT      Gold pays one match win; each lower mark half the one above.
+ *              Read from CardSkins.computeReward, so retuning the win retunes
+ *              the marks instead of leaving them behind.
+ *
+ * Earned marks are KEPT even if the window later dips: the bar next to them
+ * shows current form. Trophy for the achievement, bar for the form.
+ * ───────────────────────────────────────────────────────────────────────── */
+export const GRADE_BANDS = Object.freeze({ S: 85, A: 70, B: 55, C: 40 });
+export const MASTERY_WINDOW = 30;
+/** Bronze, Silver, Gold — as fractions, from the grade bands. */
+export const MARK_THRESHOLDS = Object.freeze([GRADE_BANDS.B / 100, GRADE_BANDS.A / 100, GRADE_BANDS.S / 100]);
+export const MASTERY_DIFFICULTIES = Object.freeze(['medium', 'hard', 'challenger']);
+
+/** Highest mark (0 = none, 1 = Bronze, 2 = Silver, 3 = Gold) a rate earns. */
+export function markForRate(rate) {
+    let mark = 0;
+    MARK_THRESHOLDS.forEach((t, i) => { if (rate >= t) mark = i + 1; });
+    return mark;
+}
+
+/** Coins a single mark pays. Gold = one win; Silver half that; Bronze half again. */
+export function markGrant(mark) {
+    const win = CardSkins.computeReward(0);
+    return [0, win / 4, win / 2, win][mark] || 0;
+}
+
 const emptyStats = () => ({
     v: STORE_VERSION,
     totals: { attempts: 0, hits: 0, misses: 0 },
     hits: {},           // ruleId -> successful slaps
     missedChances: {},  // ruleId -> patterns that went past unslapped
     missCodes: {},      // near-miss code -> count (what you get wrong most)
-    reflex: []          // recent reaction times in ms
+    reflex: [],         // recent reaction times in ms
+    recent: {},         // ruleId -> last MASTERY_WINDOW chances, 1 caught / 0 missed (v3.17.0)
+    marks: {}           // ruleId -> highest mark earned; the LEDGER, survives reset() (v3.17.0)
 });
 
 export const SlapForensics = {
@@ -181,7 +234,47 @@ export const SlapForensics = {
             <h3 class="iq-h3">${Localization.get('slapIqByRule') || 'Hit rate by pattern'}</h3>
             <ul class="iq-rules">${rows}</ul>
             <p class="iq-note">${Localization.get('slapIqNote') || 'Coverage counts the patterns that appeared and went past you — not just the ones you tried.'}</p>
+            ${this.renderMastery()}
         `;
+    },
+
+    /**
+     * v3.17.0 — the mastery section. It sits BELOW the lifetime bars and says
+     * what it is measuring in one line, because the two answer different
+     * questions: the bars are "how have I done, ever", the marks are "what
+     * have I proven, recently, on a fair table" (council ERS-16, A1).
+     * Shared panel surface only — no palette of its own (DESIGN.md P6).
+     */
+    renderMastery() {
+        const rows = this.masteryBreakdown().map(r => {
+            // Three literal class names, not `m${n}`: check-orphan-classes reads
+            // markup out of this file and cannot evaluate a template, so a
+            // computed class name is one it can neither confirm nor refuse.
+            const on = (m) => (r.mark >= m ? ' on' : '');
+            const marks = `<i class="iq-mark mark-bronze${on(1)}"></i>`
+                + `<i class="iq-mark mark-silver${on(2)}"></i>`
+                + `<i class="iq-mark mark-gold${on(3)}"></i>`;
+            const label = r.mark > 0
+                ? (Localization.get('masteryEarnedShort') || '{tier} mark').replace('{tier}', this.markName(r.mark))
+                : (Localization.get('masteryNone') || 'No mark yet');
+            const progress = r.full
+                ? (Localization.get('masteryWindow') || 'last {n}: {caught} caught')
+                    .replace('{n}', MASTERY_WINDOW).replace('{caught}', r.caught)
+                : (Localization.get('masteryFilling') || '{seen}/{n} chances')
+                    .replace('{seen}', r.seen).replace('{n}', MASTERY_WINDOW);
+            return `<li class="iq-mastery-row">
+                <span class="nm">${r.name}</span>
+                <span class="iq-marks" role="img" aria-label="${label}">${marks}</span>
+                <span class="ct">${progress}</span>
+            </li>`;
+        }).join('');
+        const lines = MARK_THRESHOLDS.map((t, i) =>
+            `${this.markName(i + 1)} ${Math.round(t * 100)}%`).join(' · ');
+        return `
+            <h3 class="iq-h3">${Localization.get('masteryTitle') || 'Pattern mastery'}</h3>
+            <ul class="iq-mastery">${rows}</ul>
+            <p class="iq-note">${(Localization.get('masteryNote') || '')
+                .replace('{n}', MASTERY_WINDOW).replace('{bands}', lines)}</p>`;
     },
 
     // -----------------------------------------------------------------------
@@ -211,7 +304,11 @@ export const SlapForensics = {
     },
 
     reset() {
+        // The ledger survives. Without this line, Reset -> re-earn -> re-paid
+        // would be a coin farm (council ERS-16, O3).
+        const marks = { ...(this.stats.marks || {}) };
         this.stats = emptyStats();
+        this.stats.marks = marks;
         this.save();
         EventBus.emit('slapStatsChanged', this.stats);
     },
@@ -280,11 +377,13 @@ export const SlapForensics = {
         const pile = GameState.pile ? [...GameState.pile] : [];
         const report = explainSlap(pile, rules);
         const reactionMs = GameState.lastPlayTime ? (Date.now() - GameState.lastPlayTime) : null;
+        let earnedMark = null;
 
         this.stats.totals.attempts++;
         if (report.valid) {
             this.stats.totals.hits++;
             this.stats.hits[report.ruleId] = (this.stats.hits[report.ruleId] || 0) + 1;
+            earnedMark = this.pushChance(report.ruleId, true);
             if (reactionMs !== null && reactionMs > 0 && reactionMs < 5000) {
                 // ORDER IS LOAD-BEARING: the comparison is taken against the
                 // history as it stands BEFORE this slap joins it. Push first and
@@ -303,7 +402,15 @@ export const SlapForensics = {
         }
         this.save();
 
-        const message = this.describe(report);
+        let message = this.describe(report);
+        // Once the window is full, a mark can only be earned on a catch (a
+        // miss never raises the rate), so the coach chip — already saying
+        // "Sandwich!" — is where it is announced. The one exception is the
+        // chance that FILLS the window: if that is a miss, the mark is still
+        // recorded and paid, and the panel shows it; the table stays quiet.
+        // NOT the centre notice either way: that channel is kept for the winner
+        // and for a dropped connection (v3.13.0).
+        if (earnedMark) message += ' · ' + this.markLine(earnedMark);
         this.showCoach(message, report.valid);
         EventBus.emit('slapExplained', { report, reactionMs, message });
         EventBus.emit('slapStatsChanged', this.stats);
@@ -313,7 +420,83 @@ export const SlapForensics = {
     recordMissedChance(ruleId) {
         if (!ruleId) return;
         this.stats.missedChances[ruleId] = (this.stats.missedChances[ruleId] || 0) + 1;
+        this.pushChance(ruleId, false);
         this.save();
+    },
+
+    // -----------------------------------------------------------------------
+    // Mastery (v3.17.0) — see PATTERN MASTERY at the top of this file
+    // -----------------------------------------------------------------------
+
+    /** Does the table right now hold every player to the same standard? */
+    countsForMastery() {
+        if (GameState && GameState.isMultiplayer === true) return true;
+        const d = difficultyInForce(MatchContext.difficultyOverride, Settings.config && Settings.config.difficulty);
+        return MASTERY_DIFFICULTIES.includes(d);
+    },
+
+    /** Record one chance at `ruleId` in its window; returns a newly earned mark or null. */
+    pushChance(ruleId, caught) {
+        if (!ruleId || !this.countsForMastery()) return null;
+        if (!this.stats.recent) this.stats.recent = {};
+        const w = this.stats.recent[ruleId] || (this.stats.recent[ruleId] = []);
+        w.push(caught ? 1 : 0);
+        while (w.length > MASTERY_WINDOW) w.shift();
+        return this.checkMark(ruleId);
+    },
+
+    /**
+     * Grants a mark when a FULL window crosses its line. A window that is not
+     * yet full earns nothing — three catches out of three is not mastery.
+     * Crossing two lines at once pays both.
+     */
+    checkMark(ruleId) {
+        const w = (this.stats.recent && this.stats.recent[ruleId]) || [];
+        if (w.length < MASTERY_WINDOW) return null;
+        const rate = w.reduce((a, b) => a + b, 0) / w.length;
+        const earned = markForRate(rate);
+        if (!this.stats.marks) this.stats.marks = {};
+        const have = this.stats.marks[ruleId] || 0;
+        if (earned <= have) return null;
+        let coins = 0;
+        for (let m = have + 1; m <= earned; m++) coins += markGrant(m);
+        this.stats.marks[ruleId] = earned;
+        // Through the one writer of the coin ledger, never behind it.
+        if (coins > 0) CardSkins.addCoins(coins);
+        const result = { ruleId, mark: earned, coins };
+        EventBus.emit('masteryMarkEarned', result);
+        return result;
+    },
+
+    markName(mark) {
+        return Localization.get(['', 'spinTierBronze', 'spinTierSilver', 'spinTierGold'][mark]) || '';
+    },
+
+    /** "Silver mark — Sandwich · +20 🪙", in the player's language. */
+    markLine({ ruleId, mark, coins }) {
+        return (Localization.get('masteryEarned') || '{tier} mark — {rule}')
+            .replace('{tier}', this.markName(mark))
+            .replace('{rule}', this.ruleName(ruleId))
+            + (coins > 0 ? ` +${coins} 🪙` : '');
+    },
+
+    /** Per active rule: earned mark and the current window, for the panel. */
+    masteryBreakdown() {
+        const rules = HouseRules.active();
+        return RULE_DEFS
+            .filter(def => rules[def.id])
+            .map(def => {
+                const w = (this.stats.recent && this.stats.recent[def.id]) || [];
+                const caught = w.reduce((a, b) => a + b, 0);
+                return {
+                    id: def.id,
+                    name: this.ruleName(def.id),
+                    mark: (this.stats.marks && this.stats.marks[def.id]) || 0,
+                    seen: w.length,
+                    caught,
+                    full: w.length >= MASTERY_WINDOW
+                };
+            });
     },
 
     // -----------------------------------------------------------------------
@@ -424,10 +607,10 @@ export const SlapForensics = {
     },
 
     gradeFor(score) {
-        if (score >= 85) return 'S';
-        if (score >= 70) return 'A';
-        if (score >= 55) return 'B';
-        if (score >= 40) return 'C';
+        if (score >= GRADE_BANDS.S) return 'S';
+        if (score >= GRADE_BANDS.A) return 'A';
+        if (score >= GRADE_BANDS.B) return 'B';
+        if (score >= GRADE_BANDS.C) return 'C';
         return 'D';
     },
 

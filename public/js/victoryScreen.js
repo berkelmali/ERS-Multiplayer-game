@@ -6,6 +6,7 @@ import { StreakTracker } from './streakTracker.js';
 import { ResultCard } from './resultCard.js';
 import { formatDailyUrl } from './inviteLink.js';
 import { todayKey } from './dailyScore.js';
+import { MatchContext } from './matchContext.js';
 
 export const VictoryScreen = {
     init() {
@@ -18,6 +19,16 @@ export const VictoryScreen = {
         this.isDefeat = false;
         this.redirectTimeout = null;
         this.lastCoinDelta = null;
+        // v3.17.0: the finished match's numbers, frozen.
+        //
+        // GameState.stats is a LIVE object on the running game, and it is
+        // replaced wholesale when a new game starts (game.js) or a new
+        // multiplayer round begins (multiplayerMode.js). The victory screen
+        // reports a match that is OVER, so every number it shows or shares
+        // must come from a copy taken when the screen appeared -- otherwise
+        // the card says 14 cards and the share text, pressed a moment later,
+        // says 0. That disagreement was reported from the live site.
+        this.lastStats = null;
 
         EventBus.on('gameStarted', () => {
             this.lastCoinDelta = null; // Defensive reset — don't show a stale value from a previous match.
@@ -213,10 +224,11 @@ export const VictoryScreen = {
         // checkGameOver ended the match instead of eliminating anybody. Now
         // that it does not, the same screen — "eliminated, the match is still
         // ongoing" — is what puts the player into Spectator Mode.
+        // (v3.18.0: the Duat Journey narrates elimination itself — MatchContext.ownsElimination.)
         EventBus.on('humanEliminated', (playerId) => {
             if (playerId !== 0) return;
             import('./gameManager.js').then(gm => {
-                if (gm.GameManager.activeMode === 'multiplayer') return;
+                if (gm.GameManager.activeMode === 'multiplayer' || MatchContext.ownsElimination) return;
                 this.show(99);
             });
         });
@@ -241,7 +253,7 @@ export const VictoryScreen = {
      * dash dropped into the middle of a sentence.
      */
     buildShareText() {
-        const stats = (GameState && GameState.stats) ? GameState.stats : {};
+        const stats = this.lastStats || {};
         const cards = Number(stats.cardsWon) || 0;
         const reflex = (typeof stats.bestReflex === 'number' && stats.bestReflex < 9999)
             ? stats.bestReflex : null;
@@ -270,6 +282,26 @@ export const VictoryScreen = {
     show(winnerId) {
         if (this.redirectTimeout) clearTimeout(this.redirectTimeout);
         this.lastWinnerId = winnerId;
+        // Freeze BEFORE anything renders, so the panel, the PNG and the share
+        // text are three views of one set of numbers rather than three reads
+        // of a moving one.
+        this.lastStats = (GameState && GameState.stats)
+            ? { ...GameState.stats }
+            : null;
+
+        // v3.16.9 (council ERS-15): retire any notice already standing.
+        //
+        // Refusing NEW notices while this screen is up is only half the rule.
+        // gameOver posts the winner banner as PERMANENT and this screen is
+        // raised 1500ms LATER -- so that one is already on the glass before the
+        // refusal can apply to it, and being permanent it would never leave on
+        // its own. It is retired here rather than in the refusal, because the
+        // two are different failures: one is a notice that must not arrive, the
+        // other is a notice that must not stay.
+        import('./ui.js').then(m => m.UIManager.hideNotification()).catch(() => {
+            // A teardown is not a dependency. If ui.js cannot be reached the
+            // screen still opens; it just opens under an old banner.
+        });
         this.screenGame.classList.remove('active');
         this.screenVictory.classList.add('active');
         this.isDefeat = winnerId !== 0;
@@ -366,12 +398,13 @@ export const VictoryScreen = {
 
             // Build Stats Panel
             let statsHtml = '';
-            if (GameState && GameState.stats) {
-                const rx = GameState.stats.bestReflex === 9999 ? '---' : `${GameState.stats.bestReflex} ms`;
-                const cards = GameState.stats.cardsWon;
-                const burns = GameState.stats.burns;
-                const slaps = GameState.stats.resurrections;
-                const mvpText = this.computeMvpMoment(GameState.stats, winnerId === 0);
+            const snap = this.lastStats;
+            if (snap) {
+                const rx = snap.bestReflex === 9999 ? '---' : `${snap.bestReflex} ms`;
+                const cards = snap.cardsWon;
+                const burns = snap.burns;
+                const slaps = snap.resurrections;
+                const mvpText = this.computeMvpMoment(snap, winnerId === 0);
                 const mvpHtml = mvpText ? `<div class="mvp-moment">${mvpText}</div>` : '';
 
                 let coinHtml = '';
@@ -416,7 +449,7 @@ export const VictoryScreen = {
                 menuButtons.insertAdjacentHTML('beforebegin', statsHtml);
 
                 const shareBtn = document.getElementById('btn-share-result');
-                if (shareBtn && GameState && GameState.stats) {
+                if (shareBtn && snap) {
                     shareBtn.addEventListener('click', () => this.handleShareClick(winnerId, winnerName));
                 }
             }
@@ -430,12 +463,13 @@ export const VictoryScreen = {
         btn.disabled = true;
         btn.style.opacity = '0.6';
 
-        const rxRaw = GameState.stats.bestReflex;
+        const snap = this.lastStats || {};
+        const rxRaw = snap.bestReflex;
         ResultCard.shareResult({
             won: winnerId === 0,
             winnerName: winnerId === 0 ? (Settings.config.playerName || Localization.get('you') || 'YOU') : winnerName,
             bestReflexMs: rxRaw === 9999 ? null : rxRaw,
-            cardsWon: GameState.stats.cardsWon,
+            cardsWon: snap.cardsWon,
             streak: StreakTracker.currentStreak
         }).finally(() => {
             btn.disabled = false;

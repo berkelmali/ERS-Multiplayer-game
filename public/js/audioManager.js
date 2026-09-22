@@ -195,6 +195,49 @@ export const AudioManager = {
         osc.stop(this.audioCtx.currentTime + 0.35);
     },
 
+    // v3.17.0 — Ra's wheel (DESIGN.md §4). A pawl clicking over a bronze peg,
+    // and the dull knock of the last peg catching the wheel. Synthesised, like
+    // playGodlikeSlap above, so the wheel adds no audio file to the download.
+    // Both are quiet on purpose: a wheel clicking under a status line is
+    // texture, not an announcement.
+    playWheelTick() {
+        if (!this.enabled || !Settings.config.sfxEnabled) return;
+        this.initAudioContext();
+        if (!this.audioCtx) return;
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+        const t = this.audioCtx.currentTime;
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(2100, t);
+        osc.frequency.exponentialRampToValueAtTime(700, t + 0.025);
+        gain.gain.setValueAtTime(0.045, t);
+        gain.gain.exponentialRampToValueAtTime(0.0008, t + 0.035);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.04);
+    },
+
+    playWheelCatch() {
+        if (!this.enabled || !Settings.config.sfxEnabled) return;
+        this.initAudioContext();
+        if (!this.audioCtx) return;
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+        const t = this.audioCtx.currentTime;
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(170, t);
+        osc.frequency.exponentialRampToValueAtTime(85, t + 0.22);
+        gain.gain.setValueAtTime(0.22, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.27);
+    },
+
     playPerfectSlap() {
         if (!this.enabled || !Settings.config.sfxEnabled) return;
         this.initAudioContext();

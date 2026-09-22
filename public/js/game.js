@@ -339,6 +339,21 @@ export const GameState = {
         EventBus.emit('gameOver', winnerId);
     },
 
+    /**
+     * v3.18.0 — a mode that ends the match on its own terms: the Pantheon ends
+     * it the moment the god's life reaches zero, whoever holds the cards. Same
+     * single 'gameOver' event every other ending uses, so the victory screen,
+     * scoring and streaks need no second path.
+     */
+    endMatch(winnerId) {
+        if (this.gameOver) return;
+        this.gameOver = true;
+        this.gameStarted = false;
+        if (this.turnTimeoutId) clearTimeout(this.turnTimeoutId);
+        if (this.turnTransitionTimeout) clearTimeout(this.turnTransitionTimeout);
+        EventBus.emit('gameOver', winnerId);
+    },
+
     playCard(playerId) {
         if (this.gameOver || !this.gameStarted) return;
         if (playerId !== this.activePlayerId) return;

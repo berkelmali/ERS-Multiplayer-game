@@ -6,6 +6,7 @@ import { GameManager } from './gameManager.js';
 import { CardSkins } from './cardSkins.js';
 import { renderRulesBadge } from './rulesBadge.js';
 import { LOADING_WATCHDOG_MS } from './errorCodes.js';
+import { MatchContext } from './matchContext.js';
 
 export const UIManager = {
     initialized: false,
@@ -619,6 +620,7 @@ export const UIManager = {
             return names[visualId] || (Localization.get('noWinner') || 'No Winner');
         }
         if (visualId === 0) return Settings.config.playerName || Localization.get('you');
+        if (MatchContext.seatNames && MatchContext.seatNames[visualId]) return MatchContext.seatNames[visualId];
         return Localization.get(`bot${visualId}`);
     },
 
@@ -663,6 +665,9 @@ export const UIManager = {
     // itself in ai.js.
     _personalityIcon(visualId) {
         if (GameManager.activeMode !== 'bots') return '';
+        // A seat a mode renamed is not a Blitz/Chaos/Viper any more (the
+        // Pantheon's god plays by its own config, not the personality).
+        if (MatchContext.seatNames && MatchContext.seatNames[visualId]) return '';
         const icons = { 1: '⚡', 2: '🌀', 3: '🐍' };
         if (!icons[visualId]) return '';
         return `<span class="bot-personality-icon">${icons[visualId]}</span> `;
@@ -1002,7 +1007,43 @@ export const UIManager = {
         return true;
     },
 
+    /**
+     * v3.16.9 (council ERS-15) — a notice is never painted over a screen that
+     * is itself asking the player to read something.
+     *
+     * Reported from the live site: after being eliminated in a bots match, the
+     * (ELIMINATED) screen was covered by a 2.8rem gold "CHAOS WON THE PILE VIA
+     * CHALLENGE!" -- across the stats row and the Share Result button. The
+     * operator's reading was that elimination should END the match. The council
+     * refused that: the rules panel promises spectator mode and slapping back
+     * in, in four languages, 16 tests pin that copy, and v3.11.0 opened four
+     * separate locks to make it reachable. Stopping the match would make the
+     * promise false again and leave the resurrection path with no entry point.
+     *
+     * What they actually saw is one stacking rule, and both numbers were read
+     * off the live page: #notifications is z-index 9998, position: fixed,
+     * centred at 50%/50%, font-size 2.8rem. A .screen computes to 1000. So the
+     * match keeps shouting, dead centre, over the screen that is reporting the
+     * match to the player.
+     *
+     * THE OPPOSITE MISTAKE IS ALSO IN THIS FILE'S HISTORY. v3.12.0 found the
+     * winner banner stranded on the menu because #notifications used to live
+     * INSIDE #game-container and was hidden with it; moving it body-level above
+     * every screen is what made lobby and reconnect messages visible at all,
+     * and a smoke step still proves a menu toast shows. So this refusal is
+     * narrow ON PURPOSE: one screen, read from the DOM, never a global mute.
+     */
+    _readingScreenActive() {
+        // The victory screen is the one screen that REPORTS -- it carries the
+        // finished match's numbers and the controls that act on them. Read from
+        // the document rather than a flag, so a screen raised by any path is
+        // covered without anyone remembering to set something.
+        const vs = document.getElementById('victory-screen');
+        return !!(vs && vs.classList.contains('active'));
+    },
+
     showNotification(msg, color, permanent = false) {
+        if (this._readingScreenActive()) return;
         const generation = this._notificationGeneration = (this._notificationGeneration || 0) + 1;
         this.notifyEl.innerText = msg;
         this.notifyEl.style.color = color;

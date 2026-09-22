@@ -4,6 +4,13 @@ import { MultiplayerMode } from './multiplayerMode.js?v=6';
 export const GameManager = {
     activeMode: null, // 'bots' or 'multiplayer'
     modeInstance: null,
+    /**
+     * v3.18.0 — while a Legends mode is running, the options its rematch
+     * needs ("Play again" on the victory screen). Null means an ordinary
+     * deal. Without it a rematch against a god would quietly be a plain,
+     * possibly Blitz-timed, match.
+     */
+    rematchOptions: null,
 
     startBotGame(options = {}) {
         this.activeMode = 'bots';
@@ -29,6 +36,9 @@ export const GameManager = {
         // silently be dealt today's deck against Hard bots. Dynamic import keeps
         // gameManager out of an import cycle with dailyChallenge.
         import('./dailyChallenge.js').then(m => m.DailyChallenge.stop()).catch(() => {});
+        // Same for a Pantheon duel: the god's seat, rules and name go back.
+        import('./pantheon.js').then(m => m.PantheonMode.stop()).catch(() => {});
+        import('./duat.js').then(m => m.DuatMode.stop()).catch(() => {});
 
         // Clean up any stray UI states if possible.
         //

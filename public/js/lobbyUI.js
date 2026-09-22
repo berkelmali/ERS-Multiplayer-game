@@ -4,6 +4,7 @@ import { Localization } from './localization.js?v=3';
 import { AuthSystem } from './auth.js';
 import { GameManager } from './gameManager.js';
 import { renderRulesBadge } from './rulesBadge.js';
+import { GODS, isUnlocked, PantheonMode } from './pantheon.js';
 import { renderQRCodeToCanvas } from './qrCode.js';
 import { formatInviteUrl } from './inviteLink.js';
 import { ERR, appError, classifyError, readOnline, withDeadline, createOperationToken, DEFAULT_DEADLINE_MS } from './errorCodes.js';
@@ -18,6 +19,44 @@ export const LobbyUI = {
      * cache is display-only and can never affect play.
      */
     lastKnownRules: null,
+    lastKnownGod: null,
+
+    /**
+     * v3.18.0 — the host chooses a god for the table (only gods they have
+     * reached in the Pantheon); everyone else sees the choice. A god needs an
+     * empty seat, so a full table of four is told why none will sit.
+     */
+    renderGodPicker(data) {
+        const sel = document.getElementById('lobby-god-select');
+        const note = document.getElementById('lobby-god-note');
+        if (!sel) return;
+        const L = (k, f) => Localization.get(k) || f;
+        const amIHost = data.hostId === AuthSystem.currentUser.uid;
+        const current = this.lastKnownGod;
+        const options = [['', L('lobbyGodNone', 'No god — an ordinary table')]]
+            .concat(GODS.filter(g => g.id === current || isUnlocked(g.id, PantheonMode.store.defeated))
+                .map(g => [g.id, L(`god_${g.id}_name`, g.id)]));
+        sel.innerHTML = '';
+        for (const [v, t] of options) {
+            const o = document.createElement('option');
+            o.value = v;
+            o.textContent = t;
+            sel.appendChild(o);
+        }
+        sel.value = current || '';
+        sel.disabled = !amIHost;
+        if (!sel._wired) {
+            sel._wired = true;
+            sel.addEventListener('change', () => {
+                TableManager.setGod(sel.value || null).catch(e => console.warn('setGod failed:', e));
+            });
+        }
+        const people = (data.players || []).filter(p => !p.uid.startsWith('bot_')).length;
+        const bits = [];
+        if (current) bits.push(L(`god_${current}_power`, ''));
+        if (current && people >= 4) bits.push(L('lobbyGodNeedsSeat', 'A god needs an empty seat: with four people it will not sit.'));
+        if (note) note.textContent = bits.join(' ');
+    },
 
     init() {
         this.lobbyPanel = document.getElementById('lobby-panel');
@@ -213,6 +252,8 @@ export const LobbyUI = {
 
             if (typeof data.houseRules === 'string') this.lastKnownRules = data.houseRules;
             renderRulesBadge('lobby-rules-badge', this.lastKnownRules);
+            if ('god' in data) this.lastKnownGod = data.god || null;
+            this.renderGodPicker(data);
 
             const amIHost = data.hostId === AuthSystem.currentUser.uid;
             if (amIHost) {

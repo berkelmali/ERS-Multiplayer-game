@@ -18,6 +18,9 @@ import { LobbyUI } from './lobbyUI.js';
 import { ReconnectManager } from './reconnectManager.js';
 import { StreakTracker } from './streakTracker.js';
 import { TutorialMode } from './tutorialMode.js';
+import { PantheonMode } from './pantheon.js';
+import { DuatMode } from './duat.js';
+import { TombMode } from './tomb.js';
 import { BotNemesis } from './botNemesis.js';
 import { CardSkins } from './cardSkins.js';
 import { DailySpin } from './dailySpin.js';
@@ -62,6 +65,9 @@ document.addEventListener('DOMContentLoaded', () => {
     LobbyUI.init();
     StreakTracker.init();
     TutorialMode.init();
+    PantheonMode.init();
+    DuatMode.init();
+    TombMode.init();
     BotNemesis.init();
     CardSkins.init();
     DailySpin.init();
@@ -91,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     EventBus.on('restartGame', () => {
         if (GameManager.activeMode === 'bots') {
-            GameManager.startBotGame();
+            GameManager.startBotGame(GameManager.rematchOptions ? GameManager.rematchOptions() : {});
         }
     });
 
