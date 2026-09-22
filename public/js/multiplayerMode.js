@@ -3,6 +3,7 @@ import { FirebaseSync } from './firebaseSync.js?v=7';
 import { Localization } from './localization.js';
 import { getRankName, getSuitSymbol } from './game.js';
 import { BotConfig } from './ai.js';
+import { godConfig } from './pantheon.js';
 import { Settings } from './settings.js';
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { functions } from "./firebaseConfig.js";
@@ -228,6 +229,12 @@ export const MultiplayerMode = {
         return (visualIndex + this.localPlayerIndex) % 4;
     },
 
+    /** v3.18.0 — the god's seat plays as its god (Ra quickens at noon); every other bot is Challenger. */
+    botConfigFor(data, seat) {
+        if (data && data.god && seat === data.godSeat) return godConfig(data.god, { noon: !!data.godNoon }) || BotConfig.challenger;
+        return BotConfig.challenger;
+    },
+
     checkBotTurn(data) {
         if (!data || !data.players || !data.players[0]) return;
         import('./auth.js').then(auth => {
@@ -242,7 +249,7 @@ export const MultiplayerMode = {
                 if (this.botTimeouts[visualId]) clearTimeout(this.botTimeouts[visualId]);
 
                 // Use playDelay + playVariance for card-play timing (NOT minReaction which is for slaps)
-                const diffConfig = BotConfig.challenger;
+                const diffConfig = this.botConfigFor(data, activeActual);
                 const delay = diffConfig.playDelay + Math.random() * diffConfig.playVariance;
                 const scheduledTime = Date.now();
 
@@ -275,7 +282,7 @@ export const MultiplayerMode = {
                     const visualId = (idx - this.localPlayerIndex + 4) % 4;
                     if (this.botSlapTimeouts[visualId]) clearTimeout(this.botSlapTimeouts[visualId]);
 
-                    const config = BotConfig.challenger;
+                    const config = this.botConfigFor(data, idx);
 
                     if (validSlap) {
                         // Challenger AI Slap Check

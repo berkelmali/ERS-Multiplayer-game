@@ -11,6 +11,7 @@ import { ConnectionBanner } from "./connectionBanner.js";
 import { Localization } from "./localization.js?v=3";
 import { AuthSystem } from "./auth.js";
 import { applySlapWin, applySlapBurn } from "./slapOutcome.js";
+import { applyGodSlapWin, applyGodBurn } from "./pantheonRoom.js";
 import * as FairSlap from "./fairSlap.js";
 
 const db = getFirestore(app);
@@ -355,6 +356,8 @@ export const FirebaseSync = {
         // late or reconnected can never evaluate slaps under its own local
         // preferences while everyone else uses the host's.
         HouseRules.applyRoom(data.houseRules || '');
+        // v3.18.0 — every client draws the god's life from the room itself.
+        import('./pantheon.js').then(m => m.PantheonMode.syncRoom(data)).catch(() => {});
 
         // Keep the fair-slap window armed. This is what guarantees a contest
         // always closes even if the client that opened it goes silent.
@@ -538,12 +541,21 @@ export const FirebaseSync = {
      * Delegating makes the tested code and the live code the same code.
      */
     _applySlapWin(data, seatIndex) {
-        return applySlapWin(data, seatIndex);
+        // v3.18.0 — a god at the table: its life changes in THIS transaction.
+        // The pattern is read before the pile is handed over.
+        const godRule = data.god ? (matchSlap(data.pile || [], HouseRules.active()) || {}).id : null;
+        applySlapWin(data, seatIndex);
+        if (data.god) applyGodSlapWin(data, seatIndex, godRule, NetQuality.serverNow());
+        return data;
     },
 
     /** Applies the invalid-slap penalty (shield shatter, or burn a card). */
     _applySlapBurn(data, seatIndex) {
-        return applySlapBurn(data, seatIndex);
+        const before = data.god ? ((data.players[seatIndex] || {}).cards || []).length : 0;
+        applySlapBurn(data, seatIndex);
+        // Anubis: a card actually burned (no shield, not the last) burns twice.
+        if (data.god && ((data.players[seatIndex] || {}).cards || []).length === before - 1) applyGodBurn(data, seatIndex);
+        return data;
     },
 
     async pushSlapAttempt({ playerIndex }) {

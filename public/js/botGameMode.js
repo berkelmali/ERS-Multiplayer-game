@@ -14,7 +14,8 @@ export const BotGameMode = {
 
         // The Daily Challenge is always a full match: a Blitz timer would make
         // the scored deal depend on a personal setting.
-        if (options.daily) {
+        // A Pantheon duel ends on the god's life, not a clock (`untimed`).
+        if (options.daily || options.untimed) {
             MatchTimer.stop();
         } else if (Settings.config.matchLength === 'blitz') {
             MatchTimer.start(300); // 5-minute Blitz Mode (v2.9.0, see CLAUDE.md §6.22)

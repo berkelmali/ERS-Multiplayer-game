@@ -3,7 +3,7 @@ import { GameState } from './game.js';
 import { Settings } from './settings.js';
 import { GameManager } from './gameManager.js';
 import { Rng } from './rng.js';
-import { BotConfig, BotPersonalities, ROLL } from './botConfig.js';
+import { BotConfig, BotPersonalities, ROLL, applyPersonality } from './botConfig.js';
 import { MatchContext, difficultyInForce } from './matchContext.js';
 
 // The tuning numbers moved to botConfig.js so a test can read them — ai.js
@@ -11,27 +11,10 @@ import { MatchContext, difficultyInForce } from './matchContext.js';
 // here because multiplayerMode.js imports BotConfig from this module.
 export { BotConfig, BotPersonalities };
 
-// Combines a base difficulty config with a bot's personality modifiers.
-// Keeps the midpoint of the reaction window anchored to the difficulty's own pacing
-// and only widens/narrows/shifts it — so personalities add flavor without secretly
-// making the overall difficulty tier easier or harder than what the player picked.
+// The formula lives in botConfig.js (applyPersonality) since v3.18.0, so the
+// Pantheon builds its gods from the same one.
 function getPersonalityConfig(botId, baseConfig) {
-    const p = BotPersonalities[botId];
-    if (!p) return baseConfig;
-
-    const mid = (baseConfig.minReaction + baseConfig.maxReaction) / 2;
-    const halfWidth = (baseConfig.maxReaction - baseConfig.minReaction) / 2;
-    const shiftedMid = mid * (p.reactionMult ?? 1);
-    const widenedHalf = halfWidth * (p.varianceMult ?? 1);
-
-    return {
-        minReaction: Math.max(150, shiftedMid - widenedHalf),
-        maxReaction: shiftedMid + widenedHalf,
-        accuracy: Math.min(0.97, baseConfig.accuracy * (p.accuracyMult ?? 1)),
-        falseSlap: Math.max(0, baseConfig.falseSlap * (p.falseSlapMult ?? 1)),
-        playDelay: baseConfig.playDelay * (p.playDelayMult ?? 1),
-        playVariance: baseConfig.playVariance * (p.playVarianceMult ?? 1)
-    };
+    return applyPersonality(BotPersonalities[botId], baseConfig);
 }
 
 // --- BOT TABLE TALK (v2.9.0) ---
@@ -53,6 +36,17 @@ export const AIController = {
     intervals: {},
     slapTimeouts: {},
     initialized: false,
+    /**
+     * v3.18.0 — a full config a mode imposes on one seat, or nothing. The
+     * Pantheon seats a god at seat 2 with its own speed and discipline; the
+     * god is not a Blitz/Chaos/Viper wearing a mask, so the personality
+     * layer is skipped for that seat rather than stacked on top of it.
+     */
+    seatConfig: {},
+
+    configFor(botId, baseConfig) {
+        return this.seatConfig[botId] || getPersonalityConfig(botId, baseConfig);
+    },
 
     /**
      * The override moved to `matchContext.js`. It was never only the AI's
@@ -91,7 +85,7 @@ export const AIController = {
             if (activeId >= 1 && activeId <= 3) {
                 const diff = this.currentDifficulty();
                 const baseConfig = BotConfig[diff] || BotConfig.medium;
-                const config = getPersonalityConfig(activeId, baseConfig);
+                const config = this.configFor(activeId, baseConfig);
                 const delay = config.playDelay
                     + Rng.pick(activeId, GameState.playCount || 0, ROLL.PLAY_DELAY) * config.playVariance;
                 const scheduledTime = Date.now();
@@ -117,7 +111,7 @@ export const AIController = {
 
             if (GameState.isValidSlap()) {
                 [1, 2, 3].forEach(botId => {
-                    const config = getPersonalityConfig(botId, baseConfig);
+                    const config = this.configFor(botId, baseConfig);
                     // Accuracy Hit Check
                     if (Rng.pick(botId, tick, ROLL.SLAP_ACCURACY) < config.accuracy) {
                         const delay = config.minReaction
@@ -133,7 +127,7 @@ export const AIController = {
                 });
             } else {
                 [1, 2, 3].forEach(botId => {
-                    const config = getPersonalityConfig(botId, baseConfig);
+                    const config = this.configFor(botId, baseConfig);
                     // False Slap Hit Check
                     if (Rng.pick(botId, tick, ROLL.FALSE_SLAP) < config.falseSlap && GameState.players[botId].length > 0) {
                         // Small added delay to false slaps so they don't look completely mechanical

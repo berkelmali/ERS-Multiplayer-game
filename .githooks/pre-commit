@@ -1,0 +1,27 @@
+#!/bin/sh
+# ERS pre-commit gate. This repository is PUBLIC: a credential that reaches a
+# commit is published the moment it is pushed, and deleting it later does not
+# take it out of the history. So the check runs on every commit, from any tool
+# (commit.bat, VS Code, GitHub Desktop), not only from commit.bat.
+# Enabled by: git config core.hooksPath .githooks   (commit.bat sets it)
+
+files=$(git diff --cached --name-only --diff-filter=ACMR)
+bad=$(printf '%s\n' "$files" | grep -iE '(^|/)firebaseConfig\.js$|adminsdk[^/]*\.json$|service-?account[^/]*\.json$|credential[^/]*\.json$|(^|/)\.env(\.[^/]*)?$|\.(pem|p12|pfx|key)$')
+if [ -n "$bad" ]; then
+    echo "pre-commit: REFUSED -- a credential file is staged:"
+    printf '    %s\n' $bad
+    echo "Unstage it:  git rm --cached <file>"
+    exit 1
+fi
+
+pattern='AIza[0-9A-Za-z_-]{35}|"private_key"[[:space:]]*:|-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{20,}'
+hits=$(git diff --cached --name-only --diff-filter=ACMR | while IFS= read -r f; do
+    git diff --cached -U0 -- "$f" | grep -E '^\+' | grep -v '^+++ ' | grep -qE "$pattern" && printf '%s\n' "$f"
+done)
+if [ -n "$hits" ]; then
+    echo "pre-commit: REFUSED -- a staged line looks like a secret (API key, private key or token) in:"
+    printf '%s\n' "$hits" | sed 's/^/    /'
+    echo "The value is not printed here on purpose."
+    exit 1
+fi
+exit 0

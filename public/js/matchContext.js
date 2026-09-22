@@ -71,10 +71,26 @@ export const MatchContext = {
     difficultyOverride: null,
     /** True while a run's result will be written to a shared board. */
     scored: false,
+    /**
+     * v3.18.0 — names a mode gives to seats, or null for the usual ones.
+     * The Pantheon seats a god at the top of the table; every label that
+     * names a seat (deck, log, challenge banner, victory screen) reads
+     * `getVisualName`, so setting it here renames the seat everywhere at once.
+     */
+    seatNames: null,
+    /**
+     * v3.18.0 — true while a mode tells the story of the human seat running
+     * dry itself. The Duat Journey STARTS you with no cards; the ordinary
+     * "eliminated" screen would cover the very table you have to slap back
+     * into.
+     */
+    ownsElimination: false,
 
     reset() {
         this.difficultyOverride = null;
         this.scored = false;
+        this.seatNames = null;
+        this.ownsElimination = false;
     }
 };
 

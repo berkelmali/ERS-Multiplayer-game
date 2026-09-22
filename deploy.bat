@@ -1482,10 +1482,102 @@ echo       kapiya uydurmaya kalksaydim, calisan bir seyi bozacaktim.
 echo       Surum BUMPLANMADI: sitenin tek bir bayti degismedi;
 echo       degisen, operatorun okudugu sayfa.
 echo.
+echo  --- v3.16.8 -- BITEN MACI RAPORLAYAN EKRAN CANLI SAYI OKUYORDU ---
+echo  142) CANLIDAN BILDIRILDI: paylasilan gorsel 14 KART dedi, ayni
+echo       ekranda saniyeler sonra basilan paylasim metni 0 kart dedi.
+echo       Ikisi de GameState.stats'i okuyordu -- calisan oyunun CANLI
+echo       nesnesi. Elenmis izleyici ekraninda mac SURUYOR; iki basis
+echo       arasinda yeni bir tur basladi.
+echo  143) DUZELTME: ekran acilirken istatistiklerin bir kopyasi alinir;
+echo       panel, PNG ve metin hep o kopyayi okur.
+echo  144) KAPI 69: iki okumanin ayni cikmasini sormaz -- iki canli okuma
+echo       sans eseri ayni cikabilir. GameState.stats'in victoryScreen.js
+echo       icinde TEK bir yerde gectigini olcer.
+echo.
+echo  --- v3.16.9 -- MAC, MACI RAPORLAYAN EKRANIN USTUNE BAGIRIYORDU ---
+echo  145) CANLIDAN BILDIRILDI: botlu macta elenince ELENDIN ekraninin
+echo       ustune, bir BOTUN aldigi el icin 2.8rem altin bir bildirim
+echo       basiliyordu. Operatorun okumasi: elenme maci BITIRMELI.
+echo  146) KONSEY ERS-15 BU CAREYI 4-1 REDDETTI ^(Kismen Savunulabilir,
+echo       Guclu^): kurallar dort dilde izleyici modunu ve saplayarak geri
+echo       donmeyi vaat ediyor. Maci durdurmak o vaadi yine yalan yapardi.
+echo       Sikayet gercekti, teshis degil.
+echo  147) ASIL HATA tek bir istifleme kurali: #notifications z-index 9998,
+echo       sabit, ortada, 2.8rem; bir .screen 1000.
+echo  148) Savunmanin en guclu argumani canlida OLCULDU ve curudu: mac
+echo       ekranin arkasinda bitiyor ve ekran ~1.5 sn icinde kendiliginden
+echo       dogru yenilgi ekranina donuyor. Takili kalma yok.
+echo  149) KAPI 71: rapor ekrani acikken bildirim GELMEZ ve kazanan bandi
+echo       KALMAZ. Kuresel bir susturma DEGIL: menu bildirimi hala
+echo       gorunuyor, smoke bunu kanitliyor. 3 mutasyon, 3'u yakalandi.
+echo.
+echo  --- v3.17.0 -- RA CARKI VE DESEN USTALIGI ---
+echo  150) Operatorun istegiyle Gumus ve Altin'da BOS dilim yok. Altin'a
+echo       cikmak 1/64'luk bir tirmanis; onu Bos ile bitirmek en nadir
+echo       ani cezaya ceviriyordu. Risk Bronz'da kaliyor.
+echo  151) Her Bos, o katmanin ZATEN sahip oldugu en dusuk odul oldu
+echo       ^(Gumus 25, Altin 50^). Bronz baslangicli gunluk beklenen deger
+echo       tablodan HESAPLANIYOR: 11.68'den 12.66'ya, hala bir galibiyetin
+echo       ucte birinin altinda ^(40/3 = 13.33^). KAPI 72 yeniden hesaplar.
+echo  152) CARKIN GORUNUSU sicak ve samimi: turkuaz ve terrakota yuzler,
+echo       percinli metal cember, tebesir sayilar ve damgali coin, ortada
+echo       Ra'nin gunesi, bronz mandal ^(operator karari^).
+echo  153) DONUS agir bir cisim gibi: surtunmeyle yavaslar, biraz asar ve
+echo       geri yaslanir, mandal her percinde tiklar. Tek saat: tik sayaci
+echo       animasyonun kendi acisini okur. Cark tam odenen dilimde durur.
+echo       Azaltilmis hareket donusu atlar. KAPI 73.
+echo  154) YENI OZELLIK -- KONSEY ERS-16, 4-1: DESEN USTALIGI. Her desen son
+echo       30 firsatini tutar; Bronz/Gumus/Altin isaretleri yuzde 55/70/85,
+echo       bir galibiyet odulunun ceyregi, yarisi ve tamami ^(10/20/40^),
+echo       her biri BIR KEZ.
+echo  155) Yalnizca Orta ve ustu, cok oyunculu ve Gunluk Meydan Okuma
+echo       sayilir; istatistik sifirlama isaretleri SILMEZ. Yeni ekran yok:
+echo       mevcut panelde uc kucuk nokta. KAPI 74: 6 mutasyon, 6'si yakalandi.
+echo.
+echo  --- v3.18.0 -- EFSANELER: UC YENI MOD, OYUNUN KENDI DUNYASINDAN ---
+echo  156) ONCE: Kum Saati adli tek kisilik refleks modu yapildi, gosterildi
+echo       ve operator tarafindan REDDEDILDI ^(yeterince yaratici degil^).
+echo       Tamamen kaldirildi; kaydi COUNCIL-ERS-17-hourglass-rejected.md.
+echo  157) ANA MENUDE TEK YENI DUGME: 'Efsaneler'. Icinde uc mod.
+echo  158) TANRILARIN MASASI: ust koltukta bir tanri oturur, CANI VAR. Senin
+echo       tarafinin her gecerli saplagi onu yaralar: seninki tam, masadaki
+echo       diger iki oyuncununki yarim. Hasar turetildi, yazilmadi: 10 x
+echo       karekok^(Cift'in sikligi / desenin sikligi^). Alti tanri: Bastet,
+echo       Thoth, Hathor, Anubis, Set, Ra -- her birinin gucu gercek bir kural.
+echo  159) COK OYUNCULUDA DA VAR: host bekleme odasinda bir tanri secer,
+echo       tanri son bot koltuguna oturur. Cani ODADA tutulur ve saplagi
+echo       veren ayni transaction icinde degisir; dort istemci ayni sayiyi
+echo       gorur. Veritabani kurali DEGISMEDI.
+echo  160) DUAT YOLCULUGU: kartsiz, olu baslarsin. Operatorun sayisiyla ON
+echo       tur icinde saplayarak dirilmelisin; Duat'tan yanlis vurus bir tur
+echo       yer. Aldigin her el gecenin bir saati; 12. kapida gunes dogar.
+echo  161) FIRAVUNUN MEZARI: yuz karti meydan okumasi bir KARARA donustu --
+echo       elindeki uc kart acik, hangisini atacagini secersin. Kendi
+echo       kurdugun desen bekcinindir ^(vurursan tuzak^): simulasyonda bu
+echo       kural olmadan her oyun kazaniliyordu. Yedi oda, oda sonrasi
+echo       hazine secimi. 500 kosuda hizli oyuncu yuzde 86, ortalama yuzde 53.
+echo  162) KAPILAR: 75 Pantheon ^(hasar turetimi dahil^), 76 Duat, 77 Mezar
+echo       ^(1400 rastgele odanin hepsi bitiyor^), 78 cok oyunculu tanri.
+echo       Smoke gercek tarayicida uc modu da oynatiyor. Mutasyonlarin hepsi
+echo       yakalandi.
+echo  163) KONSEY ERS-18, BES DUZELTME: tanri, butun kartlari sen
+echo       kazaninca da DUSER ^(muska + siradaki tanri^); 'rahip' kelimesi
+echo       kalkti ^(masadaki diger iki oyuncu^); Mezar once kurallar
+echo       ekraniyla acilir; bolum basliklari ortak panel renginde;
+echo       Duat'a giris dirilisi 'geri donus' sayilmaz.
+echo  164) KONSEY ERS-19: SEKME YOK. Efsaneler'de once Yolculuklar ^(Duat,
+echo       Mezar^), sonra Tanrilarin Masasi ve kurali.
+echo  165) KAPILAR: 79. bolum ^(21 yeni test^), 7 mutasyonun 7'si yakalandi,
+echo       smoke Mezar kurallar ekranini ve Duat sayacini da kontrol ediyor.
+echo  166) BU DOSYA YENIDEN KURULDU: v3.18.0 notlarini eklerken bir betik
+echo       dosyayi bosaltti. v3.16.7'ye kadarki her satir git'teki
+echo       kayittan geri geldi; 142-162 arasi notlar commit.bat ve konsey
+echo       tutanaklarindan YENIDEN YAZILDI, kelimesi kelimesine degil.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
-echo   - Surum satirinda ^(Berk Elmali - v3.16.6^) About ve Privacy
+echo   - Surum satirinda ^(Berk Elmali - surum^) About ve Privacy
 echo     yazilari duruyor olmali -- ve BIR KEZ. Menude "Game Rules",
 echo     "About" ya da "Privacy" IKI KEZ goruyorsan v3.16.0 hali
 echo     kalmis demektir, bana bildir
@@ -1535,5 +1627,42 @@ echo     "Bugunku sonucun" DEGISMEMIS olmali. Degistiyse bana bildir --
 echo     bu, oyuncunun gunluk hakkini yiyen tek hatadir
 echo   - Raylar: pencereyi genislet, raylar KENARDA olmali; 1199px'e
 echo     daralt, kaybolmali ve yatay kaydirma CIKMAMALI
+echo.
+echo  --- v3.16.8 / v3.16.9 --------------------------------------
+echo   - Botlu macta elen: ELENDIN ekraninin ustune bildirim BASILMAMALI.
+echo     Menude bir bildirim ise hala GORUNMELI
+echo   - Elenince paylas: gorseldeki kart sayisi ile metindeki AYNI olmali
+echo.
+echo  --- v3.17.0 ------------------------------------------------
+echo   - Ra'nin Carki: Gumus ve Altin'da BOS dilim olmamali. Cevir: cark
+echo     odenen dilimde durmali, mandal tiklamali
+echo   - KOLAY masada oyna: isaret ILERLEMEMELI. ORTA masada oyna:
+echo     firsat sayaci artmali
+echo   - Istatistikleri sifirla: kazanilmis isaretler YERINDE kalmali
+echo.
+echo  --- v3.18.0 ------------------------------------------------
+echo   - Ana menude 'Efsaneler': ustte 'Yolculuklar' ^(Duat + Mezar^),
+echo     altinda 'Tanrilarin Masasi'. Basliklar mavi ^(panel rengi^),
+echo     altin DEGIL
+echo   - Bastet'e meydan oku: ustte portre ve can cubugu olmali. Bir Cift
+echo     yakala: can 10 dusmeli, kirmizi -10 yukselmeli. Bastet el alinca
+echo     +10 ve pati sayaci azalmali. Canini bitir: MAC KAZANILMALI
+echo   - Menuye don, Efsaneler'i ac: Bastet'te muska, Thoth acilmis olmali
+echo   - Bastet'i butun kartlari toplayarak yen: yine muska olmali ve
+echo     Thoth acilmali ^(can sifirlanmadan da^)
+echo   - Duat'a gir: 0 kartla baslamalisin, ELENDIN ekrani CIKMAMALI, ekran
+echo     kararmali ve 'tur 0/10' yazmali. Desen yokken vur: tur 1 artmali.
+echo     Bir desen yakala: dirilmeli, ekran biraz aydinlanmali, 1. saat
+echo   - Duat'ta bir kez dirilip safaga ulas: mac sonu ekraninda
+echo     'geri donus / comeback' satiri CIKMAMALI
+echo   - Mezara gir: ONCE kurallar ekrani ^(4 satir, tuzak kirmizi kutuda^).
+echo     'Mesaleyi yak' ile oyun baslamali; 'Tekrar gir' kurallari atlamali
+echo   - Mezarda: uc kart acik; birine tikla, yigina gitmeli; bekci cevap
+echo     vermeli. Kendi kurdugun deseni vur: 'tuzak' yazmali
+echo   - COK OYUNCULU ^(iki hesapla^): bekleme odasinda host 'Masada bir
+echo     tanri' ile Bastet'i secsin; digeri secimi gormeli. Oyun basinda
+echo     iki ekranda da ayni can cubugu olmali ve bir saplak IKISINDE de
+echo     ayni sayida can dusurmeli. Tanri olurse kazanan onu en cok
+echo     yaralayan kisi olmali
 echo.
 pause

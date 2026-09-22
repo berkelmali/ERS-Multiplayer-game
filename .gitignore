@@ -60,6 +60,7 @@ scratch/
 coverage/
 .nyc_output/
 .claude-memory/
+.memoryfires/
 
 # Agent working notes. Commit 3e3b69e removed CLAUDE.md and COUNCIL.md from
 # git on purpose but never added the ignore rules, so they kept reappearing
@@ -70,3 +71,18 @@ COUNCIL.md
 # Backups left behind by earlier cleanups. Kept on disk deliberately; not
 # history.
 _to_delete_*.bak
+
+# Operator's own to-do list: it carries account details (sites, IDs,
+# contact) and is a working note for one person, not project history.
+YAPILACAKLAR.md
+
+# Key files. A service-account key downloaded from the Firebase console is named
+# <project>-firebase-adminsdk-<id>.json -- none of the patterns above matched it.
+*firebase-adminsdk*.json
+*.pem
+*.p12
+*.pfx
+*.key
+
+# commit.bat's message for the release being recorded: input, not history.
+.commit-msg.txt

@@ -90,3 +90,29 @@ export const BotPersonalities = {
         playDelayMult: 1.08, playVarianceMult: 0.8
     }
 };
+
+/**
+ * Combines a base difficulty config with a personality's modifiers. Moved
+ * here from ai.js in v3.18.0 so a mode that builds a seat's config (the
+ * Pantheon's gods) uses the one formula instead of a copy — ai.js cannot be
+ * loaded outside a browser, this file can.
+ *
+ * Keeps the midpoint of the reaction window anchored to the difficulty's own
+ * pacing and only widens/narrows/shifts it — so personalities add flavor
+ * without secretly making the overall difficulty tier easier or harder.
+ */
+export function applyPersonality(p, baseConfig) {
+    if (!p) return baseConfig;
+    const mid = (baseConfig.minReaction + baseConfig.maxReaction) / 2;
+    const halfWidth = (baseConfig.maxReaction - baseConfig.minReaction) / 2;
+    const shiftedMid = mid * (p.reactionMult ?? 1);
+    const widenedHalf = halfWidth * (p.varianceMult ?? 1);
+    return {
+        minReaction: Math.max(150, shiftedMid - widenedHalf),
+        maxReaction: shiftedMid + widenedHalf,
+        accuracy: Math.min(0.97, baseConfig.accuracy * (p.accuracyMult ?? 1)),
+        falseSlap: Math.max(0, baseConfig.falseSlap * (p.falseSlapMult ?? 1)),
+        playDelay: baseConfig.playDelay * (p.playDelayMult ?? 1),
+        playVariance: baseConfig.playVariance * (p.playVarianceMult ?? 1)
+    };
+}

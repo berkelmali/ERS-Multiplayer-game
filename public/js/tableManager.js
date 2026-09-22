@@ -1,5 +1,5 @@
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, deleteDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { ref, set, onDisconnect, onValue, off, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { ref, set, onDisconnect, onValue, off, get, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { app, rtdb } from "./firebaseConfig.js";
 import { AuthSystem } from "./auth.js";
 import { Settings } from "./settings.js";
@@ -7,6 +7,9 @@ import { createDeck } from "./game.js";
 import { HouseRules } from "./houseRules.js";
 import { NetQuality } from "./netQuality.js";
 import { ERR, appError } from "./errorCodes.js";
+import { Localization } from "./localization.js?v=3";
+import { seatGod } from "./pantheonRoom.js";
+import { god as godById } from "./pantheon.js";
 
 const db = getFirestore(app);
 
@@ -41,6 +44,7 @@ export const TableManager = {
             // shown in the waiting room, so nobody joins under one rule set and
             // plays under another. startGame() copies this into the game room.
             houseRules: HouseRules.localKey(),
+            god: null,   // v3.18.0: a god the host seats at the table, or none
             gameState: {
                 status: 'waiting',
                 playerCount: 1
@@ -64,6 +68,7 @@ export const TableManager = {
             players: [{ uid, name, index: 0, status: 'online' }],
             playerIds: playerIdsCount,
             houseRules: HouseRules.localKey(),
+            god: null,
             gameState: {
                 status: 'waiting',
                 playerCount: 1,
@@ -108,6 +113,7 @@ export const TableManager = {
                 await set(rtdbRef, {
                     tableId: tableIdUpper,
                     hostId: data.hostId,
+                    god: data.god || null,
                     hostUsername: data.hostUsername,
                     players: data.players,
                     playerIds: playerIdsCount,
@@ -163,6 +169,7 @@ export const TableManager = {
         await set(rtdbRef, {
             tableId: tableIdUpper,
             hostId: data.hostId,
+            god: data.god || null,
             hostUsername: data.hostUsername,
             players: data.players,
             playerIds: playerIdsCount,
@@ -322,6 +329,7 @@ export const TableManager = {
                                                     await set(rtdbRef, {
                                                         tableId: tableId,
                                                         hostId: currentData.hostId,
+                                                        god: currentData.god || null,
                                                         hostUsername: currentData.hostUsername,
                                                         players: newPlayers,
                                                         playerIds: playerIdsCount,
@@ -420,6 +428,7 @@ export const TableManager = {
             await set(rtdbRef, {
                 tableId: tableId,
                 hostId: newHostId,
+                god: data.god || null,
                 hostUsername: newHostUsername,
                 players: newPlayers,
                 playerIds: playerIdsCount,
@@ -499,6 +508,7 @@ export const TableManager = {
                         await set(rtdbRef, {
                             tableId: tableId,
                             hostId: latestData.hostId,
+                            god: latestData.god || null,
                             hostUsername: latestData.hostUsername,
                             players: newPlayers,
                             playerIds: playerIdsCount,
@@ -531,6 +541,7 @@ export const TableManager = {
                 await set(rtdbRef, {
                     tableId: tableId,
                     hostId: data.hostId,
+                    god: data.god || null,
                     hostUsername: data.hostUsername,
                     players: newPlayers,
                     playerIds: playerIdsCount,
@@ -542,6 +553,19 @@ export const TableManager = {
                 });
             }
         }
+    },
+
+    /**
+     * v3.18.0 — the host seats a god at the table (or none). Written to the
+     * table document and merged into the lobby mirror so a joiner sees it
+     * before the deal; every later full write of the mirror carries it on.
+     */
+    async setGod(godId) {
+        if (!this.currentTableId) return;
+        const value = godById(godId) ? godId : null;
+        const tableRef = doc(db, "multiplayer_tables", this.currentTableId);
+        await updateDoc(tableRef, { god: value });
+        await update(ref(rtdb, `lobbyRooms/${this.currentTableId}`), { god: value });
     },
 
     async startGame() {
@@ -585,6 +609,12 @@ export const TableManager = {
                 });
             }
 
+            // v3.18.0 — a god takes the last bot seat and brings its rules.
+            // A table of four people has no seat for one; it deals as usual.
+            const godFields = data.god
+                ? seatGod(data.god, roomPlayers, Localization.get(`god_${data.god}_name`) || data.god)
+                : null;
+
             // Provide playerIds for the new security rules (Map for RTDB lookup)
             const playerIdsCount = {};
             roomPlayers.forEach(p => {
@@ -608,7 +638,10 @@ export const TableManager = {
                 // set back out of here rather than from its own settings, so all
                 // four seats evaluate a slap identically. See houseRules.js.
                 houseRules: data.houseRules || HouseRules.localKey(),
-                lastPlayTime: NetQuality.serverNow()
+                lastPlayTime: NetQuality.serverNow(),
+                // seatGod() also supplies the god's own houseRules key, so it
+                // overrides the table's set above when a god is seated.
+                ...(godFields || {})
             });
 
             await updateDoc(tableRef, {
@@ -621,6 +654,7 @@ export const TableManager = {
             await set(rtdbRef, {
                 tableId: this.currentTableId,
                 hostId: data.hostId,
+                god: data.god || null,
                 hostUsername: data.hostUsername,
                 players: roomPlayers,
                 playerIds: playerIdsCount,
@@ -674,6 +708,7 @@ export const TableManager = {
                 await updateDoc(tableRef, {
                     players: activeRealPlayers,
                     hostId: newHostId,
+                    god: data.god || null,
                     hostUsername: newHostUsername,
                     "gameState.status": 'waiting',
                     "gameState.playerCount": activeRealPlayers.length,
@@ -689,6 +724,7 @@ export const TableManager = {
                 await set(rtdbRef, {
                     tableId: this.currentTableId,
                     hostId: newHostId,
+                    god: data.god || null,
                     hostUsername: newHostUsername,
                     players: activeRealPlayers,
                     playerIds: playerIdsCount,

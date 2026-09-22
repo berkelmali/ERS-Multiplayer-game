@@ -37,7 +37,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.16.6">
+    <link rel="stylesheet" href="style.css?v=3.18.0">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
@@ -223,6 +223,7 @@
                 <button id="btn-daily" class="btn secondary sleek-sub" data-i18n="dailyButton" style="border-color: rgba(56, 189, 248, 0.55); color: #7dd3fc;">🗓️ Daily Challenge</button>
                 <button id="btn-slapiq" class="btn secondary sleek-sub" data-i18n="slapIqButton" style="border-color: rgba(52, 211, 153, 0.5); color: #6ee7b7;">🧠 Slap IQ</button>
                 <button id="btn-practice" class="btn secondary sleek-sub" data-i18n="practiceMode" style="border-color: rgba(167, 139, 250, 0.5); color: #d6bbfb;">🎓 Practice Mode</button>
+                <button id="btn-legends" class="btn secondary sleek-sub" data-i18n="legendsButton" style="border-color: rgba(212, 175, 55, 0.55); color: #f0d98a;">☥ Legends</button>
                 <button id="btn-shop" class="btn secondary sleek-sub" data-i18n="shopButton" style="border-color: rgba(255, 215, 0, 0.4); color: #ffd700;">🛍️ Shop</button>
                 <button id="btn-rules" class="btn secondary sleek-sub" data-i18n="rules">Game Rules</button>
                 <button id="btn-leaderboard" class="btn secondary sleek-sub" data-i18n="topPlayers">Top Players</button>
@@ -262,7 +263,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.16.6
+        <div id="game-version">Berk Elmalı · v3.18.0
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -319,6 +320,111 @@
                 <button id="btn-tutorial-finish" class="btn primary" data-i18n="tutorialNextBtn">Got it, continue</button>
             </div>
         </div>
+    </div>
+
+    <!-- THE PHARAOH'S TOMB (v3.18.0, tomb.js) — its own pile and screen on the
+         practice screen's surfaces; none of the shared match events. -->
+    <div id="tomb-screen" class="screen">
+        <div class="tutorial-container tomb-container">
+            <button id="btn-tomb-exit" class="tutorial-exit-btn" data-i18n="tombExit">✕ Leave the tomb</button>
+            <!-- ERS-18 fix 3: the rules before the first card, as Practice does. -->
+            <div id="tomb-intro" class="tutorial-intro tomb-intro" hidden>
+                <div id="tomb-intro-emblem" class="tomb-intro-emblem" aria-hidden="true"></div>
+                <h2 data-i18n="tombIntroTitle">Into the Pharaoh's Tomb</h2>
+                <ul class="tomb-rules">
+                    <li data-i18n="tombRule1">Your next three cards are face up: tap one to lay it (keys 1–3).</li>
+                    <li data-i18n="tombRule2">A face card is a challenge: answer it with a face card before your chances run out.</li>
+                    <li data-i18n="tombRule3">Slap a pattern the guardian completes (tap the pile or Space).</li>
+                    <li class="tomb-rule-trap" data-i18n="tombRule4">The trap: a pattern you complete yourself belongs to the guardian — slapping it costs you a card.</li>
+                </ul>
+                <button id="btn-tomb-go" class="btn primary" data-i18n="tombGo">Light the torch</button>
+            </div>
+            <div id="tomb-progress" class="tutorial-progress"></div>
+            <div id="tomb-table" class="tomb-table">
+                <div class="tomb-guardian">
+                    <div id="tomb-portrait" class="tomb-portrait"></div>
+                    <div class="tomb-guardian-info">
+                        <div id="tomb-chamber" class="tomb-chamber"></div>
+                        <div id="tomb-guard-name" class="tomb-guard-name"></div>
+                        <div id="tomb-guard-count" class="tomb-count"></div>
+                    </div>
+                </div>
+                <div id="tomb-challenge" class="tutorial-tier optional" hidden></div>
+                <div id="tomb-pile" class="tutorial-pile tomb-pile"></div>
+                <div id="tomb-coach" class="tutorial-coach" role="status" aria-live="polite"></div>
+                <div id="tomb-hand" class="tomb-hand"></div>
+                <div id="tomb-deck" class="tomb-count"></div>
+            </div>
+            <div id="tomb-draft" class="tomb-draft" hidden>
+                <p id="tomb-draft-note" class="legend-best"></p>
+                <h3 class="legend-title" data-i18n="tombDraftTitle">Choose one treasure</h3>
+                <div id="tomb-draft-cards" class="tomb-hand"></div>
+            </div>
+            <div id="tomb-done" class="tutorial-done" hidden>
+                <h2 id="tomb-done-title"></h2>
+                <p id="tomb-done-text"></p>
+                <div class="tomb-actions">
+                    <button id="btn-tomb-again" class="btn primary" data-i18n="tombAgain">Enter again</button>
+                    <button id="btn-tomb-back" class="btn secondary" data-i18n="back">Back</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LEGENDS (v3.18.0) — the modes built on the game's own world. The first
+         is the Table of the Gods (pantheon.js): a god in the top seat, with
+         life your side of the table slaps away. -->
+    <div id="legends-panel" class="screen scrollable-screen">
+        <h2 data-i18n="legendsTitle">☥ Legends</h2>
+        <!-- ERS-19: no tabs. The journeys lead (they are the menu entries);
+             the gods follow under their own heading and rule. -->
+        <section class="legend-section">
+            <h3 class="legend-title" data-i18n="journeysTitle">Journeys</h3>
+            <!-- The two journeys, drawn as the god cards are: an emblem, the one-line
+                 promise, three facts, the rule that matters, and the way in. -->
+            <div class="mode-cards">
+                <article class="mode-card mode-duat">
+                    <div id="duat-emblem" class="mode-emblem"></div>
+                    <div class="mode-body">
+                        <h3 class="mode-title" data-i18n="duatTitle">The Duat Journey</h3>
+                        <p class="mode-tagline" data-i18n="duatTagline">Start dead. Slap back to life. Raise the sun.</p>
+                        <ul class="mode-facts">
+                            <li data-i18n="duatFact1">☾ 10 rounds to rise</li>
+                            <li data-i18n="duatFact2">☥ 12 hours of night</li>
+                            <li data-i18n="duatFact3">☀ Dawn wins</li>
+                        </ul>
+                        <p class="mode-desc" data-i18n="duatDesc">You start dead: no cards, at a table of three shades. You have ten rounds to slap your way back to life. Every pile you take is one hour of the night; pass the twelfth gate and the sun rises.</p>
+                        <div class="mode-foot">
+                            <button id="btn-duat-start" class="btn primary" data-i18n="duatStart">Enter the Duat</button>
+                            <span id="duat-best" class="mode-best"></span>
+                        </div>
+                    </div>
+                </article>
+                <article class="mode-card mode-tomb">
+                    <div id="tomb-emblem" class="mode-emblem"></div>
+                    <div class="mode-body">
+                        <h3 class="mode-title" data-i18n="tombTitle">The Pharaoh's Tomb</h3>
+                        <p class="mode-tagline" data-i18n="tombTagline">Your cards face up. Every choice yours.</p>
+                        <ul class="mode-facts">
+                            <li data-i18n="tombFact1">▲ 7 chambers</li>
+                            <li data-i18n="tombFact2">♠ 3 cards in view</li>
+                            <li data-i18n="tombFact3">◆ A treasure each room</li>
+                        </ul>
+                        <p class="mode-desc" data-i18n="tombDesc">Seven chambers, seven guardians. By torchlight you see your next three cards and choose which to lay: answer a guardian's face card in time, and never complete a pattern yourself — that one belongs to the guardian. Take a guardian's every card, then pick one treasure from three.</p>
+                        <div class="mode-foot">
+                            <button id="btn-tomb-start" class="btn primary" data-i18n="tombStart">Enter the tomb</button>
+                            <span id="tomb-best" class="mode-best"></span>
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </section>
+        <section class="legend-section">
+            <h3 class="legend-title" data-i18n="pantheonTitle">Table of the Gods</h3>
+            <p class="legend-desc" data-i18n="pantheonDesc">A god takes the top seat. It has life: every valid slap from your side of the table wounds it — yours in full, your two priests' by half. Bring it to zero and you win, whoever holds the cards.</p>
+            <div id="pantheon-grid" class="pantheon-grid"></div>
+        </section>
+        <button id="btn-legends-back" class="btn secondary" data-i18n="back">Back</button>
     </div>
 
     <!-- SHOP PANEL (v2.9.0) -->
@@ -852,6 +958,14 @@
             <!-- v3.0.0: the host's rule set, so a joiner is never surprised -->
             <div id="lobby-rules-badge" class="rules-badge lobby" style="display:none; margin-bottom: 16px;"></div>
 
+            <!-- v3.18.0: the Table of the Gods at a multiplayer table. The host
+                 picks; everyone sees the choice before the deal. -->
+            <div id="lobby-god" class="lobby-god">
+                <label for="lobby-god-select" class="lobby-god-label" data-i18n="lobbyGodLabel">☥ A god at the table</label>
+                <select id="lobby-god-select" class="lobby-god-select"></select>
+                <p id="lobby-god-note" class="lobby-god-note"></p>
+            </div>
+
             <div style="text-align: left; width: 100%; margin-bottom: 18px;">
                 <h3 style="color: white; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 5px; margin-bottom: 10px;"
                     data-i18n="players">Players</h3>
@@ -1008,6 +1122,16 @@
         <div id="rules-badge" class="rules-badge" style="display:none;"></div>
 
         <div id="top-player" class="player-zone">
+            <!-- v3.18.0: the god's life, shown only during a Pantheon duel. -->
+            <div id="boss-hud" class="boss-hud" hidden>
+                <div id="boss-portrait" class="boss-portrait"></div>
+                <div class="boss-info">
+                    <div class="boss-head"><span id="boss-name" class="boss-name"></span><span id="boss-hp" class="boss-hp"></span></div>
+                    <div id="boss-bar" class="boss-bar" role="progressbar" aria-valuemin="0"><div id="boss-bar-fill" class="boss-bar-fill"></div></div>
+                    <div id="boss-extra" class="boss-extra"></div>
+                    <div id="boss-power" class="boss-power"></div>
+                </div>
+            </div>
             <div class="deck bot-deck" id="top-deck"><span id="p2-name">Bot 2</span> <br><span id="p2-count"
                     class="count">13</span></div>
         </div>
@@ -1049,6 +1173,13 @@
         </div>
 
         <div id="bottom-player" class="player-zone">
+            <!-- v3.18.0: the Duat Journey's clock — rounds left in the Duat, or
+                 hours of the night passed. Shown only during the journey. -->
+            <div id="duat-hud" class="duat-hud" hidden>
+                <div id="duat-title" class="duat-title"></div>
+                <div id="duat-pips" class="duat-pips" aria-hidden="true"></div>
+                <div id="duat-line" class="duat-line" role="status" aria-live="polite"></div>
+            </div>
             <div class="deck human-deck" id="human-deck"><span id="player-name-display" data-i18n="you">YOU</span>
                 <br><span id="p0-count" class="count">13</span><br><small data-i18n="tapToPlay">TAP TO PLAY</small>
             </div>
@@ -1103,7 +1234,20 @@
                 <span class="tier-dot tier-gold" data-tier="2"><span aria-hidden="true">🥇</span> <span class="tier-dot-label" data-i18n="spinTierGold">Gold</span></span>
             </div>
             <div class="wheel-outer-wrapper wheel-outer-lg">
-                <div class="wheel-pointer" aria-hidden="true">&#9660;</div>
+                <div class="wheel-pointer" aria-hidden="true">
+                    <svg class="wheel-pawl" viewBox="0 0 24 34" width="24" height="34" focusable="false">
+                        <defs>
+                            <linearGradient id="pawl-bronze" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="#f0c27a"/>
+                                <stop offset="0.5" stop-color="#b87333"/>
+                                <stop offset="1" stop-color="#5e3716"/>
+                            </linearGradient>
+                        </defs>
+                        <path d="M3 3 H21 L12 32 Z" fill="url(#pawl-bronze)" stroke="#3b220d" stroke-width="1.2" stroke-linejoin="round"/>
+                        <circle cx="12" cy="7" r="2.6" fill="#3b220d"/>
+                        <circle cx="11.3" cy="6.3" r="0.9" fill="#f7d9a3"/>
+                    </svg>
+                </div>
                 <canvas id="daily-spin-canvas" width="340" height="340"></canvas>
             </div>
             <div id="daily-spin-status" class="daily-spin-status" role="status" aria-live="polite" data-i18n="spinReady">Ra's Wheel is ready. Take your spin!</div>
@@ -1217,7 +1361,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.16.6"></script>
+    <script type="module" src="js/main.js?v=3.18.0"></script>
 </body>
 
 </html>

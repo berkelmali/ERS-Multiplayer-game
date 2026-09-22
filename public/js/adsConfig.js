@@ -64,6 +64,8 @@ export const AD_SCREENS = Object.freeze([
  *   daily-panel         the screen you are on one click before a SCORED run —
  *                       an iframe warming up here is warming up into that run
  *   tutorial-screen     practice is a timed reflex lesson, same measurement
+ *   legends-panel       one click from a duel, like the daily panel
+ *   tomb-screen         a timed reflex race against a guardian, like practice
  *   lobby-panel         matchmaking; latency-sensitive
  *   waiting-room-panel  same
  *   victory-screen      appears the instant a match ends, while the result is
@@ -78,6 +80,8 @@ export const NEVER_AD_SCREENS = Object.freeze([
     'game-container',
     'daily-panel',
     'tutorial-screen',
+    'legends-panel',
+    'tomb-screen',
     'lobby-panel',
     'waiting-room-panel',
     'victory-screen',
