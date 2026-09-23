@@ -37,7 +37,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.19.2">
+    <link rel="stylesheet" href="style.css?v=3.19.3">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
@@ -263,7 +263,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.19.2
+        <div id="game-version">Berk Elmalı · v3.19.3
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -389,11 +389,11 @@
                         <h3 class="mode-title" data-i18n="duatTitle">The Duat Journey</h3>
                         <p class="mode-tagline" data-i18n="duatTagline">Start dead. Slap back to life. Raise the sun.</p>
                         <ul class="mode-facts">
-                            <li data-i18n="duatFact1">☾ 10 rounds to rise</li>
+                            <li data-i18n="duatFact1">☥ 3 tries, 10 rounds to rise</li>
                             <li data-i18n="duatFact2">☥ 12 hours of night</li>
                             <li data-i18n="duatFact3">☀ Dawn wins</li>
                         </ul>
-                        <p class="mode-desc" data-i18n="duatDesc">You start dead: no cards, at a table of three shades. You have ten rounds to slap your way back to life. Every pile you take is one hour of the night; pass the twelfth gate and the sun rises.</p>
+                        <p class="mode-desc" data-i18n="duatDesc">You start dead: no cards, at a table of three hungry shades. You have three tries — three ankhs — and ten rounds to slap your way back to life; a wrong slap costs an ankh. Every pile you take is one hour of the night; pass the twelfth gate and the sun rises.</p>
                         <div class="mode-foot">
                             <button id="btn-duat-start" class="btn primary" data-i18n="duatStart">Enter the Duat</button>
                             <span id="duat-best" class="mode-best"></span>
@@ -1178,9 +1178,13 @@
                  hours of the night passed. Shown only during the journey. -->
             <div id="duat-hud" class="duat-hud" hidden>
                 <div id="duat-title" class="duat-title"></div>
+                <!-- v3.19.3: three ankhs, one per slap you may miss in the Duat -->
+                <div id="duat-tries" class="duat-tries" role="img" hidden></div>
                 <div id="duat-pips" class="duat-pips" aria-hidden="true"></div>
                 <div id="duat-line" class="duat-line" role="status" aria-live="polite"></div>
             </div>
+            <!-- v3.19.3: the stamp when the Duat keeps you (out of ankhs or rounds) -->
+            <div id="duat-verdict" class="duat-verdict" role="alert" hidden></div>
             <div class="deck human-deck" id="human-deck"><span id="player-name-display" data-i18n="you">YOU</span>
                 <br><span id="p0-count" class="count">13</span><br><small data-i18n="tapToPlay">TAP TO PLAY</small>
             </div>
@@ -1362,7 +1366,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.19.2"></script>
+    <script type="module" src="js/main.js?v=3.19.3"></script>
 </body>
 
 </html>

@@ -2307,10 +2307,10 @@ await step('ghost cards: clones on top of the god, drawn as ghosts, vanishing wi
 
 // v3.18.0: the Duat Journey, through its real button and the real slap path.
 // You start with no cards and the eliminated screen must NOT cover the table;
-// a wrong slap from the Duat costs a round (Ammit); a good slap resurrects
+// a wrong slap from the Duat costs an ankh (Ammit, v3.19.3); a good slap resurrects
 // you through the engine's own path and passes the first gate; the twelfth
 // gate ends the match in your favour; leaving hands everything back.
-await step('the Duat: start dead, Ammit bites, slap back to life, reach dawn, hand back', async () => {
+await step('the Duat: start dead, Ammit takes an ankh, slap back to life, reach dawn, hand back', async () => {
     await page.click('#btn-legends');
     await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
     await page.click('#btn-duat-start');
@@ -2326,9 +2326,13 @@ await step('the Duat: start dead, Ammit bites, slap back to life, reach dawn, ha
         out.victoryUp = document.getElementById('victory-screen').classList.contains('active');
         out.hudDead = document.getElementById('duat-hud').classList.contains('dead') && !document.getElementById('duat-hud').hidden;
         out.names = [1, 2, 3].map(i => document.getElementById(`p${i}-name`).textContent.trim());
-        const p0 = DuatMode.progress;
+        const ankhs = () => [...document.querySelectorAll('#duat-tries .duat-ankh')].map(a => a.classList.contains('spent') ? 0 : 1).join('');
+        out.ankhsBefore = ankhs();
+        out.triesShown = !document.getElementById('duat-tries').hidden;
+        const t0 = DuatMode.tries;
         GS.pile = [{ rank: 3, suit: 'clubs' }, { rank: 9, suit: 'hearts' }]; GS.slap(0);
-        out.ammit = DuatMode.progress - p0;
+        out.ammit = t0 - DuatMode.tries;
+        out.ankhsAfter = ankhs();
         await sleep(650);
         GS.pile = [{ rank: 7, suit: 'clubs' }, { rank: 7, suit: 'hearts' }]; GS.burnPile = []; GS.slap(0);
         await sleep(50);
@@ -2357,11 +2361,46 @@ await step('the Duat: start dead, Ammit bites, slap back to life, reach dawn, ha
     if (r.startCards !== 0 || !r.eliminatedFlag) throw new Error('the journey did not start in the Duat: ' + JSON.stringify(r));
     if (r.victoryUp) throw new Error('the eliminated screen covered the table the player must slap into');
     if (!r.hudDead || r.names.join() !== 'Ba,Ka,Akh') throw new Error('the Duat is not shown: ' + JSON.stringify(r));
-    if (r.ammit !== 1) throw new Error(`a wrong slap from the Duat cost ${r.ammit} rounds, want 1`);
+    if (r.ammit !== 1) throw new Error(`a wrong slap from the Duat cost ${r.ammit} ankhs, want 1`);
+    if (!r.triesShown || r.ankhsBefore !== '111' || r.ankhsAfter !== '110') throw new Error('the three ankhs are not shown, or a spent one does not go dark: ' + JSON.stringify(r));
     if (r.risenCards < 2 || r.dead || r.hour !== 1 || r.resurrections !== 0) throw new Error('the slap did not resurrect through the engine (and the entry must not count as a comeback, ERS-18 fix 5): ' + JSON.stringify(r));
     if (!r.over || r.dawns < 1) throw new Error('the twelfth gate did not end the night: ' + JSON.stringify(r));
     if (after.owns || after.names !== null || after.rematch !== null || after.night || !after.hudHidden) throw new Error('leaving did not hand everything back: ' + JSON.stringify(after));
-    console.log(`         0 cards and no eliminated screen, Ammit -1 round, risen with ${r.risenCards} cards (hour 1), dawn -> win, all handed back`);
+    console.log(`         0 cards and no eliminated screen, ankhs ${r.ankhsBefore} -> ${r.ankhsAfter}, risen with ${r.risenCards} cards (hour 1), dawn -> win, all handed back`);
+});
+
+// v3.19.3: three misses from the Duat and it keeps you — the table is stamped
+// with the loss, the match ends for a shade, and the stamp steps aside for the
+// end screen.
+await step('the Duat: three wrong slaps lose the journey, stamped', async () => {
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    await page.click('#btn-duat-start');
+    await page.waitForSelector('#game-container.active', { timeout: 8000 });
+    const r = await page.evaluate(async () => {
+        const { DuatMode } = await import('./js/duat.js');
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+        const GS = window.GameState;
+        await sleep(300);
+        const out = { start: DuatMode.tries };
+        for (let i = 0; i < 3; i++) {
+            GS.pile = [{ rank: 3, suit: 'clubs' }, { rank: 9, suit: 'hearts' }]; GS.slap(0);
+            await sleep(200);
+        }
+        const v = document.getElementById('duat-verdict');
+        out.tries = DuatMode.tries; out.lostBy = DuatMode.lostBy; out.over = GS.gameOver;
+        out.stamp = v && !v.hidden ? v.textContent.trim() : null;
+        out.spent = document.querySelectorAll('#duat-tries .duat-ankh.spent').length;
+        return out;
+    });
+    await page.waitForSelector('#victory-screen.active', { timeout: 8000 });
+    const stampGone = await page.evaluate(() => document.getElementById('duat-verdict').hidden);
+    await page.click('#btn-victory-menu');
+    await page.waitForSelector('#main-menu.active', { timeout: 8000 });
+    if (r.start !== 3 || r.tries !== 0 || r.lostBy !== 'tries' || !r.over) throw new Error('three misses did not end the journey: ' + JSON.stringify(r));
+    if (!r.stamp || r.spent !== 3) throw new Error('the loss is not stamped on the table: ' + JSON.stringify(r));
+    if (!stampGone) throw new Error('the stamp stayed over the end screen');
+    console.log(`         3 ankhs -> 0, stamped "${r.stamp}", then the end screen`);
 });
 
 // v3.18.0: the Pharaoh's Tomb, through its real buttons. Three cards face up;

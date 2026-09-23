@@ -1691,6 +1691,20 @@ echo       + 34 sabit senaryo; tools\fuzz-mutants.mjs 26 mutantin 26'sini
 echo       yakaladi. 1200 host, 1800 oda, 3000 cevrimdisi, 2000 Duat maci:
 echo       temiz. 2891 test. Ayrinti: COUNCIL-v3.19.2-bughunt2.md
 echo.
+echo  --- v3.19.3 -- DUAT DAHA ZOR: UC ANKH, ACIKMIS GOLGELER ---
+echo  198) DUAT'TA UC HAK: kartsizken uc ankhin var ^(HUD'da uc altin ankh^).
+echo       Yanlis saplak bir ankh goturur: koyulasir ve uzeri cizilir. Ucu de
+echo       giderse masaya 'KAYBETTIN' damgasi basilir ve yolculuk biter.
+echo       Yeniden duserek Duat'a donersen uc taze ankh. On tur kurali duruyor.
+echo  199) KA, BA, AKH ZORLASTI: golgeler senin zorlugunun bir UST kademesinde
+echo       oynar, %%25 daha hizli tepki verir, desenleri %%10 daha sik yakalar;
+echo       Apep saatinde iki kademe ust.
+echo  200) OLCUM ^(tools\sim-duat.mjs: gercek motor + gercek golgeler, ortalama
+echo       oyuncu^): safaga ulasma Kolay %%93 -^> %%92, Orta %%94 -^> %%70,
+echo       Zor %%93 -^> %%9. Kolay hala ulasilabilir, Orta gercek bir yolculuk.
+echo  201) KAPILAR: 2915 test; 28 mutantin 28'i yakalandi; Duat fuzz 2000
+echo       yolculuk temiz; smoke uc yanlis saplakta damgayi ve bitisi deniyor.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1838,5 +1852,11 @@ echo     diger oyuncunun maci DEVAM etmeli ^(botlar oynamali^). Sonra Online:
 echo     eski host normal oyuncu olarak donmeli, masa bozulmamali
 echo   - Kurallar ^> Izleyici Modu: yeni iki cumle 4 dilde gorunmeli
 echo   - Istege bagli: npm run fuzz:mutants ^(26/26 'caught' olmali^)
+echo.
+echo  --- v3.19.3 ------------------------------------------------
+echo   - Duat'a gir: HUD'da uc altin ankh olmali. Desen yokken vur: bir ankh
+echo     koyulasip cizilmeli, 'Ammit bir ankh aldi: 2 kaldi' yazmali
+echo   - Uc kez yanlis vur: ortada 'KAYBETTIN' damgasi, sonra mac sonu ekrani
+echo   - Orta zorlukta oyna: golgeler belirgin sekilde daha hizli vurmali
 echo.
 pause

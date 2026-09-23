@@ -363,7 +363,7 @@ async function duatDuel(_godId, seed) {
             out.steps++;
             const r = rnd();
             const heroEmpty = GameState.players[0].length === 0;
-            if (heroEmpty && r < 0.25) {
+            if (heroEmpty && r < 0.06) {
                 // A dead hero hammering the table: every attempt must be heard
                 // (and a wrong one fed to Ammit), never refused by the lock.
                 advance(120 + Math.floor(rnd() * 200));
@@ -391,6 +391,10 @@ async function duatDuel(_godId, seed) {
             checkTable(seed, `duat step ${step}`, { hands: GameState.players, pile: GameState.pile, burn: GameState.burnPile, godSeat: -1 });
             if (DM.hour < 0 || DM.hour > DuatMod.DAWN_HOUR) report('the Duat hour stays in [0, dawn]', seed, `${DM.hour}`);
             if (!GameState.gameOver && DM.dead && Math.floor(DM.progress) >= DuatMod.DUAT_ROUNDS) report('ten rounds in the Duat end the journey', seed, `progress ${DM.progress}`);
+            // v3.19.3: three ankhs, and the shades sharpened all night.
+            if (DM.tries < 0 || DM.tries > DuatMod.DUAT_TRIES) report('the ankhs stay in [0, 3]', seed, `${DM.tries}`);
+            if (!GameState.gameOver && DM.dead && DM.tries === 0) report('losing the last ankh ends the journey', seed, `step ${step}`);
+            if (!GameState.gameOver && ![1, 2, 3].every(s => DM._ai.seatConfig[s] && DM._ai.seatConfig[s].accuracy > 0)) report('the shades are sharpened all night, not only in Apep\'s hour', seed, `hour ${DM.hour}`);
             const sig = `${GameState.players.map(h => h.length)}|${GameState.pile.length}|${GameState.activePlayerId}|${GameState.challenge.active}`;
             idle = sig === lastSig ? idle + 1 : 0; lastSig = sig;
             if (idle > 80) { report('the table never freezes (Duat)', seed, `step ${step}: ${sig}`); break; }
@@ -404,6 +408,7 @@ async function duatDuel(_godId, seed) {
         MatchContext.ownsElimination = false; MatchContext.pricesWrongSlaps = false;
     }
     out.spam = spam;
+    out.byTries = DM.lostBy === 'tries' ? 1 : 0;
     if (refused) report('the Duat never refuses a slap from the Duat (ERS-22 c exemption)', seed, `${refused} of ${spam} empty-hand slaps were refused`);
     if (errors.length > errBefore) report('no uncaught error (Duat)', seed, String(errors[errBefore] && errors[errBefore].stack || errors[errBefore]).split('\n').slice(0, 3).join(' | '));
     if (overs.length > 1) report('a match ends exactly once (Duat)', seed, `gameOver fired ${overs.length}x`);
@@ -864,13 +869,13 @@ for (const mode of MODE === 'both' ? ['offline', 'mp'] : MODE === 'all' ? ['offl
         for (let d = 0; d < DUELS; d++) {
             const seed = SEED0 + d;
             const r = mode === 'offline' ? await offlineDuel(godId, seed) : mode === 'host' ? await hostDuel(godId, seed) : mode === 'duat' ? await duatDuel(godId, seed) : await mpDuel(godId, seed);
-            agg.n++; agg.steps += r.steps; agg.ghosts += r.ghostsSeen; agg.comebacks = (agg.comebacks || 0) + (r.comebacks || 0); agg.refused = (agg.refused || 0) + (r.spamRefused || 0); agg.humansOut = (agg.humansOut || 0) + (r.humansOut || 0); agg.hostMoves = (agg.hostMoves || 0) + (r.hostMoves || 0); agg.leavers = (agg.leavers || 0) + (r.leavers || 0); agg.abandoned = (agg.abandoned || 0) + (r.abandoned || 0); agg.risen = (agg.risen || 0) + (r.risen || 0); agg.spam = (agg.spam || 0) + (r.spam || 0);
+            agg.n++; agg.steps += r.steps; agg.ghosts += r.ghostsSeen; agg.comebacks = (agg.comebacks || 0) + (r.comebacks || 0); agg.refused = (agg.refused || 0) + (r.spamRefused || 0); agg.humansOut = (agg.humansOut || 0) + (r.humansOut || 0); agg.hostMoves = (agg.hostMoves || 0) + (r.hostMoves || 0); agg.leavers = (agg.leavers || 0) + (r.leavers || 0); agg.abandoned = (agg.abandoned || 0) + (r.abandoned || 0); agg.risen = (agg.risen || 0) + (r.risen || 0); agg.spam = (agg.spam || 0) + (r.spam || 0); agg.byTries = (agg.byTries || 0) + (r.byTries || 0);
             if (r.end === 'life') agg.life++; else if (r.end === 'cap') agg.cap++; else agg.cards++;
         }
         summary.push({ mode, godId, ...agg });
     }
 }
-for (const s of summary) console.log(`${s.mode.padEnd(7)} ${s.godId.padEnd(7)} duels ${s.n}  ended by life ${s.life}, by cards ${s.cards}, unfinished ${s.cap}  avg actions ${(s.steps / s.n).toFixed(0)}  ghost-on-pile moments ${s.ghosts}${s.mode === 'duat' ? `  risen at least once ${s.risen}  empty-hand slaps ${s.spam}` : ''}${s.mode === 'mp' || s.mode === 'host' ? `  comebacks ${s.comebacks || 0}` : ''}${s.mode === 'host' ? `  locked slaps ${s.refused}  no-human endings ${s.humansOut}  host moves ${s.hostMoves}  leavers ${s.leavers}  abandoned ${s.abandoned}` : ''}`);
+for (const s of summary) console.log(`${s.mode.padEnd(7)} ${s.godId.padEnd(7)} duels ${s.n}  ended by life ${s.life}, by cards ${s.cards}, unfinished ${s.cap}  avg actions ${(s.steps / s.n).toFixed(0)}  ghost-on-pile moments ${s.ghosts}${s.mode === 'duat' ? `  risen at least once ${s.risen}  empty-hand slaps ${s.spam}  lost to Ammit ${s.byTries}` : ''}${s.mode === 'mp' || s.mode === 'host' ? `  comebacks ${s.comebacks || 0}` : ''}${s.mode === 'host' ? `  locked slaps ${s.refused}  no-human endings ${s.humansOut}  host moves ${s.hostMoves}  leavers ${s.leavers}  abandoned ${s.abandoned}` : ''}`);
 const uniqErr = [...new Set(errors.map(e => String(e && e.stack ? e.stack.split('\n').slice(0, 2).join(' | ') : e)))];
 if (uniqErr.length) { console.log(`\nuncaught errors (${errors.length}, ${uniqErr.length} distinct):`); for (const e of uniqErr.slice(0, 12)) console.log('  ' + e); }
 if (findings.size === 0) console.log('\nfuzz: no invariant broke');

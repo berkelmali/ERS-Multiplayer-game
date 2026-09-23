@@ -10,14 +10,18 @@
  * unusual one: an eliminated player may still slap, and a good slap brings
  * them back with the pile. Here that is not a comeback, it is the way in.
  *
- *   - In the Duat you have TEN ROUNDS to slap your way back to life. A round
- *     is one card from every shade still holding cards. A wrong slap feeds
- *     Ammit, the devourer: it costs a round.
+ *   - In the Duat you have THREE TRIES (three ankhs) and TEN ROUNDS to slap
+ *     your way back to life. A round is one card from every shade still
+ *     holding cards. A wrong slap feeds Ammit, the devourer: it takes an
+ *     ankh. Lose all three and the Duat keeps you (v3.19.3).
  *   - Every pile you take is a gate passed: one hour of the night.
- *   - At the seventh hour Apep, the serpent, attacks: for that hour the
- *     shades play one difficulty tier faster.
- *   - Run dry again and you are back in the Duat, with ten fresh rounds; the
- *     hours you have passed stay passed.
+ *   - The shades are hungry: they play one difficulty tier above yours, and
+ *     reach for a pattern faster and surer than bots at an ordinary table
+ *     (SHADE_EDGE). At the seventh hour Apep, the serpent, attacks: for that
+ *     hour they play two tiers above yours (v3.19.3, measured with
+ *     tools/sim-duat.mjs).
+ *   - Run dry again and you are back in the Duat, with three fresh ankhs and
+ *     ten fresh rounds; the hours you have passed stay passed.
  *   - Pass the twelfth gate and the sun rises: you win.
  *   - Stay in the Duat for ten rounds and it keeps you: the journey ends there.
  */
@@ -32,10 +36,20 @@ import { Localization } from './localization.js?v=3';
 import { godSvg } from './godArt.js';
 
 export const DUAT_ROUNDS = 10;
+/** Slaps you may get wrong in the Duat before it keeps you (the operator's number). */
+export const DUAT_TRIES = 3;
+/**
+ * How much hungrier a shade is than a bot of the same tier: it reacts in
+ * this share of the time and catches this much more often (capped).
+ * Tuned with tools/sim-duat.mjs; see COUNCIL / deploy notes for the table.
+ */
+export const SHADE_EDGE = Object.freeze({ reactionMult: 0.75, accuracyAdd: 0.1, accuracyCap: 0.97 });
 export const DAWN_HOUR = 12;
 export const APEP_HOUR = 7;
 export const SHADES = Object.freeze(['Ba', 'Ka', 'Akh']);
 const TIERS = ['easy', 'medium', 'hard', 'challenger'];
+/** The ankh, drawn: a loop over a crossbar over a stem. */
+const ANKH_SVG = '<svg viewBox="0 0 24 32" aria-hidden="true" focusable="false"><ellipse cx="12" cy="8" rx="5.2" ry="6.4" fill="none" stroke="currentColor" stroke-width="3"/><rect x="2" y="14" width="20" height="3.4" rx="1.7" fill="currentColor"/><rect x="10.3" y="14" width="3.4" height="17" rx="1.7" fill="currentColor"/></svg>';
 const STORE_KEY = 'ers_duat_v1';
 
 /** The deal: the living start with nothing; the shades hold every card. */
@@ -72,11 +86,30 @@ export function nextTier(tier) {
     return TIERS[Math.min(TIERS.length - 1, Math.max(0, i) + 1)];
 }
 
+/**
+ * A shade's full bot config at seat 1–3 when the player's difficulty is
+ * `tier`: one tier up (two in Apep's hour), in the seat's own personality,
+ * sharpened by SHADE_EDGE. Pure, so a test and the simulator read the same
+ * numbers the table plays with.
+ */
+export function shadeConfig(seat, tier, { apep = false } = {}) {
+    const t = apep ? nextTier(nextTier(tier)) : nextTier(tier);
+    const cfg = applyPersonality(BotPersonalities[seat], BotConfig[t] || BotConfig.medium);
+    return {
+        ...cfg,
+        minReaction: Math.max(150, Math.round(cfg.minReaction * SHADE_EDGE.reactionMult)),
+        maxReaction: Math.max(200, Math.round(cfg.maxReaction * SHADE_EDGE.reactionMult)),
+        accuracy: Math.min(SHADE_EDGE.accuracyCap, cfg.accuracy + SHADE_EDGE.accuracyAdd)
+    };
+}
+
 export const DuatMode = {
     armed: false,
     dead: true,
     hour: 0,
     progress: 0,          // rounds spent in the Duat this time, fractional
+    tries: DUAT_TRIES,    // ankhs left for this stay in the Duat
+    lostBy: null,         // 'tries' | 'rounds' once the Duat keeps you
     store: { bestHour: 0, dawns: 0 },
     _initialized: false,
 
@@ -119,7 +152,7 @@ export const DuatMode = {
         this._ai = AIController;
         MatchContext.seatNames = [null, SHADES[0], SHADES[1], SHADES[2]];
         MatchContext.ownsElimination = true;
-        // v3.19.2: the Duat prices a wrong slap itself (Ammit takes a round),
+        // v3.19.2: the Duat prices a wrong slap itself (Ammit takes an ankh),
         // so the engine's empty-hand slap lock (ERS-22) stands aside here.
         MatchContext.pricesWrongSlaps = true;
         document.getElementById('legends-panel').classList.remove('active');
@@ -136,7 +169,10 @@ export const DuatMode = {
         this._entered = false;
         this.hour = 0;
         this.progress = 0;
+        this.tries = DUAT_TRIES;
+        this.lostBy = null;
         this.dead = true;
+        this._verdict(null);
         this._apep(false);
         // The seat starts empty, so it starts in the Duat. Marking it
         // eliminated is what lets the engine count the first good slap as a
@@ -145,7 +181,7 @@ export const DuatMode = {
         document.body.classList.add('duat-journey');
         if (this.hud) this.hud.hidden = false;
         this.renderHud();
-        this._say(Localization.get('duatStartLine') || 'You wake in the Duat. Slap your way back within ten rounds.');
+        this._say(Localization.get('duatStartLine') || 'You wake in the Duat. Three ankhs, ten rounds: slap your way back.');
     },
 
     onCardPlayed() {
@@ -156,14 +192,18 @@ export const DuatMode = {
         this.renderHud();
     },
 
-    /** A wrong slap from the Duat feeds Ammit. Read BEFORE the engine judges. */
+    /** A wrong slap from the Duat feeds Ammit: an ankh. Read BEFORE the engine judges. */
     onSlapAttempt(seat) {
         if (!this.armed || !this.dead || seat !== 0 || GameState.gameOver) return;
         if (GameState.pile.length === 0) return;
         if (matchSlap(GameState.pile, HouseRules.active())) return;
-        this.progress += 1;
-        this._say(Localization.get('duatAmmit') || 'Ammit feeds on a wrong slap: one round lost.');
-        this._checkClaimed();
+        this.tries = Math.max(0, this.tries - 1);
+        if (this.tries <= 0) {
+            this.renderHud();
+            this._lose('tries');
+            return;
+        }
+        this._say((Localization.get('duatAmmit') || 'Ammit takes an ankh: {n} left.').replace('{n}', this.tries));
         this.renderHud();
     },
 
@@ -184,7 +224,8 @@ export const DuatMode = {
     onFallen() {
         this.dead = true;
         this.progress = 0;
-        this._say(Localization.get('duatFallen') || 'Back into the Duat: ten rounds to return.');
+        this.tries = DUAT_TRIES;
+        this._say(Localization.get('duatFallen') || 'Back into the Duat: three ankhs, ten rounds.');
         this.renderHud();
     },
 
@@ -206,25 +247,55 @@ export const DuatMode = {
 
     _checkClaimed() {
         if (Math.floor(this.progress) < DUAT_ROUNDS || GameState.gameOver) return;
-        this._say(Localization.get('duatClaimed') || 'The Duat keeps you.');
+        this._lose('rounds');
+    },
+
+    /** The Duat keeps you: out of ankhs or out of rounds. The shade holding the most wins. */
+    _lose(by) {
+        if (GameState.gameOver) return;
+        this.lostBy = by;
+        this._say(by === 'tries'
+            ? (Localization.get('duatNoAnkhs') || 'Ammit takes your last ankh. The Duat keeps you.')
+            : (Localization.get('duatClaimed') || 'The Duat keeps you.'));
+        this._verdict(Localization.get('duatLose') || 'YOU LOSE');
+        // The end screen opens 1.5 s after gameOver (victoryScreen.js): the
+        // stamp says it first, then steps aside for it.
+        clearTimeout(this._verdictTimer);
+        this._verdictTimer = setTimeout(() => this._verdict(null), 1450);
         let winner = 1;
         for (const s of [1, 2, 3]) if (GameState.players[s].length > GameState.players[winner].length) winner = s;
         GameState.endMatch(winner);
     },
 
-    /** Apep's hour: the shades play one tier faster, each in their own style. */
+    /** The stamp over the table when the Duat keeps you; null clears it. */
+    _verdict(text) {
+        const el = document.getElementById('duat-verdict');
+        if (!el) return;
+        // Lifted out of the player zone's stacking context, so it sits over
+        // the whole table (the slap coach and the pile included).
+        if (text && el.parentElement !== document.body) document.body.appendChild(el);
+        el.textContent = text || '';
+        el.hidden = !text;
+    },
+
+    /**
+     * The shades, every hour of the night: one tier above your difficulty,
+     * two in Apep's hour, each in their own style (shadeConfig).
+     */
     _apep(on) {
         if (!this._ai) return;
         for (const s of [1, 2, 3]) delete this._ai.seatConfig[s];
-        if (!on) return;
-        const tier = nextTier(difficultyInForce(MatchContext.difficultyOverride, Settings.config.difficulty));
-        for (const s of [1, 2, 3]) this._ai.seatConfig[s] = applyPersonality(BotPersonalities[s], BotConfig[tier]);
+        if (!this.armed) return;
+        const tier = difficultyInForce(MatchContext.difficultyOverride, Settings.config.difficulty);
+        for (const s of [1, 2, 3]) this._ai.seatConfig[s] = shadeConfig(s, tier, { apep: !!on });
     },
 
     stop() {
         if (!this.armed) return;
         this.armed = false;
-        this._apep(false);
+        this._apep(false);   // disarmed: clears the shades' configs
+        clearTimeout(this._verdictTimer);
+        this._verdict(null);
         if (this._gm) this._gm.rematchOptions = null;
         MatchContext.seatNames = null;
         MatchContext.ownsElimination = false;
@@ -262,6 +333,28 @@ export const DuatMode = {
                 p.className = 'duat-pip' + (i < filled ? ' on' : '');
                 pips.appendChild(p);
             }
+        }
+        // The ankhs: shown while you are in the Duat, one per slap you may miss.
+        const triesEl = document.getElementById('duat-tries');
+        if (triesEl) {
+            triesEl.hidden = !this.dead;
+            triesEl.setAttribute('aria-label', (L('duatTriesLeft', '{n} of {max} tries left')).replace('{n}', this.tries).replace('{max}', DUAT_TRIES));
+            const icons = triesEl.children.length === DUAT_TRIES ? [...triesEl.children] : null;
+            if (!icons) {
+                triesEl.innerHTML = '';
+                for (let i = 0; i < DUAT_TRIES; i++) {
+                    const span = document.createElement('span');
+                    span.className = 'duat-ankh';
+                    span.innerHTML = ANKH_SVG;
+                    triesEl.appendChild(span);
+                }
+            }
+            [...triesEl.children].forEach((a, i) => {
+                const spent = i >= this.tries;
+                if (spent && !a.classList.contains('spent')) a.classList.add('spent', 'just-spent');
+                if (!spent) a.classList.remove('spent', 'just-spent');
+            });
+            setTimeout(() => [...triesEl.children].forEach(a => a.classList.remove('just-spent')), 700);
         }
         // Night lifts hour by hour; the Duat itself is darkest.
         document.body.style.setProperty('--duat-night', String(nightFor(this.dead, this.hour)));
