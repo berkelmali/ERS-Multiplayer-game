@@ -18,6 +18,11 @@
  *   Ra      — every rule live; at half life, noon: he heals once and plays
  *             at Blitz pace.
  *
+ * Every god, v3.19.0 — GHOST CARDS: a slap by your side that wounds the god
+ * and leaves it standing gives it clones of the slapped cards, laid on top of
+ * its hand (ghostCards.js; council ERS-20). They play like any card; whoever
+ * wins a pile that holds them keeps only the real cards.
+ *
  * Numbers are derived, not typed where a source exists:
  *   - damage per pattern: 10 × √(how much rarer than a Double), measured
  *     through the real matchSlap (gate 76 re-measures);
@@ -32,6 +37,7 @@ import { BotConfig, BotPersonalities, applyPersonality } from './botConfig.js';
 import { MatchContext } from './matchContext.js';
 import { Localization } from './localization.js?v=3';
 import { godSvg } from './godArt.js';
+import { ghostClones, addGhosts } from './ghostCards.js';
 
 export const BOSS_SEAT = 2;
 export const HERO_SEAT = 0;
@@ -257,6 +263,8 @@ export const PantheonMode = {
         if (this._ai) this._ai.seatConfig[BOSS_SEAT] = godConfig(this.godId);
         this.lastRule = [null, null, null, null];
         this.damage = [0, 0, 0, 0];
+        this.ghostsGiven = 0;
+        this._ghostSaid = false;
         if (this.topZone) this.topZone.classList.add('has-boss');
         if (this.hud) {
             this.hud.hidden = false;
@@ -268,7 +276,7 @@ export const PantheonMode = {
         this._say(Localization.get(`god_${this.godId}_power`) || '');
     },
 
-    onPileWon({ winnerId, reason }) {
+    onPileWon({ winnerId, reason, indices, pile }) {
         if (!this.armed || this.hp <= 0) return;
         const g = god(this.godId);
         const rule = this.lastRule[winnerId];
@@ -301,7 +309,23 @@ export const PantheonMode = {
             this._say(Localization.get('pantheonNoon') || 'Noon! Ra blazes and quickens.');
         }
         this.renderHud();
-        if (this.hp <= 0) this._fall();
+        if (this.hp <= 0) { this._fall(); return; }
+        this._haunt(pile, indices);
+    },
+
+    /** The god keeps ghost clones of the cards that just hurt it. */
+    _haunt(pile, indices) {
+        const hand = GameState.players[BOSS_SEAT];
+        const n = addGhosts(hand, ghostClones(pile, indices));
+        if (n <= 0) return;
+        this.ghostsGiven = (this.ghostsGiven || 0) + n;
+        this._float(`👻 +${n}`, 'ghost');
+        this._refreshCounts();
+        if (!this._ghostSaid) {
+            this._ghostSaid = true;
+            const name = Localization.get(`god_${this.godId}_name`) || this.godId;
+            this._say((Localization.get('pantheonGhosts') || '👻 {god} keeps echoes of your cards. Ghost cards vanish when a pile is won.').replace('{god}', name));
+        }
     },
 
     onInvalidSlap({ playerId, reason } = {}) {
@@ -374,6 +398,8 @@ export const PantheonMode = {
         if (this.roomGod !== data.god) {
             this.roomGod = data.god;
             this._lastHitAt = null;
+            this._lastGhostAt = undefined;
+            this._ghostSaid = false;
             const portrait = document.getElementById('boss-portrait');
             if (portrait) portrait.innerHTML = godSvg(data.god);
             this.hud.hidden = false;
@@ -386,6 +412,19 @@ export const PantheonMode = {
         this.maxHp = data.godMaxHp ?? 0;
         this.heals = data.godHeals || 0;
         this.noon = !!data.godNoon;
+        const ghosts = data.godGhosts;
+        if (ghosts && ghosts.at !== this._lastGhostAt) {
+            const first = this._lastGhostAt === undefined;
+            this._lastGhostAt = ghosts.at;
+            if (!first) {
+                this._float(`👻 +${ghosts.n}`, 'ghost');
+                if (!this._ghostSaid) {
+                    this._ghostSaid = true;
+                    this._say((Localization.get('pantheonGhosts') || '👻 {god} keeps echoes of your cards. Ghost cards vanish when a pile is won.')
+                        .replace('{god}', Localization.get(`god_${data.god}_name`) || data.god));
+                }
+            }
+        } else if (!ghosts) this._lastGhostAt = null;
         const hit = data.godLastHit;
         if (hit && hit.at !== this._lastHitAt) {
             this._lastHitAt = hit.at;

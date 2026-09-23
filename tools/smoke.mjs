@@ -2237,6 +2237,74 @@ await step('the Pantheon: slaps wound the god, it heals, it falls, and everythin
     console.log(`         hero -${r.heroHit}, priest -${r.priestHit}, Bastet +${r.bastetHeal}, fell -> gameOver(0) once, amulet kept, all handed back`);
 });
 
+// v3.19.0: ghost cards (council ERS-20), through the real hall button, the
+// real slap path and the real play path. Your wounding slap lays clones on
+// TOP of the god's hand; its seat counts real cards and shows a ghost chip;
+// a ghost the god plays is drawn as one; winning a pile with a ghost in it
+// hands over only the real cards; then the god falls as before.
+await step('ghost cards: clones on top of the god, drawn as ghosts, vanishing with the pile', async () => {
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    await page.click('[data-god="bastet"]');
+    await page.waitForSelector('#game-container.active', { timeout: 8000 });
+    const r = await page.evaluate(async () => {
+        const { PantheonMode } = await import('./js/pantheon.js');
+        const { default: EventBus } = await import('./js/eventbus.js');
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+        const GS = window.GameState;
+        const out = {};
+        await sleep(300);
+        out.descShown = !!document.querySelector('[data-i18n="pantheonGhostDesc"]');
+        await sleep(650);
+        GS.pile = [{ rank: 7, suit: 'clubs' }, { rank: 7, suit: 'hearts' }]; GS.burnPile = [];
+        GS.slap(0);
+        const god = GS.players[2];
+        out.top = god.slice(0, 2).map(c => !!c.ghost);
+        await sleep(80);
+        const chip = document.querySelector('#top-player .ghost-chip, .ghost-chip');
+        out.chip = chip ? chip.textContent.trim() : null;
+        out.countIsReal = Number(document.getElementById('p2-count')?.textContent ?? -1) === god.filter(c => !c.ghost).length;
+        await sleep(650);
+        GS.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
+        GS.challengeResolverActive = false; GS.activePlayerId = 2; GS.lastPlayTime = 0;
+        const topWasGhost = !!(GS.players[2][0] && GS.players[2][0].ghost);
+        GS.playCard(2);
+        await sleep(60);
+        out.playedGhostDrawn = topWasGhost && !!document.querySelector('#pile-cards .card.ghost');
+        let seen = null;
+        const onWon = (e) => { seen = e; };
+        EventBus.on('pileWon', onWon);
+        await sleep(650);
+        GS.pile = [{ rank: 9, suit: 'clubs', ghost: true }, { rank: 9, suit: 'hearts' }]; GS.burnPile = [];
+        const heroBefore = GS.players[0].length;
+        GS.slap(0);
+        await sleep(40);
+        // The won pile animates after the highlight (600 ms; 300 with fast animations).
+        const ghostEl = document.querySelector('#pile-cards .card.ghost');
+        await sleep(700);
+        out.vaporizing = !out.playedGhostDrawn || !!(ghostEl && ghostEl.classList.contains('ghost-vaporize'));
+        out.vanished = seen ? seen.vanished : null;
+        out.heroGained = GS.players[0].length - heroBefore;
+        out.heroHoldsGhost = GS.players[0].some(c => c.ghost);
+        EventBus.off && EventBus.off('pileWon', onWon);
+        PantheonMode.hp = 4;
+        await sleep(650);
+        GS.pile = [{ rank: 5, suit: 'clubs' }, { rank: 5, suit: 'hearts' }]; GS.burnPile = [];
+        GS.slap(0);
+        return out;
+    });
+    await page.waitForSelector('#victory-screen.active', { timeout: 8000 });
+    await page.click('#btn-victory-menu');
+    await page.waitForSelector('#main-menu.active', { timeout: 8000 });
+    if (!r.descShown) throw new Error('the Legends panel does not explain ghost cards');
+    if (r.top.join() !== 'true,true') throw new Error('the clones are not on top of the god\'s hand: ' + JSON.stringify(r));
+    if (!r.chip || !/👻\s*\d+/.test(r.chip) || !r.countIsReal) throw new Error('the god\'s seat does not show its ghosts apart from its real cards: ' + JSON.stringify(r));
+    if (!r.playedGhostDrawn) throw new Error('a ghost the god played was not drawn as a ghost: ' + JSON.stringify(r));
+    if (r.vanished !== 1 || r.heroGained !== 1 || r.heroHoldsGhost) throw new Error('winning a pile with a ghost did not hand over only the real card: ' + JSON.stringify(r));
+    if (!r.vaporizing) throw new Error('the ghost on the table did not vaporize: ' + JSON.stringify(r));
+    console.log(`         clones on top, chip "${r.chip}", ghost drawn on the pile, 1 vanished, hero +${r.heroGained} real, vaporized`);
+});
+
 // v3.18.0: the Duat Journey, through its real button and the real slap path.
 // You start with no cards and the eliminated screen must NOT cover the table;
 // a wrong slap from the Duat costs a round (Ammit); a good slap resurrects

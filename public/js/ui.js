@@ -8,6 +8,7 @@ import { renderRulesBadge } from './rulesBadge.js';
 import { LOADING_WATCHDOG_MS } from './errorCodes.js';
 import { MatchContext } from './matchContext.js';
 import { cleanName } from './safeText.js';
+import { isGhost, realCount, ghostCount } from './ghostCards.js';
 
 export const UIManager = {
     initialized: false,
@@ -169,12 +170,12 @@ export const UIManager = {
             this.renderPileCard(card, playerId);
 
             const pName = this.getVisualName(playerId);
-            const cName = `${getRankName(card.rank)}${getSuitSymbol(card.suit)}`;
+            const cName = `${isGhost(card) ? '👻 ' : ''}${getRankName(card.rank)}${getSuitSymbol(card.suit)}`;
             this.addLog(`<strong>${pName}</strong> ${Localization.get('played')} ${cName}`, 'normal');
         });
 
         EventBus.off('pileWon');
-        EventBus.on('pileWon', async ({ winnerId, reason, indices, reactionTime }) => {
+        EventBus.on('pileWon', async ({ winnerId, reason, indices, reactionTime, vanished }) => {
             if (winnerId === 0 && reason === 'slap' && 'vibrate' in navigator) navigator.vibrate([100, 50, 100]);
 
             // BUG FIX: Sync shieldExpireTimestamps with actual game streaks BEFORE updateCounts()
@@ -263,6 +264,11 @@ export const UIManager = {
                         const ty = deckRect.top + deckRect.height / 2 - (pileRect.top + pileRect.height / 2);
 
                         pileCards.forEach(card => {
+                            // v3.19.0 — a ghost card goes to no one: it rises and fades.
+                            if (card.classList.contains('ghost')) {
+                                card.classList.add('ghost-vaporize');
+                                return;
+                            }
                             card.style.transition = 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease-out';
                             card.style.transform = `translate(${tx}px, ${ty}px) scale(0.3)`;
                             card.style.opacity = '0';
@@ -289,6 +295,10 @@ export const UIManager = {
             }
 
             const winnerStr = this.getVisualName(winnerId);
+
+            if (vanished > 0) {
+                this.addLog((Localization.get('ghostsVanished') || '👻 {n} ghost cards vaporized').replace('{n}', String(vanished)), 'normal');
+            }
 
             if (reason === 'slap') {
                 this.addLog(`<strong>${winnerStr}</strong> ${Localization.get('slapLogObj')}`, 'slap');
@@ -710,7 +720,22 @@ export const UIManager = {
 
     updateCounts() {
         for (let i = 0; i < 4; i++) {
-            this.countEls[i].innerText = GameState.players[i].length;
+            // v3.19.0 — the count is REAL cards; a god's ghost cards get their
+            // own chip, because they vanish and are not what keeps it alive.
+            this.countEls[i].innerText = realCount(GameState.players[i]);
+            const ghosts = ghostCount(GameState.players[i]);
+            let ghostChip = this.deckEls[i].querySelector('.ghost-chip');
+            if (ghosts > 0) {
+                if (!ghostChip) {
+                    ghostChip = document.createElement('span');
+                    ghostChip.className = 'ghost-chip';
+                    this.deckEls[i].appendChild(ghostChip);
+                }
+                ghostChip.textContent = `👻 ${ghosts}`;
+                ghostChip.title = Localization.get('ghostChipTitle') || 'Ghost cards: they vanish when a pile is won';
+            } else if (ghostChip) {
+                ghostChip.remove();
+            }
 
             let isEliminated = false;
             if (GameManager.activeMode === 'multiplayer' && GameManager.modeInstance.getPlayerStatus) {
@@ -779,7 +804,7 @@ export const UIManager = {
             // this one is driven by CARD COUNT, not slap behavior. Purely reactive
             // to already-synced GameState.players[i].length, so it works
             // identically offline and in multiplayer with no game.js changes.
-            const cardCount = GameState.players[i].length;
+            const cardCount = realCount(GameState.players[i]);
             const isAlive = cardCount > 0 && !isEliminated;
             let lastCardBadge = this.deckEls[i].querySelector('.deck-lastcard');
             if (isAlive && cardCount === 1) {
@@ -992,7 +1017,7 @@ export const UIManager = {
 
     createCardElement(card) {
         const div = document.createElement('div');
-        div.className = `card ${card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black'}`;
+        div.className = `card ${card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black'}${isGhost(card) ? ' ghost' : ''}`;
         const rankStr = getRankName(card.rank);
         const suitStr = getSuitSymbol(card.suit);
         div.innerHTML = `

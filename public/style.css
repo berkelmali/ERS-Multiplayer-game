@@ -6537,6 +6537,7 @@ html { overflow-x: clip; }
 .boss-float-hit { color: #ffd27a; }
 .boss-float-heal { color: #6ee7b7; }
 .boss-float-steal { color: #fca5a5; }
+.boss-float-ghost { color: #a5f3fc; text-shadow: 0 0 8px rgba(103, 232, 249, 0.8); }
 @keyframes bossFloat {
     from { transform: translateY(0); opacity: 1; }
     to { transform: translateY(-26px); opacity: 0; }
@@ -6804,4 +6805,63 @@ body.duat-journey #bottom-player { position: relative; }
     left: 0.6rem;
     top: 0.55rem;
     color: #f4a28c;
+}
+
+/* ── v3.19.0 — ghost cards (Table of the Gods; council ERS-20) ──────────────
+   A clone the god keeps of a card that hurt it. It must stay as READABLE as a
+   real card — a player slaps on its rank — so the face keeps its colours and
+   only the stock turns spectral: pale ka-blue, a cold glow, a slow pulse. */
+:root {
+    --ghost-face: rgba(224, 247, 250, 0.84);
+    --ghost-edge: rgba(103, 232, 249, 0.9);
+    --ghost-glow: rgba(103, 232, 249, 0.55);
+}
+.card.ghost {
+    background: linear-gradient(160deg, var(--ghost-face), rgba(165, 243, 252, 0.72));
+    box-shadow: 0 0 14px var(--ghost-glow), inset 0 0 0 1px var(--ghost-edge);
+    animation: ghostPulse 2.2s ease-in-out infinite alternate;
+}
+.card.ghost::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0) 0 5px, rgba(255, 255, 255, 0.16) 5px 6px);
+    pointer-events: none;
+}
+.card.ghost.fly-in {
+    animation: cardFlyIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards, ghostPulse 2.2s ease-in-out 0.2s infinite alternate;
+}
+@keyframes ghostPulse {
+    from { box-shadow: 0 0 8px var(--ghost-glow), inset 0 0 0 1px var(--ghost-edge); }
+    to { box-shadow: 0 0 20px var(--ghost-glow), inset 0 0 0 1px var(--ghost-edge); }
+}
+/* Won pile: a ghost goes to no one. It rises and fades where it lay. */
+.card.ghost.ghost-vaporize {
+    animation: ghostVaporize 0.55s ease-out forwards;
+}
+@keyframes ghostVaporize {
+    to { opacity: 0; filter: blur(6px); transform: translateY(-42px) scale(1.12); }
+}
+.ghost-chip {
+    position: absolute;
+    top: -10px;
+    right: -12px;
+    z-index: 3;
+    font-size: 0.7rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #083344;
+    background: #a5f3fc;
+    border: 1px solid #22d3ee;
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
+    box-shadow: 0 0 10px var(--ghost-glow);
+    pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .card.ghost, .card.ghost.fly-in { animation: none; }
+    .card.ghost.ghost-vaporize { animation: ghostFade 0.3s linear forwards; }
+    @keyframes ghostFade { to { opacity: 0; } }
 }

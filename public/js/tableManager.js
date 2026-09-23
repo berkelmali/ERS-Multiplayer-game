@@ -11,6 +11,7 @@ import { ERR, appError } from "./errorCodes.js";
 import { Localization } from "./localization.js?v=3";
 import { seatGod } from "./pantheonRoom.js";
 import { god as godById } from "./pantheon.js";
+import { registerProtocol } from "./roomProtocol.js";
 
 const db = getFirestore(app);
 
@@ -628,6 +629,9 @@ export const TableManager = {
             });
 
             const rtdbRoomRef = ref(rtdb, `gameRooms/${roomId}`);
+            // v3.19.0 — a god room is dealt only by a client that registered
+            // the room protocol first (database.rules.json, roomProtocol.js).
+            if (godFields) await registerProtocol(AuthSystem.currentUser?.uid);
             await set(rtdbRoomRef, {
                 tableId: this.currentTableId,
                 hostId: data.hostId,

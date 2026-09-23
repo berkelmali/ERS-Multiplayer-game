@@ -20,6 +20,8 @@
  */
 
 /** Each value is a complete RTDB rules expression, true when the sentence holds. */
+import { ROOM_PROTOCOL } from '../public/js/slapOutcome.js';
+
 export const LOBBY_PIECES = Object.freeze({
     /** There is a signed-in user at all. */
     signedIn: "auth != null",
@@ -58,3 +60,36 @@ export function composeLobbyWrite(p = LOBBY_PIECES) {
         `((${p.isHost} || ${p.isSeated} || (${p.tableWaiting} && ${p.addsSelf})) && ` +
         `${p.keepsTableId} && ${p.newHostSeated})))`;
 }
+
+// ─── gameRooms (v3.19.0, council ERS-20) ────────────────────────────────────
+// The room rule was `signedIn && (creating || seated)` and stays exactly that
+// for an ordinary table. A room with a god adds one condition: the writer has
+// registered the room protocol that knows about ghost cards
+// (public/js/roomProtocol.js). An older tab never registers it, so it cannot
+// hand ghosts to a person or count them toward the 52.
+
+export const GAMEROOM_PIECES = Object.freeze({
+    /** There is a signed-in user at all. */
+    signedIn: "auth != null",
+    /** The room is being dealt. */
+    creating: "!data.exists()",
+    /** You hold a seat in the room — read from data, never newData. */
+    isSeated: "data.child('playerIds').child(auth.uid).exists()",
+    /** The room has a god, before or after this write. */
+    godRoom: "(data.child('god').exists() || newData.child('god').exists())",
+    /** The writer's client speaks the ghost-card protocol. */
+    speaksProtocol: `root.child('clientVersions').child(auth.uid).val() >= ${ROOM_PROTOCOL}`
+});
+
+export function composeGameRoomWrite(p = GAMEROOM_PIECES) {
+    return `${p.signedIn} && (${p.creating} || ${p.isSeated}) && (!${p.godRoom} || ${p.speaksProtocol})`;
+}
+
+/** Where each user states the protocol their client speaks. Theirs only. */
+export const CLIENT_VERSIONS_RULES = Object.freeze({
+    $uid: {
+        '.read': 'auth != null && auth.uid === $uid',
+        '.write': 'auth != null && auth.uid === $uid',
+        '.validate': 'newData.isNumber()'
+    }
+});

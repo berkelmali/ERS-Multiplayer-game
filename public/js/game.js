@@ -4,6 +4,7 @@ import { Rng } from './rng.js';
 import { matchSlap } from './slapRules.js';
 import { HouseRules } from './houseRules.js';
 import { MatchContext, difficultyInForce, turnTimeoutMs, transitionDelayMs } from './matchContext.js';
+import { vaporize, realCount } from './ghostCards.js';
 const RANKS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; // 11=J, 12=Q, 13=K, 14=A
 const SUITS = ['hearts', 'diamonds', 'clubs', 'spades'];
 const FACE_CHANCES = { 11: 1, 12: 2, 13: 3, 14: 4 };
@@ -95,6 +96,7 @@ export const GameState = {
         if (this.players[pid].length > 0) {
             const burned = this.players[pid].shift();
             this.burnPile.push(burned);
+            this._dropHollowHand(pid);
             if (pid === 0 && this.stats) this.stats.burns++;
 
             // Reset streak on timeout
@@ -263,14 +265,29 @@ export const GameState = {
         return next;
     },
 
+    /**
+     * v3.19.0 — a hand holding only ghost cards is empty: ghosts never keep a
+     * seat in the match (council ERS-20). Only a god ever holds ghosts, so on
+     * any other table this never finds anything to do.
+     */
+    _dropHollowHand(pid) {
+        const hand = this.players[pid];
+        if (!hand || hand.length === 0 || realCount(hand) > 0) return 0;
+        const n = hand.length;
+        hand.length = 0;
+        return n;
+    },
+
     checkGameOver() {
         if (this.gameOver) return;
 
         // --- Classic win: one player has all 52 cards ---
-        if (this.players.some(p => p.length === 52)) {
+        // Real cards: a god's ghosts can take its hand past 52 or to 52 with
+        // fewer than 52 real cards (v3.19.0).
+        if (this.players.some(p => realCount(p) === 52)) {
             this.gameOver = true;
             this.gameStarted = false;
-            let pId = this.players.findIndex(p => p.length === 52);
+            let pId = this.players.findIndex(p => realCount(p) === 52);
             EventBus.emit('gameOver', pId);
             return;
         }
@@ -393,6 +410,7 @@ export const GameState = {
 
         const card = this.players[playerId].shift(); // Draw from top
         this.pile.push(card);
+        this._dropHollowHand(playerId);
         // Monotonic index of every card played this match. The Daily Challenge
         // keys its deterministic bot rolls off this, so the same decision point
         // produces the same roll on every machine (see rng.js::hashRandom).
@@ -560,6 +578,7 @@ export const GameState = {
                 if (this.players[playerId].length > 0) {
                     const burned = this.players[playerId].shift();
                     this.burnPile.push(burned); // stored separately
+                    this._dropHollowHand(playerId);
                     if (playerId === 0 && this.stats) this.stats.burns++;
                     EventBus.emit('invalidSlap', { playerId, burned });
                     
@@ -599,7 +618,7 @@ export const GameState = {
             if (reactionTime !== null && reactionTime < this.stats.bestReflex) {
                 this.stats.bestReflex = reactionTime;
             }
-            this.stats.cardsWon += (this.burnPile.length + this.pile.length);
+            this.stats.cardsWon += realCount(this.burnPile) + realCount(this.pile);
             if (this.humanEliminated) {
                 // The comeback. This counter has existed since v2.9.0 and could
                 // never once be reached: checkGameOver ended the match the
@@ -624,7 +643,13 @@ export const GameState = {
         // So:  push( ...burnPile, ...pile )  gives exactly: [burned...] [first played...] [winning card]
         //      all appended to the bottom of the winner's existing hand.
 
-        this.players[winnerId].push(...this.burnPile, ...this.pile);
+        // v3.19.0 — ghost cards vaporize here, the one place a pile reaches a
+        // seat offline: the winner takes the real cards only.
+        const slappedPile = [...this.pile];
+        const { kept, vanished: ghostsVanished } = vaporize([...this.burnPile, ...this.pile]);
+        this.players[winnerId].push(...kept);
+        let vanished = ghostsVanished;
+        for (let i = 0; i < 4; i++) vanished += this._dropHollowHand(i);
 
         // Win streak calculations for offline mode
         if (!this.streaks) this.streaks = [0, 0, 0, 0];
@@ -674,7 +699,7 @@ export const GameState = {
         this.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
         this.activePlayerId = winnerId;
         this.lastSlapWinTime = Date.now();
-        EventBus.emit('pileWon', { winnerId, reason, indices, reactionTime });
+        EventBus.emit('pileWon', { winnerId, reason, indices, reactionTime, vanished, pile: slappedPile });
 
         this.checkGameOver();
         if (this.gameOver) return;

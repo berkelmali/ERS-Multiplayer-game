@@ -10,6 +10,83 @@
 
 export const EMPTY_CHALLENGE = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
 
+/**
+ * The room protocol this client speaks. v3.19.0 (ghost cards) is protocol 2:
+ * a pile is handed over only through `awardPile`, which drops ghosts and
+ * stamps the winner. `database.rules.json` refuses a write to a room with a
+ * god from any user who has not registered protocol 2 or later under
+ * `clientVersions/{uid}` — an older tab would hand ghosts to a person and
+ * count them toward the 52 (council ERS-20, condition 1).
+ */
+export const ROOM_PROTOCOL = 2;
+
+// ── Ghost cards (v3.19.0, the Table of the Gods) ────────────────────────────
+// Defined HERE, not in ghostCards.js, because this module must stay free of
+// imports (it is mirrored into functions/). ghostCards.js re-exports them, so
+// there is one definition.
+
+/** True for a ghost card. Tolerates anything a hand might hold. */
+export function isGhost(card) {
+    return !!(card && typeof card === 'object' && card.ghost === true);
+}
+
+/** How many real (non-ghost) cards a hand or pile holds. */
+export function realCount(cards) {
+    let n = 0;
+    for (const c of cards || []) if (!isGhost(c)) n++;
+    return n;
+}
+
+/** Splits cards being handed to a winner: the real ones stay, ghosts vanish. */
+export function vaporize(cards) {
+    const kept = [];
+    let vanished = 0;
+    for (const c of cards || []) {
+        if (isGhost(c)) vanished++;
+        else kept.push(c);
+    }
+    return { kept, vanished };
+}
+
+/**
+ * THE one way a pile reaches a seat in a multiplayer room.
+ *
+ * Burn pile then played pile go under the winner's hand, real cards only:
+ * ghosts vaporize. A seat left holding nothing but ghosts is out of cards —
+ * ghosts never keep a seat in the match. The room is stamped with who won
+ * and how many ghosts vanished, so clients read the winner instead of
+ * inferring it from card counts (a vaporized ghost, or clones reaching the
+ * god in the same write, would make that guess name the wrong seat).
+ *
+ * Mutates `players` (the caller's working copy) and `data`. Returns the
+ * number of ghosts that vanished.
+ */
+export function awardPile(data, players, winnerId) {
+    const { kept, vanished } = vaporize([...(data.burnPile || []), ...(data.pile || [])]);
+    const hand = players[winnerId].cards || [];
+    hand.push(...kept);
+    players[winnerId].cards = hand;
+    let gone = vanished;
+    for (const p of players) {
+        if (p && Array.isArray(p.cards) && p.cards.length > 0 && realCount(p.cards) === 0) {
+            gone += p.cards.length;
+            p.cards = [];
+        }
+    }
+    data.pile = [];
+    data.burnPile = [];
+    data.lastPile = { winner: winnerId, vanished: gone, seq: ((data.lastPile && data.lastPile.seq) || 0) + 1 };
+    return gone;
+}
+
+/** After a card leaves a hand: a hand of ghosts only is empty. Returns how many vanished. */
+export function dropHollowHand(p) {
+    if (!p || !Array.isArray(p.cards) || p.cards.length === 0 || realCount(p.cards) > 0) return 0;
+    const n = p.cards.length;
+    p.cards = [];
+    return n;
+}
+
 /** The next seat that can actually act: has cards and is not eliminated. */
 export function getNextPlayer(players, currentId) {
     let next = (currentId + 1) % 4;
@@ -52,20 +129,17 @@ export function migrateHostIfNeeded(data, players) {
 
 /**
  * A valid slap: the winner takes the burn pile and the played pile, in that
- * order, onto the BOTTOM of their hand.
+ * order, onto the BOTTOM of their hand (through `awardPile`: real cards only).
  */
 export function applySlapWin(data, seatIndex) {
-    const pile = data.pile || [];
-    const burnPile = data.burnPile || [];
     const players = [...data.players];
 
     const winnerId = seatIndex;
-    const playerCards = players[winnerId].cards || [];
     // Recorded BEFORE the pile lands, because after it lands the seat has cards
     // and there is no way left to tell that it was out.
     const wasEliminated = !!players[winnerId].eliminated;
-    playerCards.push(...burnPile, ...pile);
-    players[winnerId].cards = playerCards;
+    awardPile(data, players, winnerId);
+    const playerCards = players[winnerId].cards;
 
     // SLAP BACK IN. The rules panel has promised this in four languages since
     // long before any code could do it: "You can still slap the pile even with
@@ -104,8 +178,6 @@ export function applySlapWin(data, seatIndex) {
     });
 
     data.players = players;
-    data.pile = [];
-    data.burnPile = [];
     data.activePlayerId = winnerId;
     data.challenge = { ...EMPTY_CHALLENGE };
     data.lastWinReason = 'slap';
@@ -114,7 +186,7 @@ export function applySlapWin(data, seatIndex) {
     // Cleared on every other win, or the banner would fire again next pile.
     data.lastResurrectedId = wasEliminated ? winnerId : null;
 
-    resolveEndOfMatch(data, players, winnerId, playerCards.length === 52);
+    resolveEndOfMatch(data, players, winnerId, realCount(playerCards) === 52);
     migrateHostIfNeeded(data, players);
     return data;
 }
@@ -145,17 +217,18 @@ export function applySlapBurn(data, seatIndex, now) {
         const currentBurnPile = [...(data.burnPile || []), burned];
 
         players[burnerId].cards = cards;
+        // Burning the last REAL card leaves a hand of ghosts: that is no hand.
+        dropHollowHand(players[burnerId]);
         p.streak = 0;
         data.players = players;
         data.burnPile = currentBurnPile;
 
-        if (cards.length === 0) {
+        if (players[burnerId].cards.length === 0) {
             const challenge = data.challenge || { ...EMPTY_CHALLENGE };
             if (challenge.active && challenge.defenderId === burnerId) {
                 // Burning the last card mid-challenge hands the pile to the attacker.
                 const winnerId = challenge.attackerId;
-                players[winnerId].cards = players[winnerId].cards || [];
-                players[winnerId].cards.push(...currentBurnPile, ...(data.pile || []));
+                awardPile(data, players, winnerId);
 
                 players.forEach((px, i) => {
                     if (i === winnerId) px.streak = px.streak || 0;
@@ -165,14 +238,12 @@ export function applySlapBurn(data, seatIndex, now) {
                     if (i !== winnerId && (!px.cards || px.cards.length === 0)) px.eliminated = true;
                 });
 
-                data.pile = [];
-                data.burnPile = [];
                 data.players = players;
                 data.challenge = { ...EMPTY_CHALLENGE };
                 data.activePlayerId = winnerId;
                 data.lastWinReason = 'challenge';
 
-                resolveEndOfMatch(data, players, winnerId, players[winnerId].cards.length === 52);
+                resolveEndOfMatch(data, players, winnerId, realCount(players[winnerId].cards) === 52);
             } else if (data.activePlayerId === burnerId) {
                 data.activePlayerId = getNextPlayer(players, burnerId);
                 data.challenge = { ...EMPTY_CHALLENGE };

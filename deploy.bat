@@ -1600,6 +1600,35 @@ echo       tools\firestore-rules-test.mjs, senaryolar + 5 mutant.
 echo  173) KAPILAR: bolum 81 ^(36 test^), 4 mutasyonun 4'u yakalandi; smoke
 echo       yeni basliklarla temiz ^(CSP ihlali yok^).
 echo.
+echo  --- v3.19.0 -- HAYALET KARTLAR ^(TANRILARIN MASASI^) --------
+echo  174) YENI: senin tarafinin tanriyi yaraladigi her saplakta tanri,
+echo       vurulan kartlarin hayalet kopyalarini destesinin USTUNE alir:
+echo       desenin kartlari + kalanlarin yarisi, saplak basina en fazla 6,
+echo       elde en fazla 13. Hayaletler gercek kart gibi oynanir; hayalet
+echo       iceren yigini kim kazanirsa yalnizca GERCEK kartlari alir,
+echo       hayaletler buharlasir. Botlarda ve cok oyunculuda ayni kural.
+echo  175) KONSEY ERS-20 ^(4-1 Kismen Savunulabilir, Orta^): kopyalar
+echo       destenin ALTINA degil USTUNE; altta Bastet'in hayaletlerinin
+echo       yuzde 72'si hic oynanmiyordu. 'Yanki' kurali ^(hayalet desene
+echo       yarim hasar^) EKLENMEDI. Ilk tanrilarin cani ve hizi degismedi.
+echo  176) SIMULASYON ^(tools\sim-pantheon.mjs, ortalama oyuncu modeli^):
+echo       Ra yuzde 84.5 iken 66.9, Set yuzde 95.7 iken 88.3; ilk dort tanri
+echo       neredeyse ayni. 6 ve 13 sinirlari mac basina 0.1'den az devrede.
+echo  177) COK OYUNCULU: yigin artik TEK bir yoldan veriliyor
+echo       ^(slapOutcome.awardPile^) ve kazanan odaya YAZILIYOR, tahmin
+echo       edilmiyor: hayalet varken kart sayisindan tahmin, yigini tanri
+echo       almis gibi gosterirdi. 52 kart kontrolu yalnizca gercek kart sayar.
+echo  178) SUNUCU KAPISI: tanrili odaya artik yalnizca clientVersions'a
+echo       protokol 2 yazmis istemci yazabilir ^(database.rules.json^).
+echo       Deploy sirasinda acik kalmis eski bir sekme hayaletleri bir
+echo       oyuncunun eline koyamaz.
+echo  179) DUZELTME: mac sonu ekraninda 'Solid Win' ve coin rozeti her
+echo       macta bir kez daha ekleniyordu; ucuncu galibiyette Ana Menu
+echo       dugmesi ekranin disina itiliyordu. Artik her seferinde temizleniyor.
+echo  180) KAPILAR: bolum 82 ^(65 test^), 8 mutasyonun 8'i yakalandi; 23 bin
+echo       simule hamlede degismezler tuttu; smoke hayalet kartlari gercek
+echo       tarayicida oynatiyor; RTDB kural testine 14 senaryo + 5 mutant.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1704,5 +1733,25 @@ echo   - Bir mac bitir: profilde oynanan +1 olmali ^(kazandiysan skor +1^)
 echo   - Iki hesapla masa kur/katil/ayril: calismali
 echo   - Konsol: CSP ihlali OLMAMALI; F12 Network'te sayfa basliklarinda
 echo     Permissions-Policy ve Cross-Origin-Opener-Policy gorunmeli
+echo.
+echo  --- v3.19.0 -- SIRA ONEMLI ---------------------------------
+echo   1. ONCE deploy-db-rules.bat ^(Realtime Database kurallari^), SONRA
+echo      bu deploy. Bu deploy'u once yaptiysan deploy-db-rules.bat'i SIMDI
+echo      calistir.
+echo   2. deploy-db-rules.bat once kural testini kosar: 'passed, 0 failed',
+echo      eski 6 mutant ve 5 yeni oda mutanti CAUGHT olmali. Gondermeden
+echo      once konsoldaki Realtime Database kurallariyla karsilastir.
+echo   - Efsaneler'de Tanrilarin Masasi aciklamasinin altinda hayalet kart
+echo     satiri olmali
+echo   - Bastet'e meydan oku, bir Cift yakala: tanrinin destesinde mavi bir
+echo     hayalet rozeti cikmali, kart sayisi yalnizca gercek kartlari
+echo     gostermeli, can cubugunun yaninda hayalet +N yukselmeli
+echo   - Tanri hayalet oynayinca kart soluk mavi ve parlak olmali. O yigini
+echo     kazan: hayalet kart savrulmadan yerinde buharlasmali, gunlukte
+echo     'hayalet kart buharlasti' yazmali
+echo   - Ust uste 3 mac kazan: mac sonu ekraninda 'Solid Win' TEK kez olmali
+echo   - COK OYUNCULU ^(iki hesap, ikisi de sert yenilenmis^): tanrili masada
+echo     bir Cift yakala: IKI ekranda da hayalet rozeti ayni olmali ve yigini
+echo     kazanan IKI ekranda da ayni kisi gorunmeli
 echo.
 pause

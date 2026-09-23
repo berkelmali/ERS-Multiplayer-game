@@ -11,9 +11,10 @@ import { NetQuality } from "./netQuality.js";
 import { ConnectionBanner } from "./connectionBanner.js";
 import { Localization } from "./localization.js?v=3";
 import { AuthSystem } from "./auth.js";
-import { applySlapWin, applySlapBurn } from "./slapOutcome.js";
+import { applySlapWin, applySlapBurn, awardPile, dropHollowHand, realCount } from "./slapOutcome.js";
 import { applyGodSlapWin, applyGodBurn } from "./pantheonRoom.js";
 import * as FairSlap from "./fairSlap.js";
+import { registerProtocol } from "./roomProtocol.js";
 
 const db = getFirestore(app);
 
@@ -61,6 +62,9 @@ export const FirebaseSync = {
     listenToRoom(roomId, playerIndex) {
         this.roomId = roomId;
         this.localPlayerIndex = playerIndex;
+        // v3.19.0 — before any write to the room: a god room refuses writes
+        // from a user who has not registered this protocol (roomProtocol.js).
+        registerProtocol(AuthSystem.currentUser?.uid);
         NetQuality.init();
         import('./auth.js')
             .then(({ AuthSystem }) => NetQuality.start(AuthSystem.currentUser?.uid))
@@ -225,15 +229,27 @@ export const FirebaseSync = {
                 // Someone won the pile — winner gained pile + burnPile cards
                 const totalAwarded = this.lastPileLength + lastBurnLength;
                 let winnerId = -1;
-                for (let i = 0; i < 4; i++) {
-                    if (data.players[i].cards && data.players[i].cards.length >= this.lastPlayerCardCounts[i] + totalAwarded) {
-                        winnerId = i;
-                        break;
+                let vanished = 0;
+                // v3.19.0: the room SAYS who won (slapOutcome.awardPile). The
+                // count diff below cannot be trusted once ghosts exist: the
+                // winner grows by fewer cards than the pile held, and the god
+                // may grow by its new clones in the same write.
+                const stamp = data.lastPile;
+                if (stamp && typeof stamp.winner === 'number' && stamp.seq !== this.lastPileSeq) {
+                    winnerId = stamp.winner;
+                    vanished = stamp.vanished || 0;
+                } else if (!stamp) {
+                    // A room dealt before v3.19.0 carries no stamp: infer as before.
+                    for (let i = 0; i < 4; i++) {
+                        if (data.players[i].cards && data.players[i].cards.length >= this.lastPlayerCardCounts[i] + totalAwarded) {
+                            winnerId = i;
+                            break;
+                        }
                     }
                 }
                 if (winnerId !== -1) {
                     const visualId = (winnerId - this.localPlayerIndex + 4) % 4;
-                    EventBus.emit('pileWon', { winnerId: visualId, reason: data.lastWinReason || 'slap', totalAwarded });
+                    EventBus.emit('pileWon', { winnerId: visualId, reason: data.lastWinReason || 'slap', totalAwarded, vanished });
 
                     // Photo finish: the pile was actually contested and decided
                     // on reaction time. Surfacing the margin is what makes the
@@ -416,6 +432,7 @@ export const FirebaseSync = {
         }
 
         // Update trackers for next delta
+        this.lastPileSeq = data.lastPile ? data.lastPile.seq : null;
         this.lastPileLength = data.pile ? data.pile.length : 0;
         this.lastBurnPileLength = data.burnPile ? data.burnPile.length : 0;
         this.lastPlayerCardCounts = data.players.map(p => p.cards ? p.cards.length : 0);
@@ -540,9 +557,12 @@ export const FirebaseSync = {
     _applySlapWin(data, seatIndex) {
         // v3.18.0 — a god at the table: its life changes in THIS transaction.
         // The pattern is read before the pile is handed over.
-        const godRule = data.god ? (matchSlap(data.pile || [], HouseRules.active()) || {}).id : null;
+        // v3.19.0 — and the pile itself, with the pattern's positions, so the
+        // god can keep its ghost clones in this same write.
+        const m = data.god ? matchSlap(data.pile || [], HouseRules.active()) : null;
+        const slapped = data.god ? { pile: [...(data.pile || [])], indices: m ? m.indices : [] } : null;
         applySlapWin(data, seatIndex);
-        if (data.god) applyGodSlapWin(data, seatIndex, godRule, NetQuality.serverNow());
+        if (data.god) applyGodSlapWin(data, seatIndex, m ? m.id : undefined, NetQuality.serverNow(), slapped);
         return data;
     },
 
@@ -720,10 +740,8 @@ export const FirebaseSync = {
                     // Defender has 0 cards and it's their turn to play in a challenge -> Attacker wins!
                     if (challenge.active && challenge.defenderId === playerIndex) {
                         const winnerId = challenge.attackerId;
-                        const currentBurnPile = data.burnPile || [];
-                        const pile = data.pile || [];
-                        players[winnerId].cards = players[winnerId].cards || [];
-                        players[winnerId].cards.push(...currentBurnPile, ...pile);
+                        // v3.19.0: the one award path (ghosts vanish, winner stamped).
+                        awardPile(data, players, winnerId);
 
                         players.forEach((p, i) => {
                             if (i === winnerId) {
@@ -739,15 +757,13 @@ export const FirebaseSync = {
                             }
                         });
 
-                        data.pile = [];
-                        data.burnPile = [];
                         data.players = players;
                         data.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
                         data.activePlayerId = winnerId;
                         data.lastWinReason = 'challenge';
 
                         const nonEliminated = players.filter(p => !p.eliminated);
-                        if (players[winnerId].cards.length === 52 || nonEliminated.length <= 1) {
+                        if (realCount(players[winnerId].cards) === 52 || nonEliminated.length <= 1) {
                             data.gameOver = true;
                             data.status = 'finished';
                             if (nonEliminated.length === 1) {
@@ -763,6 +779,8 @@ export const FirebaseSync = {
                 const pile = data.pile || [];
                 const card = players[playerIndex].cards.shift();
                 pile.push(card);
+                // v3.19.0: a hand left holding only ghosts is empty.
+                dropHollowHand(players[playerIndex]);
 
 
 
@@ -791,8 +809,8 @@ export const FirebaseSync = {
                         // If they have no cards left, they instantly fail the challenge
                         if (challenge.chancesLeft <= 0 || players[playerIndex].cards.length === 0) {
                             const winnerId = challenge.attackerId;
-                            const currentBurnPile = data.burnPile || [];
-                            players[winnerId].cards.push(...currentBurnPile, ...pile);
+                            data.pile = pile;
+                            awardPile(data, players, winnerId);
 
                             // Update streaks for challenge win (kept as is for winner, kept if streak >= 3 for others, reset otherwise)
                             players.forEach((p, i) => {
@@ -812,8 +830,6 @@ export const FirebaseSync = {
                                 }
                             });
 
-                            data.pile = [];
-                            data.burnPile = [];
                             data.players = players;
                             data.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
                             data.activePlayerId = winnerId;
@@ -822,12 +838,12 @@ export const FirebaseSync = {
                             // NEW: Persistent Win Condition
                             const nonEliminated = players.filter(p => !p.eliminated);
 
-                            if (players[winnerId].cards.length === 52 || nonEliminated.length <= 1) {
+                            if (realCount(players[winnerId].cards) === 52 || nonEliminated.length <= 1) {
                                 data.gameOver = true;
                                 data.status = 'finished';
                                 if (nonEliminated.length === 1) {
                                     data.winnerId = players.findIndex(p => !p.eliminated);
-                                } else if (players[winnerId].cards.length === 52) {
+                                } else if (realCount(players[winnerId].cards) === 52) {
                                     data.winnerId = winnerId;
                                 } else {
                                     data.winnerId = -1;
@@ -1008,6 +1024,7 @@ export const FirebaseSync = {
                 currentBurnPile.push(burned);
 
                 players[playerIndex].cards = cards;
+                dropHollowHand(players[playerIndex]);
                 data.players = players;
                 data.burnPile = currentBurnPile;
                 data.lastBurnReason = 'timeout'; 
@@ -1016,8 +1033,7 @@ export const FirebaseSync = {
 
                 if (challenge.active) {
                     const winnerId = challenge.attackerId;
-                    const pile = data.pile || [];
-                    players[winnerId].cards.push(...currentBurnPile, ...pile);
+                    awardPile(data, players, winnerId);
 
                     // Update streaks for challenge win on timeout (kept as is for winner, kept if streak >= 3 for others, reset otherwise)
                     players.forEach((px, i) => {

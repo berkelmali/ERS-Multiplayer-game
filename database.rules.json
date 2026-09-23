@@ -12,7 +12,7 @@
     "gameRooms": {
       "$roomId": {
         ".read": "auth != null && data.child('playerIds').child(auth.uid).exists()",
-        ".write": "auth != null && (!data.exists() || data.child('playerIds').child(auth.uid).exists())",
+        ".write": "auth != null && (!data.exists() || data.child('playerIds').child(auth.uid).exists()) && (!(data.child('god').exists() || newData.child('god').exists()) || root.child('clientVersions').child(auth.uid).val() >= 2)",
         "players": {
           "$playerId": {
             "activeEmoji": {
@@ -20,6 +20,13 @@
             }
           }
         }
+      }
+    },
+    "clientVersions": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.isNumber()"
       }
     },
     "presence": {

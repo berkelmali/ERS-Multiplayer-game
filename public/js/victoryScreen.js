@@ -67,8 +67,10 @@ export const VictoryScreen = {
             if (overlay) overlay.remove();
             const trophy = document.getElementById('victory-trophy-3d');
             if (trophy) trophy.remove();
-            const oldPanel = document.querySelector('.stats-panel');
-            if (oldPanel) oldPanel.remove();
+            // v3.19.0 — the MVP line and the coin badge are siblings of the stats
+            // panel, not children: removing only the panel left them to pile up, one
+            // more pair per match, until Main Menu was pushed off a 860px screen.
+            document.querySelectorAll('.stats-panel, .mvp-moment, .coin-result-badge').forEach(el => el.remove());
 
             if (this.lastWinnerId === 99) {
                 this.screenVictory.classList.remove('active');
@@ -136,8 +138,10 @@ export const VictoryScreen = {
             if (overlay) overlay.remove();
             const trophy = document.getElementById('victory-trophy-3d');
             if (trophy) trophy.remove();
-            const oldPanel = document.querySelector('.stats-panel');
-            if (oldPanel) oldPanel.remove();
+            // v3.19.0 — the MVP line and the coin badge are siblings of the stats
+            // panel, not children: removing only the panel left them to pile up, one
+            // more pair per match, until Main Menu was pushed off a 860px screen.
+            document.querySelectorAll('.stats-panel, .mvp-moment, .coin-result-badge').forEach(el => el.remove());
 
             this.returnToMainMenuUI();
         });
@@ -194,8 +198,10 @@ export const VictoryScreen = {
                 if (overlay) overlay.remove();
                 const trophy = document.getElementById('victory-trophy-3d');
                 if (trophy) trophy.remove();
-                const oldPanel = document.querySelector('.stats-panel');
-                if (oldPanel) oldPanel.remove();
+                // v3.19.0 — the MVP line and the coin badge are siblings of the stats
+                // panel, not children: removing only the panel left them to pile up, one
+                // more pair per match, until Main Menu was pushed off a 860px screen.
+                document.querySelectorAll('.stats-panel, .mvp-moment, .coin-result-badge').forEach(el => el.remove());
 
                 this.screenVictory.classList.remove('active');
                 this.clearDefeatVisuals();
@@ -440,8 +446,10 @@ export const VictoryScreen = {
             }
 
             // Remove any existing stats panel
-            const oldPanel = document.querySelector('.stats-panel');
-            if (oldPanel) oldPanel.remove();
+            // v3.19.0 — the MVP line and the coin badge are siblings of the stats
+            // panel, not children: removing only the panel left them to pile up, one
+            // more pair per match, until Main Menu was pushed off a 860px screen.
+            document.querySelectorAll('.stats-panel, .mvp-moment, .coin-result-badge').forEach(el => el.remove());
 
             // Insert statsHtml before the menu-buttons
             const menuButtons = this.screenVictory.querySelector('.menu-buttons');

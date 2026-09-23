@@ -13,9 +13,14 @@
  * SLAP (as they do offline), Anubis's second burn on wrong slaps, and Ra's
  * noon. Damage comes from every valid slap by another seat — a person's in
  * full, a bot's by half, as offline priests.
+ *
+ * v3.19.0 — ghost cards: a slap that wounds the god (and leaves it alive)
+ * gives it clones of the slapped cards, on top of its hand, in the same
+ * write (ghostCards.js; council ERS-20). `godGhosts` stamps it for effects.
  */
 import { god, godRules, slapDamage, NINE_LIVES, SET_STEAL, DAMAGE, HERO_SEAT } from './pantheon.js';
 import { rulesToKey } from './slapRules.js';
+import { ghostClones, addGhosts } from './ghostCards.js';
 
 const isBot = (p) => !!(p && typeof p.uid === 'string' && p.uid.startsWith('bot_'));
 
@@ -39,6 +44,7 @@ export function seatGod(godId, roomPlayers, godName) {
         godNoon: false,
         godDamage: [0, 0, 0, 0],
         godLastHit: null,
+        godGhosts: null,
         houseRules: rulesToKey(godRules(godId))
     };
 }
@@ -50,8 +56,11 @@ export function roomSlapDamage(data, seat, ruleId) {
     return slapDamage(data.god, ruleId, isBot(p) ? 1 : HERO_SEAT);
 }
 
-/** After applySlapWin: wound the god, or let the god's slap work its power. */
-export function applyGodSlapWin(data, seat, ruleId, now = Date.now()) {
+/**
+ * After applySlapWin: wound the god, or let the god's slap work its power.
+ * `slapped` is the pile as it stood when the slap landed ({pile, indices}).
+ */
+export function applyGodSlapWin(data, seat, ruleId, now = Date.now(), slapped = null) {
     if (!data || !data.god || data.gameOver) return data;
     const g = god(data.god);
     if (!g) return data;
@@ -77,7 +86,18 @@ export function applyGodSlapWin(data, seat, ruleId, now = Date.now()) {
         data.godNoon = true;
         heal(data, Math.round(1.5 * DAMAGE.doubles), now);
     }
-    if (data.godHp <= 0) fall(data, seat);
+    if (data.godHp <= 0) { fall(data, seat); return data; }
+    if (slapped && !data.gameOver) {
+        const godSeat = data.players && data.players[data.godSeat];
+        if (godSeat && !godSeat.eliminated) {
+            const hand = [...(godSeat.cards || [])];
+            const n = addGhosts(hand, ghostClones(slapped.pile, slapped.indices));
+            if (n > 0) {
+                godSeat.cards = hand;
+                data.godGhosts = { n, at: now };
+            }
+        }
+    }
     return data;
 }
 

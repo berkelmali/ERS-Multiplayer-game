@@ -39,7 +39,8 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { LOBBY_PIECES, composeLobbyWrite } from './lobby-rule.mjs';
+import { LOBBY_PIECES, composeLobbyWrite, GAMEROOM_PIECES, composeGameRoomWrite, CLIENT_VERSIONS_RULES } from './lobby-rule.mjs';
+import { ROOM_PROTOCOL } from '../public/js/slapOutcome.js';
 
 const HOST = process.env.FIREBASE_DATABASE_EMULATOR_HOST || '127.0.0.1:9000';
 // The project's own namespace, not an invented one. An unknown namespace is
@@ -182,6 +183,15 @@ async function loadRules(rulesObject) {
     if (got !== want) {
         throw new Error('the emulator accepted a rule load and is enforcing something else.\n'
             + `  wanted: ${want}\n  serving: ${got}`);
+    }
+    // v3.19.0: the game-room mutants are swapped in the same way, so their
+    // load is read back too — a stale rule would let every mutant "survive".
+    const r2 = await fetch(`${BASE}/.settings/rules.json?ns=${NS}${ADMIN.query}`, { headers: ADMIN.headers });
+    const liveRoom = JSON.parse(await r2.text()).rules.gameRooms.$roomId['.write'];
+    const wantRoom = rulesObject.rules.gameRooms.$roomId['.write'];
+    if (liveRoom !== wantRoom) {
+        throw new Error('the emulator is enforcing a different game-room rule.\n'
+            + `  wanted: ${wantRoom}\n  serving: ${liveRoom}`);
     }
 }
 
@@ -435,6 +445,121 @@ await loadRules(rulesFile);
 ok(`no mutant escaped (${MUTANTS.length - equivalent} real, ${equivalent} equivalent)`,
     escaped === 0, `${escaped} escaped`);
 ok('...and no equivalence claim is stale', staleClaims === 0, `${staleClaims} stale`);
+
+// 5. v3.19.0 — THE GOD-ROOM GATE (council ERS-20, condition 1).
+//    Ghost cards changed how a pile is handed over. A tab still open from
+//    before the deploy would hand ghosts to a person and count them toward the
+//    52, and nothing in the room can tell it not to. So a room with a god
+//    accepts writes only from users who registered the ghost-card protocol
+//    under clientVersions/{uid}. Same method as above: scenarios, then mutants.
+const RP = GAMEROOM_PIECES;
+const LIVE_ROOM_WRITE = rulesFile.rules.gameRooms.$roomId['.write'];
+function rulesWithRoom(roomWrite) {
+    const clone = JSON.parse(JSON.stringify(rulesFile));
+    clone.rules.gameRooms.$roomId['.write'] = roomWrite;
+    return clone;
+}
+const room = (god = 'ra') => ({
+    tableId: 'ABC123',
+    hostId: HOSTU,
+    playerIds: { [HOSTU]: true, [SEAT]: true },
+    players: [{ uid: HOSTU, name: 'Host', cards: [{ rank: 5, suit: 'hearts' }] },
+              { uid: SEAT, name: 'Seat', cards: [{ rank: 9, suit: 'clubs' }] }],
+    pile: [],
+    gameStarted: true,
+    gameOver: false,
+    ...(god ? { god, godSeat: 3, godHp: 160, godMaxHp: 160 } : {})
+});
+async function speaks(uid, version) { await asOwner(`clientVersions/${uid}`, version); }
+async function seedRoom(god) { await asOwner('gameRooms/ROOM01', room(god)); }
+async function clearRoom() { await asOwner('gameRooms/ROOM01', null); }
+
+async function runRoomScenarios() {
+    const r = [];
+    const record = async (label, want, fn) => r.push([label, await fn(), want]);
+    const turn = (god) => ({ ...room(god), pile: [{ rank: 7, suit: 'spades' }] });
+
+    await speaks(HOSTU, ROOM_PROTOCOL); await speaks(SEAT, null); await speaks(OUT, ROOM_PROTOCOL);
+
+    await seedRoom('ra');
+    await record('a seated player on a current client may play in a god room', true, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01', turn('ra'), HOSTU)));
+    await seedRoom('ra');
+    await record('...and may update a single seat in it (status, cards)', true, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01/players/0/status', 'online', HOSTU)));
+
+    await seedRoom('ra');
+    await record('a seated player on an OLD client may not write a god room', false, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01', turn('ra'), SEAT)));
+    await seedRoom('ra');
+    await record('...not even one seat of it', false, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01/players/1/cards', [], SEAT)));
+    await seedRoom('ra');
+    await record('...nor delete it', false, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01', null, SEAT)));
+    await speaks(SEAT, ROOM_PROTOCOL - 1);
+    await seedRoom('ra');
+    await record('a client registered at an OLDER protocol is still refused', false, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01', turn('ra'), SEAT)));
+    await speaks(SEAT, null);
+
+    await seedRoom(null);
+    await record('an old client may still play an ordinary room (no god)', true, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01', turn(null), SEAT)));
+    await seedRoom(null);
+    await record('...but may not seat a god in it', false, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01', turn('ra'), SEAT)));
+
+    await clearRoom();
+    await record('a host on a current client may deal a god room', true, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01', room('ra'), HOSTU)));
+    await clearRoom();
+    await record('a host on an old client may not deal one', false, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01', room('ra'), SEAT)));
+
+    await seedRoom('ra');
+    await record('a current client that is NOT seated may not write a god room', false, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01', turn('ra'), OUT)));
+
+    await record('a user may register the protocol for themselves', true, async () =>
+        allowed(await tryWrite(`clientVersions/${SEAT}`, ROOM_PROTOCOL, SEAT)));
+    await record('...but not for someone else', false, async () =>
+        allowed(await tryWrite(`clientVersions/${HOSTU}`, ROOM_PROTOCOL, SEAT)));
+    await record('...and only as a number', false, async () =>
+        allowed(await tryWrite(`clientVersions/${SEAT}`, 'v3.19.0', SEAT)));
+    await speaks(SEAT, null);
+    return r;
+}
+
+ok('database.rules.json carries exactly the composed game-room rule',
+    LIVE_ROOM_WRITE === composeGameRoomWrite(RP), 'the file and this test have drifted');
+ok('database.rules.json carries the clientVersions rules',
+    JSON.stringify(rulesFile.rules.clientVersions) === JSON.stringify(CLIENT_VERSIONS_RULES));
+{
+    const results = await runRoomScenarios();
+    for (const [label, was, want] of results) {
+        ok(label, was === want, `write was ${was ? 'ALLOWED' : 'REFUSED'}, wanted ${want ? 'ALLOWED' : 'REFUSED'}`);
+    }
+}
+const ROOM_MUTANTS = [
+    { label: 'the protocol is never checked', build: () => composeGameRoomWrite({ ...RP, speaksProtocol: 'true' }) },
+    { label: 'no room counts as a god room', build: () => composeGameRoomWrite({ ...RP, godRoom: 'false' }) },
+    { label: 'a god room is recognised only by what it was, not what the write makes it',
+      build: () => composeGameRoomWrite({ ...RP, godRoom: "data.child('god').exists()" }) },
+    { label: 'any signed-in user may write any room', build: () => composeGameRoomWrite({ ...RP, isSeated: 'true' }) },
+    { label: 'the protocol gate is the pre-v3.19.0 rule (removed)',
+      build: () => `${RP.signedIn} && (${RP.creating} || ${RP.isSeated})` }
+];
+console.log('\n--- game-room mutants ---');
+let roomEscaped = 0;
+for (const { label, build } of ROOM_MUTANTS) {
+    await loadRules(rulesWithRoom(build()));
+    const broke = (await runRoomScenarios()).filter(([, was, want]) => was !== want);
+    if (broke.length) { console.log(`CAUGHT     ${label}`); console.log(`           first miss: ${broke[0][0]}`); }
+    else { roomEscaped++; console.log(`ESCAPED    ${label}`); }
+}
+await loadRules(rulesFile);
+ok(`no game-room mutant escaped (${ROOM_MUTANTS.length})`, roomEscaped === 0, `${roomEscaped} escaped`);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) {
