@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  commit.bat -- v3.16.8 .. v3.18.0 ve depo guvenligini kayda gecirir.
+REM  commit.bat -- v3.18.1 guvenlik incelemesini kayda gecirir.
 REM
 REM  NEDEN AYRI BIR DOSYA: deploy.bat commit ATMAZ (bilerek --
 REM  yayina almak ile kayda gecirmek ayri kararlardir).

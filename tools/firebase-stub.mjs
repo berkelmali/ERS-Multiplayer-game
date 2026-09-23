@@ -38,6 +38,7 @@ export const setDoc = async () => {};
 export const updateDoc = async () => {};
 export const deleteDoc = async () => {};
 export const increment = (n) => n;
+export const deleteField = () => ({ __delete: true });
 export const onSnapshot = unsub;
 export const serverTimestamp = () => Date.now();
 export const getDatabase = () => ({});

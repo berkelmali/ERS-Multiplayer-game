@@ -1,0 +1,40 @@
+# Static security analysis of the JavaScript the site ships (XSS sinks, unsafe
+# DOM writes, prototype pollution, ...). Free for public repositories; results
+# appear under Security -> Code scanning. Actions are pinned to commit SHAs like
+# every other workflow here (test section 80); Dependabot keeps the pins fresh.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze JavaScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3.38.1
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - uses: github/codeql-action/analyze@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3.38.1
+        with:
+          category: /language:javascript-typescript

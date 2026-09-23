@@ -1,6 +1,7 @@
 import { getFirestore, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { app } from "./firebaseConfig.js";
 import { Localization } from './localization.js?v=3';
+import { cleanName } from './safeText.js';
 
 const db = getFirestore(app);
 
@@ -25,8 +26,10 @@ export const Leaderboard = {
     async loadLeaderboard() {
         this.content.innerHTML = `<p style="text-align:center;">${Localization.get('loading')}</p>`;
         try {
-            const usersRef = collection(db, "users");
-            const q = query(usersRef, orderBy("totalScore", "desc"), limit(10));
+            // The public mirror, not the private records (security review,
+            // v3.18.0): /users held emails and is owner-only now.
+            const boardRef = collection(db, "leaderboard");
+            const q = query(boardRef, orderBy("totalScore", "desc"), limit(10));
 
             const querySnapshot = await getDocs(q);
 
@@ -39,8 +42,10 @@ export const Leaderboard = {
             let rank = 1;
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                const username = data.username || 'Unknown';
-                const score = data.totalScore || 0;
+                // Chosen by another player and written into markup below:
+                // only a cleaned name, only an integer score.
+                const username = cleanName(data.username, 'Unknown');
+                const score = Number.isInteger(data.totalScore) ? data.totalScore : 0;
 
                 let rankStyle = "color: white; font-size: 1.1rem;";
                 if (rank === 1) rankStyle = "color: gold; text-shadow: 0 0 10px rgba(255,215,0,0.5); font-size: 1.4rem; font-weight: bold;";

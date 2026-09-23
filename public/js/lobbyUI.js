@@ -9,6 +9,7 @@ import { renderQRCodeToCanvas } from './qrCode.js';
 import { formatInviteUrl } from './inviteLink.js';
 import { ERR, appError, classifyError, readOnline, withDeadline, createOperationToken, DEFAULT_DEADLINE_MS } from './errorCodes.js';
 import { ErrorScreen } from './errorScreen.js';
+import { cleanName } from './safeText.js';
 
 export const LobbyUI = {
     /**
@@ -322,9 +323,9 @@ export const LobbyUI = {
                 const hostTag = isHost ? `<span style="color:var(--primary); font-size:0.8em; margin-left:10px;">(Host)</span>` : '';
                 
                 if (player.status === 'disconnected') {
-                    li.innerHTML = `${i + 1}. <strong style="color:var(--error); text-decoration: line-through;">${player.name}</strong> <span style="color:var(--error); font-size:0.8em; font-style:italic; margin-left:5px;">(${Localization.get('disconnectedTag') || 'Disconnected'})</span> ${hostTag}`;
+                    li.innerHTML = `${i + 1}. <strong style="color:var(--error); text-decoration: line-through;">${cleanName(player.name)}</strong> <span style="color:var(--error); font-size:0.8em; font-style:italic; margin-left:5px;">(${Localization.get('disconnectedTag') || 'Disconnected'})</span> ${hostTag}`;
                 } else {
-                    li.innerHTML = `${i + 1}. <strong style="color:white;">${player.name}</strong> ${hostTag}`;
+                    li.innerHTML = `${i + 1}. <strong style="color:white;">${cleanName(player.name)}</strong> ${hostTag}`;
                 }
             } else {
                 li.innerHTML = `${i + 1}. <span style="font-style:italic;" data-i18n="waitingPlayer">${Localization.get('waitingPlayer') || "Waiting..."}</span>`;

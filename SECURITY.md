@@ -17,6 +17,31 @@ the report is credited if you want it to be.
 - The AdSense publisher id and the Search Console verification token are
   public by design.
 
+## How player data is protected (v3.18.1)
+
+- `users/{uid}` — a player's private record. Readable and writable only by
+  that player. It holds no email (Firebase Authentication does); a counter
+  moves by at most one per finished match, at most once every 10 seconds.
+- `leaderboard/{uid}` — public: a cleaned display name and a score that must
+  equal the private record's score in the same commit.
+- `multiplayer_tables/{id}` — writable by the host, by seated players, or by a
+  newcomer adding exactly themselves to a waiting table.
+- Display names are restricted to letters, digits, spaces and `_ . -`, in the
+  client (`public/js/safeText.js`) and in the rules.
+- Every rule change is run against the Firestore emulator, with deliberately
+  broken copies that must be caught, before `deploy-rules.bat` sends it
+  (`tools/firestore-rules-test.mjs`).
+
+## Known limits
+
+- **The browser referees the match.** Rules bound how a record may change;
+  they cannot prove a match was played or won. In multiplayer any seated
+  player can rewrite the shared room in the Realtime Database. Closing this
+  needs server-side refereeing (the `attemptSlap` / `attemptPlayCard` Cloud
+  Functions exist but are not enabled) and Firebase App Check.
+- The Daily Challenge board is marked unverified in the game for the same
+  reason.
+
 ## What must never be in this repository
 
 - `public/js/firebaseConfig.js` (generated locally or in CI from a secret)

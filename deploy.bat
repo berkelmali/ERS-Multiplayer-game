@@ -1574,6 +1574,32 @@ echo       dosyayi bosaltti. v3.16.7'ye kadarki her satir git'teki
 echo       kayittan geri geldi; 142-162 arasi notlar commit.bat ve konsey
 echo       tutanaklarindan YENIDEN YAZILDI, kelimesi kelimesine degil.
 echo.
+echo  --- v3.18.1 -- GUVENLIK INCELEMESI: VERI, SAYFA, DEPO ---
+echo  167) KRITIK: Firestore'daki users koleksiyonu HERKESE ACIK okunuyordu
+echo       ve her oyuncunun E-POSTASINI tasiyordu. Giris yapmadan bile tum
+echo       adresler listelenebilirdi. Artik: users yalnizca SAHIBINE acik,
+echo       e-posta Firestore'a hic yazilmiyor, eski kopya girista siliniyor.
+echo       Skor tablosu ayri, herkese acik bir AYNA okuyor: isim + skor.
+echo  168) YUKSEK: baska oyuncularin sectigi isimler ^(masa, lobi, skor
+echo       tablosu^) innerHTML'e KACISSIZ yaziliyordu. CSP script'i durdurur
+echo       ama HTML'i durdurmaz: sahte bir form ya da link bu alan adinda
+echo       herkese gorunurdu. Isimler artik harf/rakam/bosluk/_.- ile sinirli
+echo       ^(safeText.js^) ve ayni desen kurallarda da zorunlu.
+echo  169) YUKSEK: bir oyuncu kendi kaydina istedigi skoru yazabiliyordu.
+echo       Artik her mac en fazla +1, skor yalnizca galibiyetle, 10 saniyede
+echo       en fazla bir kez; skor tablosundaki sayi kaydin kendisine esit
+echo       olmak ZORUNDA. Durust sinir: kazanani hala tarayici belirliyor.
+echo  170) ORTA: giris yapmis HERKES HER masayi yeniden yazabiliyordu.
+echo       Artik yalnizca host, masadaki oyuncular ya da bekleyen bir masaya
+echo       SADECE KENDINI ekleyen katilabilir; oyunu yalnizca host baslatir.
+echo  171) SAYFA BASLIKLARI: CSP'ye base-uri, form-action, frame-ancestors;
+echo       Permissions-Policy ^(kamera/mikrofon/konum kapali^), COOP, HSTS 2 yil.
+echo  172) DEPO: CodeQL taramasi eklendi ^(SHA'ya sabit^). Kurallar artik
+echo       gonderilmeden once GERCEK Firestore emulatorunde calisiyor:
+echo       tools\firestore-rules-test.mjs, senaryolar + 5 mutant.
+echo  173) KAPILAR: bolum 81 ^(36 test^), 4 mutasyonun 4'u yakalandi; smoke
+echo       yeni basliklarla temiz ^(CSP ihlali yok^).
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1664,5 +1690,19 @@ echo     tanri' ile Bastet'i secsin; digeri secimi gormeli. Oyun basinda
 echo     iki ekranda da ayni can cubugu olmali ve bir saplak IKISINDE de
 echo     ayni sayida can dusurmeli. Tanri olurse kazanan onu en cok
 echo     yaralayan kisi olmali
+echo.
+echo  --- v3.18.1 -- SIRA ONEMLI ---------------------------------
+echo   1. ONCE bu deploy ^(hosting^). SONRA hemen deploy-rules.bat.
+echo      Ters sirada eski istemci yeni kurallara takilir: masaya
+echo      katilma ve skor yazma durur.
+echo   2. deploy-rules.bat once kural testini kosar. 'passed, 0 failed'
+echo      ve 5 mutantin hepsi 'caught' olmali; degilse ciktiyi getir.
+echo      Gondermeden once konsoldaki kurallarla karsilastir.
+echo   - Skor tablosu ilk anda bos gorunebilir: her oyuncu bir sonraki
+echo     girisinde kendi satirini yayimlar. Sen giris yap: satirin cikmali
+echo   - Bir mac bitir: profilde oynanan +1 olmali ^(kazandiysan skor +1^)
+echo   - Iki hesapla masa kur/katil/ayril: calismali
+echo   - Konsol: CSP ihlali OLMAMALI; F12 Network'te sayfa basliklarinda
+echo     Permissions-Policy ve Cross-Origin-Opener-Policy gorunmeli
 echo.
 pause
