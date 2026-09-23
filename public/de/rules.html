@@ -303,6 +303,33 @@
             <p data-i18n="rDailyRulesDesc">Die Austeilung des Tages wird aus dem Datum selbst erzeugt, nicht aus einem Wurf auf dem Server — jeder Spieler weltweit startet also aus derselben Position mitten in der Partie, mit denselben Karten auf denselben Händen. Auch die Form des Szenarios und die Bot-Schwierigkeit sind Funktionen des Datums. Während ein gewerteter Lauf läuft, werden deine eigenen Einstellungen übersteuert — Zugzeit, Animationsgeschwindigkeit und Regelsatz gehören dem Tag, nicht dir. Sonst würde eine mildere Einstellung auf identischem Brett eine höhere Punktzahl erkaufen, und die Bestenliste würde Vorlieben statt Reflexe sortieren.</p>
             </div>
             
+            <!-- LEGENDS (v3.18.0+) — the three modes behind the ☥ Legends button.
+            Kept here, not only on the Legends cards, so the rules page
+            (and its generated /xx/rules copies) covers every way to play. -->
+            <div class="rules-section">
+            <h2 data-i18n="rLegendsTitle">☥ Legenden</h2>
+            <p data-i18n="rLegendsDesc">Die Schaltfläche <strong>☥ Legenden</strong> im Hauptmenü öffnet drei Modi aus der ägyptischen Welt des Spiels. Klatschmuster und Bildkarten-Herausforderungen sind die von oben; jeder Modus ändert, worum du kämpfst.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rDuatRulesTitle">🌙 Die Reise durch die Duat</h2>
+            <p data-i18n="rDuatRulesDesc">Du beginnst tot: ohne Karten, während drei Schatten — Ba, Ka und Akh — alle 52 halten. Du hast <strong>drei Versuche</strong> (die drei Anch auf dem Bildschirm) und <strong>zehn Runden</strong>, um dich zurück ins Spiel zu klatschen; eine Runde ist eine Karte von jedem Schatten, der noch Karten hat. Hier setzt dich ein falscher Klatscher ohne Karten nicht aus — er kostet ein Anch. Verlierst du alle drei oder laufen die zehn Runden ab, hast du verloren. Jeder Stapel, den du nimmst, ist eine Stunde der Nacht; nimmst du den zwölften, geht die Sonne auf und du gewinnst. Gehen dir die Karten wieder aus, bist du zurück in der Duat, mit drei neuen Anch und zehn neuen Runden; die durchschrittenen Stunden bleiben durchschritten. Die Schatten sind hungriger als gewöhnliche Bots: Sie spielen eine Schwierigkeitsstufe über deiner, in der siebten Stunde, wenn Apep angreift, sogar zwei.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rTombRulesTitle">🏺 Das Grab des Pharaos</h2>
+            <p data-i18n="rTombRulesDesc">Sieben Kammern, in jeder ein Wächter, eins gegen eins. Deine nächsten <strong>drei Karten liegen offen</strong>, und du wählst, welche du legst (antippen oder Tasten 1–3) — so wird eine Herausforderung zur Entscheidung: Halte einen König für die Dame des Wächters zurück. Klatsche auf die Muster, die der Wächter vervollständigt. Ein Muster, das <strong>du</strong> vervollständigst, gehört dem Wächter — klatschst du darauf, schiebt die Falle eine deiner Karten unter den Stapel. Nimm dem Wächter alle Karten ab, um die Kammer zu erobern, und wähle dann einen von drei Schätzen für dein Deck. Erobere die siebte Kammer, die des Pharaos selbst, und du gewinnst; gehen dir die Karten aus, behält dich das Grab.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rGodsRulesTitle">⚖️ Tafel der Götter</h2>
+            <p data-i18n="rGodsRulesDesc">Ein Gott nimmt den Platz dir gegenüber ein; die beiden Spieler neben dir stehen auf deiner Seite. Der Gott hat <strong>Leben</strong>: Jeder gültige Klatscher deiner Seite verwundet ihn — deiner voll, ihrer halb — und seltenere Muster treffen härter (eine Heirat mehr als doppelt so hart wie ein Doppel). Bring sein Leben auf null, egal wer die Karten hält, oder gewinne selbst alle Karten, und der Gott fällt; sammelt er die Karten, gewinnt er. Die Macht jedes Gottes ist eine echte Regel: <strong>Bastet</strong> heilt mit jedem Stapel, den sie durch einen Klatscher nimmt, höchstens neunmal; <strong>Thoth</strong> klatscht nie falsch; eine Heirat verwundet <strong>Hathor</strong> dreifach, und fängt sie selbst eine, heilt sie; an der Tafel des <strong>Anubis</strong> verbrennt ein falscher Klatscher eine zweite Karte; <strong>Set</strong> stiehlt mit jedem Stapel, den er durch einen Klatscher nimmt, zwei Karten vom Spieler mit den meisten; <strong>Ra</strong> spielt mit allen Mustern, heilt bei halbem Leben einmal und wird schneller. Thoth, Anubis und Set schalten an ihrer Tafel je ein optionales Muster ein. Jeder Gott wird frei, sobald der vor ihm gefallen ist.</p>
+            </div>
+            
+            <div class="rules-section">
+            <h2 data-i18n="rGhostRulesTitle">👻 Geisterkarten</h2>
+            <p data-i18n="rGhostRulesDesc">An der Tafel der Götter hinterlässt jeder Klatscher deiner Seite, der einen Gott verwundet, aber nicht fällt, ihm Geisterkopien der geklatschten Karten, oben auf seinem Deck — höchstens dreizehn. Ein Geist spielt wie eine echte Karte: Er zählt für jedes Muster, und eine Geister-Bildkarte eröffnet eine Herausforderung. Aber ein Geist gehört niemandem: Wer einen Stapel gewinnt, behält nur die echten Karten, die Geister verschwinden. Eine Hand aus nichts als Geistern gilt als leer.</p>
+            </div>
             <div class="rules-section" style="border-left: 3px solid #a78bfa; background: rgba(167, 139, 250, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
             <h2 data-i18n="rPersonalityTitle">🎭 Bot-Persönlichkeiten</h2>
             <p data-i18n="rPersonalityDesc">Jeder Platz spielt anders: <strong>Blitz</strong> ist schnell und blufft oft, <strong>Chaos</strong> ist völlig unberechenbar, und <strong>Kobra</strong> ist geduldig und liegt selten falsch. Gleiche Schwierigkeit, drei verschiedene Gegner.</p>
