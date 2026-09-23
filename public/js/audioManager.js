@@ -498,7 +498,9 @@ export const AudioManager = {
         if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
 
         // Legendary unlocks get a richer, 4-note arpeggio; epic/rare get 3.
-        const notes = rarity === 'legendary'
+        const notes = rarity === 'mythic'
+            ? [523.25, 659.25, 783.99, 1046.5, 1318.51]   // C5 E5 G5 C6 E6 — the Pharaoh's Deck
+            : rarity === 'legendary'
             ? [523.25, 659.25, 783.99, 1046.5]   // C5 E5 G5 C6
             : [523.25, 659.25, 783.99];          // C5 E5 G5
         const start = this.audioCtx.currentTime;

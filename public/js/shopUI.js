@@ -3,12 +3,14 @@ import { Localization } from './localization.js?v=3';
 import { CardSkins, CARD_SKINS } from './cardSkins.js';
 import { getRankName, getSuitSymbol } from './game.js';
 import EventBus from './eventbus.js';
+import { decoratePharaohCard } from './pharaohDeck.js';
 
 // Rarity badge config — color palette + label per tier
 const RARITY_CONFIG = {
     epic:      { label: '● EPIC',      color: '#00e5ff', bg: 'rgba(0,229,255,0.2)',   border: 'rgba(0,229,255,0.3)' },
     rare:      { label: '✦ RARE',      color: '#c4b5fd', bg: 'rgba(167,139,250,0.2)', border: 'rgba(167,139,250,0.3)' },
     legendary: { label: '★ LEGENDARY', color: '#ffd700', bg: 'rgba(255,215,0,0.2)',   border: 'rgba(255,215,0,0.3)' },
+    mythic:    { label: '☥ MYTHIC',    color: '#ffe6a3', bg: 'linear-gradient(135deg, rgba(212,165,63,0.45), rgba(143,106,28,0.45))', border: 'rgba(255,214,120,0.65)' },
 };
 
 // Multiple preview cards for variety — cycles through on hover
@@ -211,7 +213,7 @@ export const ShopUI = {
             const isEquipped = equipped === skin.id;
 
             const item = document.createElement('div');
-            item.className = 'shop-item' + (isEquipped ? ' shop-item-active' : '');
+            item.className = 'shop-item' + (skin.rarity === 'mythic' ? ' shop-item-mythic' : '') + (isEquipped ? ' shop-item-active' : '');
             item.setAttribute('data-skin', skin.id);
 
             // --- Rarity badge ---
@@ -233,6 +235,7 @@ export const ShopUI = {
 
             const previewCard = PREVIEW_CARDS[0];
             const cardEl = this._buildCardElement(previewCard, skin);
+            this._decorate(cardEl, previewCard, skin);
 
             if (skin.cssClass) {
                 this._injectSkinEffects(cardEl, skin.id);
@@ -253,6 +256,7 @@ export const ShopUI = {
                     cardEl.querySelector('.card-top').textContent = `${rankStr} ${suitStr}`;
                     cardEl.querySelector('.card-center').textContent = suitStr;
                     cardEl.querySelector('.card-bottom').textContent = `${rankStr} ${suitStr}`;
+                    this._decorate(cardEl, nextCard, skin);
                 });
             }
 
@@ -286,8 +290,12 @@ export const ShopUI = {
                 action.classList.add('primary');
                 action.addEventListener('click', () => this.equip(skin.id));
             } else {
-                action.textContent = `${Localization.get('shopUnlock') || 'Unlock'} — 🪙 ${skin.cost}`;
-                if (CardSkins.getCoins() < skin.cost) {
+                // ERS-24: out of reach, the button says how far — "🪙 640 / 1000".
+                const have = CardSkins.getCoins();
+                action.textContent = have < skin.cost
+                    ? `🪙 ${have} / ${skin.cost}`
+                    : `${Localization.get('shopUnlock') || 'Unlock'} — 🪙 ${skin.cost}`;
+                if (have < skin.cost) {
                     action.classList.add('shop-locked');
                 } else {
                     action.classList.add('primary');
@@ -307,6 +315,11 @@ export const ShopUI = {
                 item.style.transform = 'translateY(0)';
             }, 50 * idx);
         });
+    },
+
+    /** A skin with art of its own (the Pharaoh's Deck) draws it on the preview. */
+    _decorate(cardEl, card, skin) {
+        if (skin && skin.art === 'pharaoh') decoratePharaohCard(cardEl, card);
     },
 
     _buildCardElement(card, skin) {

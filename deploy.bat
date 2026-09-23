@@ -1705,6 +1705,21 @@ echo       Zor %%93 -^> %%9. Kolay hala ulasilabilir, Orta gercek bir yolculuk.
 echo  201) KAPILAR: 2915 test; 28 mutantin 28'i yakalandi; Duat fuzz 2000
 echo       yolculuk temiz; smoke uc yanlis saplakta damgayi ve bitisi deniyor.
 echo.
+echo  --- v3.20.0 -- FIRAVUN DESTESI: MAGAZADA MITIK KART KAPLAMASI ---
+echo  202) YENI KAPLAMA 'Firavun Destesi': ana menu resmindeki kartlar.
+echo       Fildisi parsomen, altin cerceve, iki kenarda hiyeroglif sutunu.
+echo       K: nemesli firavun ^(cift basli, resimdeki gibi^), Q: mavi tacli
+echo       kralice, J: Anubis, A: Horus'un Gozu. 2-10 kendi takim isareti.
+echo  203) FIYAT 1000 jeton ^(en pahali kaplamanin iki kati^), yeni kademe
+echo       MYTHIC. Yetmiyorsa dugme mesafeyi gosterir: 'jeton 640 / 1000'.
+echo  204) EFEKT 'Gun dogumu': kart yigina dusunce figurun arkasinda altin
+echo       gunes buyur, cerceveden bir isik gecer; hiyerogliflerde asagi akan
+echo       isik, As'ta gozun parlamasi. Yalnizca EN USTTEKI kart hareket eder;
+echo       'hareketi azalt' ayarinda hepsi durur.
+echo  205) KAPILAR: 2945 test ^(yeni bolum 86^); kontrast olculdu: kirmizi
+echo       indeks parsomenin en koyu kenarinda 4.67:1. Ayrinti:
+echo       COUNCIL-v3.20.0-pharaoh-deck.md
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1858,5 +1873,12 @@ echo   - Duat'a gir: HUD'da uc altin ankh olmali. Desen yokken vur: bir ankh
 echo     koyulasip cizilmeli, 'Ammit bir ankh aldi: 2 kaldi' yazmali
 echo   - Uc kez yanlis vur: ortada 'KAYBETTIN' damgasi, sonra mac sonu ekrani
 echo   - Orta zorlukta oyna: golgeler belirgin sekilde daha hizli vurmali
+echo.
+echo  --- v3.20.0 ------------------------------------------------
+echo   - Magaza: en sonda altin cerceveli 'Firavun Destesi' ^(MYTHIC^),
+echo     onizlemede Horus'un Gozu. Ustune gel: K, Q, J figurleri sirayla
+echo   - Jetonun yetmiyorsa dugmede 'mevcut / 1000' yazmali
+echo   - Satin al + kusan, botlarla oyna: kartin dusunce altin gunes, cerceveden
+echo     isik; alttaki kartlar sakin kalmali. Telefonda takilma olmamali
 echo.
 pause

@@ -15,7 +15,8 @@ import EventBus from './eventbus.js';
 // it doesn't.
 
 // Rarity tiers used in shop UI badges
-// 'common' = free/no badge, 'epic' = mid-tier, 'rare' = premium, 'legendary' = ultra-premium
+// 'common' = free/no badge, 'epic' = mid-tier, 'rare' = premium, 'legendary' = ultra-premium,
+// 'mythic' = the one skin above them (v3.20.0, the Pharaoh's Deck)
 //
 // color/color2/color3/particleCount drive the in-game particle/glow effects
 // (see ui.js::_injectCardSkinFX and shopUI.js's preview rendering). This used
@@ -37,6 +38,12 @@ export const CARD_SKINS = [
     { id: 'phantom',     nameKey: 'skinPhantomName',     cost: 350, cssClass: 'card-skin-phantom',     rarity: 'legendary', color: '79, 209, 197', color2: '100, 255, 218', particleCount: 8 },
     { id: 'holographic', nameKey: 'skinHolographicName', cost: 400, cssClass: 'card-skin-holographic', rarity: 'legendary', color: '167, 139, 250', color2: '78, 205, 196', color3: '255, 107, 107', particleCount: 10 },
     { id: 'obsidian',    nameKey: 'skinObsidianName',    cost: 500, cssClass: 'card-skin-obsidian',    rarity: 'legendary', color: '180, 180, 180', color2: '255, 255, 255', particleCount: 6 },
+    // v3.20.0 (council ERS-24) — the deck painted into the lobby art. No
+    // `color`: it carries none of the particle/orbit FX above; its effect
+    // (the sunrise, the glyph light) is its own, drawn by pharaohDeck.js and
+    // style.css, and only the top card of the pile moves. `art` names the
+    // decorator that draws its figures. 1 000: twice the dearest skin.
+    { id: 'pharaoh',     nameKey: 'skinPharaohName',     cost: 1000, cssClass: 'card-skin-pharaoh',    rarity: 'mythic',    art: 'pharaoh' },
 ];
 
 const COINS_KEY = 'ers_coins';
@@ -169,6 +176,12 @@ export const CardSkins = {
     getSkinClass(skinId) {
         const skin = CARD_SKINS.find((s) => s.id === skinId);
         return skin ? skin.cssClass : '';
+    },
+
+    /** Which decorator draws a skin's own art ('pharaoh'), or null. */
+    getSkinArt(skinId) {
+        const skin = CARD_SKINS.find((s) => s.id === skinId);
+        return (skin && skin.art) || null;
     },
 
     // Single source of truth for a skin's particle/glow FX data — ui.js and

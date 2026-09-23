@@ -9,6 +9,7 @@ import { LOADING_WATCHDOG_MS } from './errorCodes.js';
 import { MatchContext } from './matchContext.js';
 import { cleanName } from './safeText.js';
 import { isGhost, realCount, ghostCount } from './ghostCards.js';
+import { decoratePharaohCard } from './pharaohDeck.js';
 
 export const UIManager = {
     initialized: false,
@@ -871,6 +872,8 @@ export const UIManager = {
                 div.classList.add(skinClass);
                 // Inject live visual effects into gameplay cards
                 this._injectCardSkinFX(div, Settings.config.equippedCardSkin);
+                // v3.20.0 — a skin with figures of its own (the Pharaoh's Deck).
+                if (CardSkins.getSkinArt(Settings.config.equippedCardSkin) === 'pharaoh') decoratePharaohCard(div, card);
             }
         }
 
