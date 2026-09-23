@@ -85,12 +85,19 @@ export const MatchContext = {
      * into.
      */
     ownsElimination: false,
+    /**
+     * v3.19.2 — true while a mode charges for a wrong slap from an empty hand
+     * itself (the Duat: Ammit takes a round). The engine's own empty-hand
+     * slap lock (council ERS-22) stands aside then.
+     */
+    pricesWrongSlaps: false,
 
     reset() {
         this.difficultyOverride = null;
         this.scored = false;
         this.seatNames = null;
         this.ownsElimination = false;
+        this.pricesWrongSlaps = false;
     }
 };
 

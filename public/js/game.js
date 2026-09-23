@@ -126,6 +126,7 @@ export const GameState = {
             if (this.turnTransitionTimeout) clearTimeout(this.turnTransitionTimeout);
             EventBus.emit('turnChanged', -1);
             this.turnTransitionTimeout = setTimeout(() => { 
+                if (this.gameOver) return; // v3.19.2: the match ended inside this second
                 this.challengeResolverActive = false;
                 this.winPile(this.challenge.attackerId, 'challenge'); 
             }, 1000);
@@ -182,6 +183,10 @@ export const GameState = {
         this.gameOver = false;
         this.humanEliminated = false;
         this.playCount = 0;
+        // v3.19.2 (council ERS-22): which pile each seat last slapped wrong
+        // with an EMPTY hand. See slap().
+        this.pileSeq = 0;
+        this.emptySlapLock = [null, null, null, null];
         this.lastPlayTime = Date.now();
         this.lastSlapWinTime = 0;
         this.stats = {
@@ -395,6 +400,7 @@ export const GameState = {
                 if (this.turnTransitionTimeout) clearTimeout(this.turnTransitionTimeout);
                 EventBus.emit('turnChanged', -1);
                 this.turnTransitionTimeout = setTimeout(() => { 
+                    if (this.gameOver) return; // v3.19.2: the match ended inside this second
                     this.challengeResolverActive = false;
                     this.winPile(this.challenge.attackerId, 'challenge'); 
                 }, 1000);
@@ -469,6 +475,7 @@ export const GameState = {
                     if (this.turnTransitionTimeout) clearTimeout(this.turnTransitionTimeout);
                     EventBus.emit('turnChanged', -1);
                     this.turnTransitionTimeout = setTimeout(() => { 
+                        if (this.gameOver) return; // v3.19.2: the match ended inside this second
                         this.challengeResolverActive = false;
                         this.winPile(this.challenge.attackerId, 'challenge'); 
                     }, 1000);
@@ -548,6 +555,17 @@ export const GameState = {
         // Slap Grace Period to prevent double-slap race conditions penalty
         if (Date.now() - this.lastSlapWinTime < 500) return;
 
+        // v3.19.2 — council ERS-22, option (c). A wrong slap from an empty hand
+        // has nothing to burn, so it was free: a seat that was out could slap on
+        // every card and take the first pattern at the reaction floor, which a
+        // player with cards pays a card per miss to try. Now ONE wrong slap from
+        // an empty hand ends that seat's slapping on the current pile; the next
+        // pile starts clean. "Empty" means no real card — a hand of ghosts is
+        // emptied the moment it forms, so it is always empty here. A mode that
+        // prices wrong slaps itself (the Duat: Ammit takes a round) is exempt.
+        const emptyHand = realCount(this.players[playerId]) === 0;
+        if (emptyHand && !MatchContext.pricesWrongSlaps && this.emptySlapLock && this.emptySlapLock[playerId] === this.pileSeq) return;
+
         EventBus.emit('slapAttempt', playerId);
 
         // Check reaction speed
@@ -580,6 +598,8 @@ export const GameState = {
                 this.streaks[playerId] = 0;
                 GameState.streaks = this.streaks;
 
+                if (emptyHand && this.emptySlapLock) this.emptySlapLock[playerId] = this.pileSeq;
+
                 // Burn a card: goes into the separate burnPile, NOT the normal pile.
                 if (this.players[playerId].length > 0) {
                     const burned = this.players[playerId].shift();
@@ -595,6 +615,7 @@ export const GameState = {
                             if (this.turnTransitionTimeout) clearTimeout(this.turnTransitionTimeout);
                             EventBus.emit('turnChanged', -1);
                             this.turnTransitionTimeout = setTimeout(() => { 
+                                if (this.gameOver) return; // v3.19.2: the match ended inside this second
                                 this.challengeResolverActive = false;
                                 this.winPile(this.challenge.attackerId, 'challenge'); 
                             }, 1000);
@@ -616,6 +637,13 @@ export const GameState = {
     },
 
     winPile(winnerId, reason, indices = []) {
+        // v3.19.2 — found by tools/fuzz-pantheon.mjs (seed 5138, Anubis): a
+        // challenge's 1-second award timer outlived the match. A slap inside
+        // that second ended the game, winPile returned before clearing the
+        // timer, and it fired winPile(null) into a finished table — a
+        // TypeError on `players[null]`. The timers now stand down when the
+        // match is over; and a seat that does not exist wins nothing.
+        if (!this.players[winnerId]) return;
         this.challengeResolverActive = false;
         const reactionTime = (reason === 'slap') ? (Date.now() - this.lastPlayTime) : null;
         
@@ -704,6 +732,7 @@ export const GameState = {
 
         this.pile = [];
         this.burnPile = [];
+        this.pileSeq = (this.pileSeq || 0) + 1;   // a new pile: every empty-hand lock is stale
         this.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
         this.activePlayerId = winnerId;
         this.lastSlapWinTime = Date.now();

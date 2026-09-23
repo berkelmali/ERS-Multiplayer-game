@@ -119,6 +119,9 @@ export const DuatMode = {
         this._ai = AIController;
         MatchContext.seatNames = [null, SHADES[0], SHADES[1], SHADES[2]];
         MatchContext.ownsElimination = true;
+        // v3.19.2: the Duat prices a wrong slap itself (Ammit takes a round),
+        // so the engine's empty-hand slap lock (ERS-22) stands aside here.
+        MatchContext.pricesWrongSlaps = true;
         document.getElementById('legends-panel').classList.remove('active');
         document.body.classList.remove('menu-screen');
         document.body.classList.add('game-screen');
@@ -225,6 +228,7 @@ export const DuatMode = {
         if (this._gm) this._gm.rematchOptions = null;
         MatchContext.seatNames = null;
         MatchContext.ownsElimination = false;
+        MatchContext.pricesWrongSlaps = false;
         document.body.classList.remove('duat-journey');
         if (this.hud) this.hud.hidden = true;
         document.body.style.removeProperty('--duat-night');

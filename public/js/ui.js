@@ -1228,7 +1228,7 @@ export const UIManager = {
 
                 // Send to network
                 if (GameState.isMultiplayer) {
-                    import('./multiplayerMode.js').then(m => m.MultiplayerMode.sendEmoji(emj));
+                    import('./multiplayerMode.js?v=6').then(m => m.MultiplayerMode.sendEmoji(emj));
                 }
             };
             emojiMenu.appendChild(span);
@@ -1295,7 +1295,7 @@ export const UIManager = {
 
                 // Send to network
                 if (GameState.isMultiplayer) {
-                    import('./multiplayerMode.js').then(m => m.MultiplayerMode.sendEmoji(val));
+                    import('./multiplayerMode.js?v=6').then(m => m.MultiplayerMode.sendEmoji(val));
                 }
             };
             chatMenu.appendChild(span);
@@ -1421,10 +1421,10 @@ export const UIManager = {
 
     showDefeatNotice() {
         // Double check: Only show if I am actually the one eliminated
-        import('./multiplayerMode.js').then(module => {
+        import('./multiplayerMode.js?v=6').then(module => {
             const mm = module.MultiplayerMode;
             const myActualIndex = mm.toActual(0);
-            import('./firebaseSync.js').then(sync => {
+            import('./firebaseSync.js?v=7').then(sync => {
                 const me = sync.FirebaseSync.roomData?.players?.[myActualIndex];
                 if (!me || !me.eliminated) return;
 

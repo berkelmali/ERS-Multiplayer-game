@@ -11,7 +11,7 @@ import { NetQuality } from "./netQuality.js";
 import { ConnectionBanner } from "./connectionBanner.js";
 import { Localization } from "./localization.js?v=3";
 import { AuthSystem } from "./auth.js";
-import { applySlapWin, applySlapBurn, awardChallenge, dropHollowHand, getNextPlayer as nextSeat } from "./slapOutcome.js";
+import { applySlapWin, applySlapBurn, awardChallenge, dropHollowHand, getNextPlayer as nextSeat, emptySlapLocked, orphanedHostHeir, isBotSeat, TURN_TIMEOUT_MS } from "./slapOutcome.js";
 import { applyGodSlapWin, applyGodBurn } from "./pantheonRoom.js";
 import * as FairSlap from "./fairSlap.js";
 import { registerProtocol } from "./roomProtocol.js";
@@ -83,6 +83,13 @@ export const FirebaseSync = {
             const connectedRef = dbRef(rtdb, ".info/connected");
 
             this.unsubConnected = onValue(connectedRef, (snap) => {
+                // v3.19.2 (council ERS-23): a client that has lost the
+                // database stops driving the room — its bot, timeout and
+                // conversion timers would otherwise fire into writes that the
+                // SDK queues and replays on reconnect, into a room that may
+                // have a new host by then (MultiplayerMode.drivesRoom).
+                this.isConnected = snap.val() === true;
+                EventBus.emit('roomConnection', this.isConnected);
                 if (snap.val() === true) {
                     // Connection established or re-established
                     onDisconnect(myPlayerRef).update({ status: 'disconnected', disconnectedAt: rtdbServerTimestamp() }).catch(e => console.warn("onDisconnect failed", e));
@@ -415,6 +422,11 @@ export const FirebaseSync = {
                 const amIHost = data.hostId === AuthSystem.currentUser?.uid;
                 if (amIHost && data.status === 'finished') {
                     setTimeout(async () => {
+                        // ERS-23: re-read at fire time, not at scheduling — a
+                        // client that lost the connection or the host role in
+                        // these 5 s must not delete the room.
+                        const now = this.roomData;
+                        if (this.isConnected === false || !now || now.hostId !== AuthSystem.currentUser?.uid || now.status !== 'finished') return;
                         try {
                             const parts = this.roomId.split('_');
                             if (parts.length >= 2) {
@@ -471,6 +483,64 @@ export const FirebaseSync = {
             const myPlayerRef = dbRef(rtdb, `gameRooms/${this.roomId}/players/${this.localPlayerIndex}`);
             onDisconnect(myPlayerRef).cancel().catch(e => console.warn("Failed to cancel onDisconnect", e));
         }
+    },
+
+    /**
+     * v3.19.2 — host failover (slapOutcome.orphanedHostHeir). Called on every
+     * snapshot by MultiplayerMode; cheap until this client is the heir, and
+     * then one transaction that re-checks the same rule on the server's copy,
+     * so two clients can never both take the room.
+     */
+    /** A human's turn online (ms): the host's timer and the timeout transaction share it. */
+    TURN_TIMEOUT_MS,
+
+    /**
+     * ERS-23 fence: may THIS client write for seat `seatIndex`? A human seat
+     * writes for itself; a bot seat only through the room's current host.
+     */
+    _mayDrive(data, seatIndex) {
+        const p = data.players && data.players[seatIndex];
+        if (!p || !isBotSeat(p)) return true;
+        return data.hostId === AuthSystem.currentUser?.uid;
+    },
+
+    /**
+     * v3.19.2 (council ERS-23) — "every human is out", as a transaction. It
+     * was a blind update(): an offline ex-host's queued copy could end a live
+     * match on reconnect. Re-checked on the server's copy: this client is the
+     * host, and every connected human is ELIMINATED (an empty hand is not out).
+     */
+    endIfNoHumanLeft() {
+        const uid = AuthSystem.currentUser?.uid;
+        if (!this.roomId || !uid) return Promise.resolve();
+        const roomRef = dbRef(rtdb, `gameRooms/${this.roomId}`);
+        return runTransaction(roomRef, (data) => {
+            if (!data || data.gameOver || !data.gameStarted || !data.players) return;
+            if (data.hostId !== uid) return;
+            const humans = data.players.filter(p => p && !isBotSeat(p) && p.status !== 'disconnected');
+            if (humans.length === 0 || humans.some(p => !p.eliminated)) return;
+            data.gameOver = true;
+            data.status = 'finished';
+            data.winnerId = -1;   // no human won
+            return data;
+        }).catch(e => console.warn('end-of-match (no human left) failed', e));
+    },
+
+    claimOrphanedHost(data) {
+        const uid = AuthSystem.currentUser?.uid;
+        if (!this.roomId || !uid || !data || data.gameOver || this._claimingHost) return;
+        const heir = orphanedHostHeir(data);
+        if (!heir || heir.uid !== uid) return;
+        this._claimingHost = true;
+        const roomRef = dbRef(rtdb, `gameRooms/${this.roomId}`);
+        return runTransaction(roomRef, (room) => {
+            if (!room || room.gameOver || !room.players) return;
+            const h = orphanedHostHeir(room);
+            if (!h || h.uid !== uid) return;
+            room.hostId = h.uid;
+            room.hostUsername = h.name;
+            return room;
+        }).catch(e => console.warn('host failover failed', e)).finally(() => { this._claimingHost = false; });
     },
 
     async pushUpdate(updates) {
@@ -584,9 +654,22 @@ export const FirebaseSync = {
             await runTransaction(roomRef, (data) => {
                 if (!data || data.gameOver) return;
                 if (!data.players || !data.players[playerIndex]) return;
+                // v3.19.2 (ERS-23 fence): a bot seat is driven by the host
+                // alone. Checked on the server's copy, so a write queued by a
+                // host that has since been replaced aborts when it replays.
+                if (!this._mayDrive(data, playerIndex)) return;
 
-                // If they are already eliminated, they can't slap
-                if (data.players[playerIndex].eliminated) return;
+                // v3.19.2 — an eliminated seat MAY slap. This line refused it
+                // ("If they are already eliminated, they can't slap") and was
+                // the fifth lock on Slap Back In, the one v3.11.0's four-lock
+                // sweep missed: the rules panel promises the comeback in four
+                // languages, _settleContest was opened for it, applySlapWin
+                // stamps it — and not one eliminated player online could
+                // reach any of it. A wrong slap from an empty hand costs
+                // nothing (applySlapBurn: nothing to burn), exactly as offline —
+                // ONCE per pile: council ERS-22 (c). A second attempt on the
+                // same pile after a miss from an empty hand is refused here.
+                if (emptySlapLocked(data, playerIndex)) return;
 
                 const serverNow = NetQuality.serverNow();
                 const pile = data.pile || [];
@@ -645,6 +728,10 @@ export const FirebaseSync = {
         const winner = FairSlap.resolveContest(contest);
         data.slapContest = null;
         if (!winner) return false;
+        // v3.19.2 — defence in depth: a window whose pile is gone (awarded by
+        // a path that did not settle it first) awards nothing. An empty or
+        // changed pile is no longer the pattern the claimants slapped.
+        if (!this.evaluateSlap(data.pile || [])) return false;
 
         // Publish the race result so the UI can show "won by 12ms". Written
         // even when the winner turns out to be unavailable, so the log is honest.
@@ -748,6 +835,7 @@ export const FirebaseSync = {
             await runTransaction(roomRef, (data) => {
                 if (!data || data.gameOver || !data.gameStarted) return;
                 if (!data.players || !data.players[playerIndex]) return;
+                if (!this._mayDrive(data, playerIndex)) return;   // ERS-23 fence: bots are the host's
 
                 // The pile is under dispute for the length of an open contest
                 // window. Letting a card land on top of it mid-arbitration
@@ -760,6 +848,15 @@ export const FirebaseSync = {
                 if (data.slapContest && !FairSlap.isExpired(data.slapContest, NetQuality.serverNow())) {
                     return;
                 }
+                // v3.19.2 — a window that has closed but not been settled yet
+                // (its close timer is ~10 ms behind the deadline) is settled
+                // FIRST: the slap was earlier than this card, so the pile is
+                // the claimant's and this play is superseded. It used to land
+                // on the disputed pile — and when that card ended a challenge,
+                // the pile went to the attacker and the contest then awarded
+                // the EMPTY table to the slapper, turn and god damage included
+                // (host fuzzer, seed 19).
+                if (data.slapContest && this._settleContest(data, NetQuality.serverNow())) return data;
 
                 if (data.activePlayerId !== playerIndex) return data;
                 if (this._passIfUnable(data, playerIndex)) return data;
@@ -907,6 +1004,10 @@ export const FirebaseSync = {
                 if (!data || !data.players || !data.players[playerIndex]) return;
                 const p = data.players[playerIndex];
                 if (p.uid.startsWith('bot_')) return; // Already converted
+                // ERS-23 fence: the host converts a departed seat; a player may
+                // convert their own. Nobody else — and not an ex-host replaying.
+                const me = AuthSystem.currentUser?.uid;
+                if (data.hostId !== me && p.uid !== me) return;
 
                 // RACE CONDITION DEFENSE: If player just reconnected and went online, abort bot conversion!
                 if (p.status === 'online') return;
@@ -960,6 +1061,18 @@ export const FirebaseSync = {
             await runTransaction(roomRef, (data) => {
                 if (!data || data.gameOver || !data.gameStarted) return;
                 if (!data.players || !data.players[playerIndex]) return;
+                // v3.19.2 (council ERS-23): only the CURRENT host times a turn
+                // out, and only a turn that has really run its 15 s — both read
+                // from the server's copy, so a timeout queued by an offline
+                // ex-host cannot burn a card from a live match when it replays.
+                if (data.hostId !== AuthSystem.currentUser?.uid) return;
+                if (NetQuality.serverNow() - (data.lastPlayTime || 0) < TURN_TIMEOUT_MS) return;
+                // v3.19.2 — like a play: a timeout waits out an open slap
+                // window, and settles a closed one first. A defender with no
+                // cards timing out mid-window used to hand the disputed pile to
+                // the attacker under the claimants' hands.
+                if (data.slapContest && !FairSlap.isExpired(data.slapContest, NetQuality.serverNow())) return;
+                if (data.slapContest && this._settleContest(data, NetQuality.serverNow())) return data;
                 if (data.activePlayerId !== playerIndex) return data;
                 if (this._passIfUnable(data, playerIndex)) return data;
 

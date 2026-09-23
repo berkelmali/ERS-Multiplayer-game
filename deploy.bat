@@ -1646,6 +1646,51 @@ echo       sayilmaz; sayfa acildiktan sonraki ilk turda da tur sayaci var;
 echo       '1 ghost cards' yazimi duzeldi.
 echo  186) KAPILAR: 2800 test, 9 senaryo, 3 mutasyonun 3'u yakalandi.
 echo.
+echo  --- v3.19.2 -- IKINCI HATA AVI: HOSTUN KENDI ISTEMCISI ---
+echo  187) CEVRIMICI 'SAPLAYARAK GERI DON' HIC CALISMIYORDU: elenen oyuncunun
+echo       saplagi transaction'in ilk satirinda reddediliyordu ^(v3.11.0'in
+echo       kacirdigi besinci kilit^). Artik elenen oyuncu vurabilir; dogru
+echo       saplak onu yiginla birlikte oyuna geri getirir.
+echo  188) KONSEY ERS-22 ^(c^): kartsiz yanlis saplak bedavaydi; elenen biri
+echo       her karta vurup deseni ilk yakalayabiliyordu. Artik elinde kart
+echo       yokken yigin basina BIR yanlis hakkin var, yeni yiginda sifirlanir.
+echo       Duat muaf: orada Ammit zaten bir tur aliyor.
+echo  189) G2-G4: ikinci elenmede yenilgi ekrani cikmiyordu; hostun bot
+echo       surucusu kartsiz koltukta hata verip diger botlari atliyordu;
+echo       cevrimdisi bir itiraz zamanlayicisi mac bittikten sonra calisiyordu.
+echo  190) K1 KRITIK: dort modul iki farkli adresle yukleniyordu ^(ornek:
+echo       firebaseSync.js ve firebaseSync.js?v=7^), yani ayni dosyanin IKI
+echo       kopyasi. Hostun sure sayaci dinlemeyen kopyaya soruyordu: cevrimici
+echo       oynamayan bir oyuncu HIC zaman asimina ugramiyordu. Bir test artik
+echo       her import'u tarar; bir modul iki adresle yuklenirse kirilir.
+echo  191) K2/K3: ilk cevrimici mactan cikinca ui.js'in oturum boyu dinleyicisi
+echo       siliniyordu ^(yigin cizimi, itiraz bandi, yakilan sayisi, baglanti
+echo       bildirimleri^); sonraki maclar onsuz oynaniyordu. Dinleyiciler artik
+echo       oda dinleyicisinden ONCE kurulur ve yalnizca kendileri kaldirilir.
+echo  192) K4: 'butun insanlar elendi' kontrolu ELI BOS oyuncuyu elenmis
+echo       sayiyordu: son kartini oynayan oyuncunun maci o yarim saniyede
+echo       'kimse kazanamadi' ile bitiyordu. Artik yalnizca elenme bayragi.
+echo  193) K5: saplak penceresi kapanip henuz sonuclanmamisken ^(~10 ms^)
+echo       oynanan kart tartismali yigina dusuyordu; itiraz bitince pencere
+echo       BOS masayi saplayana veriyordu ^(sira ve tanri hasari dahil^).
+echo       Artik once pencere sonuclanir; bos masa kimseye verilmez.
+echo  194) K6 ONEMLI ^(eskiden beri^): baglantisi KOPAN host ^(telefon kilitlendi,
+echo       ag gitti^) host olarak kaliyordu. Botlari yalnizca host oynattigi
+echo       icin oda bir sonraki bot sirasinda SONSUZA DEK donuyordu. Artik
+echo       bagli ilk oyuncu odayi devralir ^(transaction ile; kural degisikligi
+echo       YOK, deploy-rules GEREKMEZ^).
+echo  195) KONSEY ERS-23 ^(5-0, Guclu^): eski host CITLENDI. Bot karti/saplagi,
+echo       zaman asimi, 'herkes elendi' ve bota cevirme yalnizca SIMDIKI
+echo       hosttan gecer ^(sunucudaki kopyada kontrol^); zaman asimi 15 sn
+echo       dolmadan gecmez; baglantisini kaybeden host hicbir sey surmez.
+echo  196) KURALLAR PANELI ^(4 dil^): 'Kartin yokken yanlis saplak seni bir
+echo       sonraki yigina kadar disarida birakir. Cevrimicide tum insan
+echo       oyuncular elenince mac biter.'
+echo  197) KAPILAR: fuzzer dort modda ^(cevrimdisi, Duat, oda, host istemcisi^)
+echo       + 34 sabit senaryo; tools\fuzz-mutants.mjs 26 mutantin 26'sini
+echo       yakaladi. 1200 host, 1800 oda, 3000 cevrimdisi, 2000 Duat maci:
+echo       temiz. 2891 test. Ayrinti: COUNCIL-v3.19.2-bughunt2.md
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1779,5 +1824,19 @@ echo     hayalet icin 'A ghost card vaporized' ^(TR: 'Bir hayalet kart^)
 echo     yazmali, '1 ghost cards' DEGIL
 echo   - COK OYUNCULU ^(iki hesap^): bir mac bitir; masa hic takilmamali.
 echo     Takilirsa F12 konsolunda 'forced turn pass' satiri var mi, bak
+echo.
+echo  --- v3.19.2 ------------------------------------------------
+echo   - COK OYUNCULU ^(iki hesap^): elen, sonra desen gelince vur: yiginla
+echo     GERI DONMELISIN
+echo   - Elenmisken desen YOKKEN vur: o yigin boyunca tekrar vuramamalisin;
+echo     yeni yigin gelince yine vurabilmelisin
+echo   - Siran gelince 15 sn oynama: host seni zaman asimina ugratmali
+echo   - Maci bitir, menuye don, YENI bir cevrimici mac ac: yigin ve itiraz
+echo     bandi normal cizilmeli, 'baglanti koptu' bildirimi calismali
+echo   - HOST TESTI: host sekmesinde F12 ^> Network ^> Offline, ~60 sn bekle:
+echo     diger oyuncunun maci DEVAM etmeli ^(botlar oynamali^). Sonra Online:
+echo     eski host normal oyuncu olarak donmeli, masa bozulmamali
+echo   - Kurallar ^> Izleyici Modu: yeni iki cumle 4 dilde gorunmeli
+echo   - Istege bagli: npm run fuzz:mutants ^(26/26 'caught' olmali^)
 echo.
 pause

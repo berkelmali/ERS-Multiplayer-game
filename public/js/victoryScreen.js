@@ -542,7 +542,7 @@ export const VictoryScreen = {
         document.body.classList.add('menu-screen');
         this.screenVictory.classList.remove('active');
 
-        import('./tableManager.js').then(tm => {
+        import('./tableManager.js?v=3').then(tm => {
             tm.TableManager.resetToWaiting().then(() => {
                 import('./lobbyUI.js').then(module => {
                     module.LobbyUI.enterWaitingRoom(tm.TableManager.currentTableId, false);

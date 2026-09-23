@@ -74,7 +74,7 @@ export const ProfileUI = {
 
                 let opponents = ['Bot 1', 'Bot 2', 'Bot 3'];
                 if (isMulti) {
-                    import('./firebaseSync.js').then(sync => {
+                    import('./firebaseSync.js?v=7').then(sync => {
                         const FirebaseSync = sync.FirebaseSync;
                         if (FirebaseSync.roomData && FirebaseSync.roomData.players) {
                             opponents = FirebaseSync.roomData.players

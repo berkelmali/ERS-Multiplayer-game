@@ -1,6 +1,6 @@
 import { GameState } from './game.js';
 import { FirebaseSync } from './firebaseSync.js?v=7';
-import { Localization } from './localization.js';
+import { Localization } from './localization.js?v=3';
 import { getRankName, getSuitSymbol } from './game.js';
 import { BotConfig } from './ai.js';
 import { godConfig } from './pantheon.js';
@@ -41,6 +41,10 @@ export const MultiplayerMode = {
         if (logEl) logEl.innerHTML = '';
 
         this.syncListener = (data) => {
+            // v3.19.2 — before anything that asks "am I the host?": a host
+            // who dropped without closing the tab is replaced by the first
+            // connected human (slapOutcome.orphanedHostHeir).
+            FirebaseSync.claimOrphanedHost(data);
             this.checkBotTurn(data);
             this.checkBotSlaps(data);
             this.checkPlayerDisconnections(data);
@@ -86,17 +90,26 @@ export const MultiplayerMode = {
             if (playerId === 0 && GameState.stats) {
                 GameState.stats.resurrections++;
             }
+            // v3.19.2 — back in, so a SECOND elimination must show the defeat
+            // screen again. The flag was set once and never cleared.
+            if (playerId === 0) this.eliminationShown = false;
         };
 
-        import('./eventbus.js').then(module => {
-            module.default.on('gameSynced', this.syncListener);
-            module.default.on('invalidSlap', this.emojiBurnHandler);
-            module.default.on('pileWon', this.emojiWinHandler);
-            module.default.on('gameOver', this.gameOverListener);
-            module.default.on('pileWon', this.pileWonStatListener);
-            module.default.on('invalidSlap', this.invalidSlapStatListener);
-            module.default.on('resurrected', this.resurrectedStatListener);
-        });
+        // v3.19.2 — registered NOW, before the room listener below. These used
+        // to wait for a dynamic import() of eventbus.js (already imported at
+        // the top of this file), so a snapshot delivered before that import
+        // settled — a cached room, or the fuzzer's in-memory RTDB — reached
+        // nobody: the host scheduled no bot move and armed no turn timer, and
+        // an idle first turn sat there until some other write happened.
+        EventBus.on('gameSynced', this.syncListener);
+        EventBus.on('invalidSlap', this.emojiBurnHandler);
+        EventBus.on('pileWon', this.emojiWinHandler);
+        EventBus.on('gameOver', this.gameOverListener);
+        EventBus.on('pileWon', this.pileWonStatListener);
+        EventBus.on('invalidSlap', this.invalidSlapStatListener);
+        EventBus.on('resurrected', this.resurrectedStatListener);
+        this.connectionListener = (connected) => { if (!connected) this.standDown(); };
+        EventBus.on('roomConnection', this.connectionListener);
 
         FirebaseSync.listenToRoom(roomId, playerIndex);
     },
@@ -114,15 +127,19 @@ export const MultiplayerMode = {
         Object.values(this.conversionTimeouts).forEach(clearTimeout);
         this.conversionTimeouts = {};
         if (this.syncListener) {
-            import('./eventbus.js').then(module => {
-                module.default.off('gameSynced', this.syncListener);
-                module.default.off('invalidSlap', this.emojiBurnHandler);
-                module.default.off('pileWon', this.emojiWinHandler);
-                if (this.gameOverListener) module.default.off('gameOver', this.gameOverListener);
-                module.default.off('pileWon', this.pileWonStatListener);
-                module.default.off('invalidSlap', this.invalidSlapStatListener);
-                module.default.off('resurrected', this.resurrectedStatListener);
-            });
+            // Synchronously, like start(): the deferred version read
+            // this.syncListener AFTER the line below had nulled it, so the
+            // old sync listener was never removed and every rematch added one
+            // more — each snapshot then scheduled the bots twice, three times...
+            EventBus.off('gameSynced', this.syncListener);
+            EventBus.off('invalidSlap', this.emojiBurnHandler);
+            EventBus.off('pileWon', this.emojiWinHandler);
+            if (this.gameOverListener) EventBus.off('gameOver', this.gameOverListener);
+            EventBus.off('pileWon', this.pileWonStatListener);
+            EventBus.off('invalidSlap', this.invalidSlapStatListener);
+            EventBus.off('resurrected', this.resurrectedStatListener);
+            if (this.connectionListener) EventBus.off('roomConnection', this.connectionListener);
+            this.connectionListener = null;
             this.syncListener = null;
             this.gameOverListener = null;
         }
@@ -139,7 +156,7 @@ export const MultiplayerMode = {
             const isBot = playerObj && playerObj.uid.startsWith('bot_');
 
             import('./auth.js').then(auth => {
-                const amIHost = FirebaseSync.roomData.hostId === auth.AuthSystem.currentUser.uid;
+                const amIHost = this.drivesRoom(FirebaseSync.roomData, auth.AuthSystem.currentUser);
                 if (isBot && amIHost) {
                     this.executePlay(visualPlayerId);
                 }
@@ -225,6 +242,29 @@ export const MultiplayerMode = {
         });
     },
 
+    /**
+     * v3.19.2 (council ERS-23) — does this client drive the room right now?
+     * The host, and only while it is connected: a host that lost the database
+     * stops (its timers are cleared on 'roomConnection' false) and resumes on
+     * the next snapshot if the room is still its own.
+     */
+    drivesRoom(data, user) {
+        return !!(data && user && data.hostId === user.uid && FirebaseSync.isConnected !== false);
+    },
+
+    /** Stops every timer this client runs as the host. */
+    standDown() {
+        Object.values(this.botTimeouts).forEach(clearTimeout);
+        Object.values(this.botSlapTimeouts).forEach(clearTimeout);
+        Object.values(this.conversionTimeouts).forEach(clearTimeout);
+        this.botTimeouts = {};
+        this.botSlapTimeouts = {};
+        this.conversionTimeouts = {};
+        if (this.timeoutWatcher) clearTimeout(this.timeoutWatcher);
+        this.timeoutWatcher = null;
+        this.timeoutLocks = {};
+    },
+
     toActual(visualIndex) {
         return (visualIndex + this.localPlayerIndex) % 4;
     },
@@ -238,7 +278,7 @@ export const MultiplayerMode = {
     checkBotTurn(data) {
         if (!data || !data.players || !data.players[0]) return;
         import('./auth.js').then(auth => {
-            const amIHost = data.hostId === auth.AuthSystem.currentUser.uid;
+            const amIHost = this.drivesRoom(data, auth.AuthSystem.currentUser);
             if (!amIHost || !data.gameStarted || data.gameOver) return;
 
             const activeActual = data.activePlayerId;
@@ -272,7 +312,8 @@ export const MultiplayerMode = {
     checkBotSlaps(data) {
         if (!data || !data.pile || data.pile.length === 0) return;
         import('./auth.js').then(auth => {
-            const amIHost = data.hostId === auth.AuthSystem.currentUser.uid;
+            const me = auth.AuthSystem.currentUser;
+            const amIHost = this.drivesRoom(data, me);
             if (!amIHost || !data.gameStarted || data.gameOver) return;
 
             const validSlap = FirebaseSync.evaluateSlap(data.pile);
@@ -292,6 +333,7 @@ export const MultiplayerMode = {
                             this.botSlapTimeouts[visualId] = setTimeout(async () => {
                                 const drift = Date.now() - scheduledTime - delay;
                                 if (drift > 2000) return; // Stale suspension slap
+                                if (!this.drivesRoom(FirebaseSync.roomData, me)) return; // ERS-23: no longer the host
                                 
                                 if (FirebaseSync.evaluateSlap(FirebaseSync.roomData.pile)) {
                                     FirebaseSync.pushSlapAttempt({ playerIndex: idx });
@@ -300,12 +342,17 @@ export const MultiplayerMode = {
                         }
                     } else if (data.pile.length > 0) {
                         // False Slap Probability Override
-                        if (Math.random() < config.falseSlap && data.players[idx].cards.length > 0) {
+                        // v3.19.2 — RTDB stores no empty array: a bot that has just
+                        // played its last card has NO `cards` field until the next
+                        // award marks it out, and `.length` of undefined threw
+                        // here, dropping every later bot's slap for that snapshot.
+                        if (Math.random() < config.falseSlap && (data.players[idx].cards || []).length > 0) {
                             const falseDelay = config.minReaction + (Math.random() * (config.maxReaction - config.minReaction)) + 200;
                             const scheduledTime = Date.now();
                             this.botSlapTimeouts[visualId] = setTimeout(async () => {
                                 const drift = Date.now() - scheduledTime - falseDelay;
                                 if (drift > 2000) return; // Stale false slap
+                                if (!this.drivesRoom(FirebaseSync.roomData, me)) return; // ERS-23: no longer the host
 
                                 FirebaseSync.pushSlapAttempt({ playerIndex: idx });
                             }, falseDelay);
@@ -321,7 +368,7 @@ export const MultiplayerMode = {
 
         // Only the Host handles bot conversion to avoid duplicate updates
         import('./auth.js').then(auth => {
-            const amIHost = data.hostId === auth.AuthSystem.currentUser.uid;
+            const amIHost = this.drivesRoom(data, auth.AuthSystem.currentUser);
             if (!amIHost) return;
 
             data.players.forEach((p, idx) => {
@@ -411,7 +458,7 @@ export const MultiplayerMode = {
 
         // The Host logic must constantly evaluate the state of all connected real human players
         import('./auth.js').then(auth => {
-            const amIHost = data.hostId === auth.AuthSystem.currentUser?.uid;
+            const amIHost = this.drivesRoom(data, auth.AuthSystem.currentUser);
             if (!amIHost) return;
 
             // Are all real human players at 0 cards or eliminated? (Ignore completely disconnected/abandoned players possibly?)
@@ -419,15 +466,20 @@ export const MultiplayerMode = {
             const realHumans = data.players.filter(p => !p.uid.startsWith('bot_') && p.status !== 'disconnected');
             if (realHumans.length === 0) return; // if no humans left at all, maybe handle elsewhere or let it be
 
-            const humansStillPlaying = realHumans.some(p => p.cards && p.cards.length > 0 && !p.eliminated);
+            // v3.19.2 — "out" is what the room's own transactions say: the
+            // `eliminated` flag. An empty hand is not out yet: a human who has
+            // just played their last card may slap the pair it made, or is the
+            // attacker of a live challenge, and the award that settles it is
+            // the one that marks them out. Testing `cards.length` here ended the
+            // match as "no human won" in that half second (found by the host
+            // fuzzer: tools/fuzz-pantheon.mjs --mode host).
+            const humansStillPlaying = realHumans.some(p => !p.eliminated);
             
             if (!humansStillPlaying) {
                 console.log("All humans eliminated. Triggering global teardown.");
-                FirebaseSync.pushUpdate({
-                    gameOver: true,
-                    status: 'finished',
-                    winnerId: -1 // -1 means no human won, all defeated
-                });
+                // v3.19.2 (ERS-23): a transaction that re-checks all of
+                // this on the server's copy — it was a blind update().
+                FirebaseSync.endIfNoHumanLeft();
             }
         });
     },
@@ -435,7 +487,7 @@ export const MultiplayerMode = {
     checkTurnTimeouts(data) {
         if (!data || !data.players || !data.gameStarted || data.gameOver) return;
         import('./auth.js').then(auth => {
-            const amIHost = data.hostId === auth.AuthSystem.currentUser?.uid;
+            const amIHost = this.drivesRoom(data, auth.AuthSystem.currentUser);
             if (!amIHost) return;
 
             const activeActual = data.activePlayerId;
@@ -447,12 +499,12 @@ export const MultiplayerMode = {
                 // check has to be too — a device with a skewed local clock must not
                 // time other players out early (or never).
                 const elapsed = NetQuality.serverNow() - (data.lastPlayTime || NetQuality.serverNow());
-                const timeoutLimit = 15000; 
+                const timeoutLimit = FirebaseSync.TURN_TIMEOUT_MS;
                 if (elapsed > timeoutLimit) {
                     if (!this.timeoutLocks) this.timeoutLocks = {};
                     if (!this.timeoutLocks[activeActual]) {
                         this.timeoutLocks[activeActual] = true;
-                        import('./firebaseSync.js').then(fs => fs.FirebaseSync.pushTimeout(activeActual).finally(() => {
+                        import('./firebaseSync.js?v=7').then(fs => fs.FirebaseSync.pushTimeout(activeActual).finally(() => {
                            delete this.timeoutLocks[activeActual]; 
                         }));
                     }
@@ -460,10 +512,10 @@ export const MultiplayerMode = {
                     // Schedule a check
                     if (this.timeoutWatcher) clearTimeout(this.timeoutWatcher);
                     this.timeoutWatcher = setTimeout(() => {
-                        import('./firebaseSync.js').then(fs => {
+                        import('./firebaseSync.js?v=7').then(fs => {
                             this.checkTurnTimeouts(fs.FirebaseSync.roomData);
                         });
-                    }, 15000 - elapsed + 100);
+                    }, FirebaseSync.TURN_TIMEOUT_MS - elapsed + 100);
                 }
             }
         });

@@ -122,6 +122,26 @@ export function awardChallenge(data, players, winnerId) {
     return data;
 }
 
+/**
+ * Which pile is on the table: the number of awards so far. A lock keyed to it
+ * goes stale by itself the moment the pile is won (council ERS-22).
+ */
+export function pileKey(data) {
+    return (data && data.lastPile && data.lastPile.seq) || 0;
+}
+
+/**
+ * v3.19.2 — council ERS-22, option (c). True when this seat has already
+ * slapped wrong with an EMPTY hand on the pile now on the table: its next
+ * attempt on this pile is refused. A wrong slap from an empty hand has nothing
+ * to burn; without this, a seat that was out could slap on every card for
+ * free and take the first pattern at the reaction floor.
+ */
+export function emptySlapLocked(data, seatIndex) {
+    const p = data && data.players && data.players[seatIndex];
+    return !!p && realCount(p.cards) === 0 && p.slapLock === pileKey(data);
+}
+
 /** After a card leaves a hand: a hand of ghosts only is empty. Returns how many vanished. */
 export function dropHollowHand(p) {
     if (!p || !Array.isArray(p.cards) || p.cards.length === 0 || realCount(p.cards) > 0) return 0;
@@ -156,6 +176,30 @@ export function isBotSeat(p) {
  */
 export function countLiveHumans(players) {
     return (players || []).filter(p => p && !isBotSeat(p) && !p.eliminated).length;
+}
+
+/** A human's turn online: the host times it out after this long (ms). */
+export const TURN_TIMEOUT_MS = 15000;
+
+/**
+ * v3.19.2 — host failover. The host's client drives the bots, the turn timer
+ * and the bot conversion; nothing else does. A host whose connection dropped
+ * (RTDB's onDisconnect marks the seat, but only a closed tab runs abandonRoom)
+ * kept `hostId`, so no client drove anything and the table froze at the next
+ * bot turn — migrateHostIfNeeded runs only inside an award, which a frozen
+ * table never reaches (host fuzzer: tools/fuzz-pantheon.mjs --mode host).
+ *
+ * Returns the seat that should take the room over, or null while the host is
+ * there. Every client computes the same answer from the same snapshot, and
+ * only that seat's client claims it (FirebaseSync.claimOrphanedHost).
+ * A still-playing human is preferred; an eliminated one still runs the app.
+ */
+export function orphanedHostHeir(data) {
+    const players = (data && data.players) || [];
+    const host = players.find(p => p && p.uid === data.hostId);
+    if (host && host.status !== 'disconnected') return null;
+    const live = players.filter(p => p && typeof p.uid === 'string' && !isBotSeat(p) && p.status !== 'disconnected');
+    return live.find(p => !p.eliminated) || live[0] || null;
 }
 
 /** Hand the room to a live human if the current host can no longer hold it. */
@@ -264,6 +308,7 @@ export function applySlapBurn(data, seatIndex, now) {
     // Dead slap: no cards left and the slap was wrong.
     p.eliminated = true;
     p.streak = 0;
+    p.slapLock = pileKey(data);   // one free miss per pile (ERS-22)
     data.players = players;
 
     if (!resolveEndOfMatch(data, players, -1, false) && data.activePlayerId === burnerId) {
