@@ -1,0 +1,10 @@
+#!/bin/sh
+# Commits in this repository are authored by the maintainer alone:
+# no co-author trailers.
+if grep -qiE '^co-authored-by:' "$1"; then
+    echo "commit-msg: REFUSED -- co-author lines are not used in this repository:"
+    grep -iE '^co-authored-by:' "$1" | sed 's/^/    /'
+    echo "Remove the line and commit again."
+    exit 1
+fi
+exit 0

@@ -62,9 +62,7 @@ coverage/
 .claude-memory/
 .memoryfires/
 
-# Agent working notes. Commit 3e3b69e removed CLAUDE.md and COUNCIL.md from
-# git on purpose but never added the ignore rules, so they kept reappearing
-# as untracked and would have been swept back in by the next `git add -A`.
+# Local working notes, not tracked.
 CLAUDE.md
 COUNCIL.md
 
@@ -72,8 +70,7 @@ COUNCIL.md
 # history.
 _to_delete_*.bak
 
-# Operator's own to-do list: it carries account details (sites, IDs,
-# contact) and is a working note for one person, not project history.
+# Personal to-do list (account details); not project history.
 YAPILACAKLAR.md
 
 # Key files. A service-account key downloaded from the Firebase console is named
@@ -86,3 +83,7 @@ YAPILACAKLAR.md
 
 # commit.bat's message for the release being recorded: input, not history.
 .commit-msg.txt
+
+# Local git bundles and one-off maintenance scripts.
+*.bundle
+finish-history.bat
