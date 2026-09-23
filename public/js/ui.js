@@ -297,7 +297,11 @@ export const UIManager = {
             const winnerStr = this.getVisualName(winnerId);
 
             if (vanished > 0) {
-                this.addLog((Localization.get('ghostsVanished') || '👻 {n} ghost cards vaporized').replace('{n}', String(vanished)), 'normal');
+                // v3.19.1: "1 ghost cards" read wrong in English and German.
+                const line = vanished === 1
+                    ? (Localization.get('ghostVanishedOne') || '👻 A ghost card vaporized')
+                    : (Localization.get('ghostsVanished') || '👻 {n} ghost cards vaporized').replace('{n}', String(vanished));
+                this.addLog(line, 'normal');
             }
 
             if (reason === 'slap') {

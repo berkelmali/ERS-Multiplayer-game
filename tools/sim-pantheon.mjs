@@ -53,7 +53,11 @@ export const VARIANTS = {
     // A slap whose pattern holds a ghost strikes an echo: it wins the pile
     // but deals `echo` of its damage.
     echoHalf: { clone: 'proposal', perSlap: GHOST_PER_SLAP, held: GHOST_HELD_MAX, place: 'bottom', echo: 0.5 },
-    topEcho:  { clone: 'proposal', perSlap: GHOST_PER_SLAP, held: GHOST_HELD_MAX, place: 'top', echo: 0.5 }
+    topEcho:  { clone: 'proposal', perSlap: GHOST_PER_SLAP, held: GHOST_HELD_MAX, place: 'top', echo: 0.5 },
+    // v3.19.1 candidates (council ERS-21): a ghost that vaporizes in a won pile
+    // returns to its god as life.
+    return1:  { clone: 'proposal', perSlap: GHOST_PER_SLAP, held: GHOST_HELD_MAX, place: 'top', returnHeal: 1 },
+    return2:  { clone: 'proposal', perSlap: GHOST_PER_SLAP, held: GHOST_HELD_MAX, place: 'top', returnHeal: 2 }
 };
 
 function rng(seed) {
@@ -106,7 +110,10 @@ export function duel(godId, hero, variant, seed, priestTier = 'medium', probe = 
         const taken = [...burn, ...pile];
         const slapped = pile;
         let kept = taken;
-        if (variant) { const v = vaporize(taken); kept = v.kept; st.ghostsVanished += v.vanished; }
+        if (variant) {
+            const v = vaporize(taken); kept = v.kept; st.ghostsVanished += v.vanished;
+            if (variant.returnHeal && v.vanished) hp = Math.min(g.hp, hp + variant.returnHeal * v.vanished);
+        }
         hands[winner].push(...kept);
         for (let i = 0; i < 4; i++) hollow(i);
         pile = []; burn = []; ch = null; active = winner;

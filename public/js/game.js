@@ -199,6 +199,12 @@ export const GameState = {
             this._onTurnChanged = () => this.resetTurnTimer();
             EventBus.on('turnChanged', this._onTurnChanged);
             this._turnListenerAttached = true;
+            // v3.19.1 — the listener is attached AFTER the first turnChanged
+            // above, so the first turn of the first match after a page load
+            // ran with no turn timer (and no timer bar): found by the
+            // exploratory run, where the table sat still for 75 s. Every later
+            // match already had it. Arm it now for this one turn.
+            this.resetTurnTimer();
         }
     },
 
@@ -619,7 +625,9 @@ export const GameState = {
                 this.stats.bestReflex = reactionTime;
             }
             this.stats.cardsWon += realCount(this.burnPile) + realCount(this.pile);
-            if (this.humanEliminated) {
+            // v3.19.1: only a pile with a real card in it brings you back — a
+            // pile of the god's ghosts vanishes and leaves you with nothing.
+            if (this.humanEliminated && (realCount(this.burnPile) + realCount(this.pile)) > 0) {
                 // The comeback. This counter has existed since v2.9.0 and could
                 // never once be reached: checkGameOver ended the match the
                 // moment humanEliminated became true, and slap() refused the

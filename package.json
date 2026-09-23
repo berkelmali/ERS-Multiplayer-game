@@ -1,6 +1,6 @@
 {
   "name": "ers-web",
-  "version": "3.19.0",
+  "version": "3.19.1",
   "private": true,
   "type": "module",
   "description": "Egyptian Rat Screw — realtime multiplayer web game. The client has no build step; these scripts cover verification, the Cloud Functions rule mirror, and deployment.",
@@ -13,7 +13,7 @@
     "check:links": "node tools/check-links.mjs",
     "check:locales": "node tools/check-locales.mjs",
     "check:score-bounds": "node tools/check-score-bounds.mjs",
-    "verify": "npm run test && npm run check:syntax && npm run check:links && npm run check:locales && npm run check:score-bounds && npm run check:error-modal && npm run check:csp-hash && npm run check:lobby && npm run check:orphan-classes && npm run check:promises",
+    "verify": "npm run test && npm run check:syntax && npm run check:links && npm run check:locales && npm run check:score-bounds && npm run check:error-modal && npm run check:csp-hash && npm run check:lobby && npm run check:orphan-classes && npm run check:promises && npm run fuzz:pantheon",
     "smoke": "node tools/smoke.mjs",
     "sync:rules": "node tools/sync-rules.mjs",
     "config:print": "node tools/print-firebase-config.mjs",
@@ -25,7 +25,8 @@
     "check:orphan-classes": "node tools/check-orphan-classes.mjs",
     "check:promises": "node tools/check-promises.mjs",
     "test:rules": "npx --yes firebase-tools@15.28.2 emulators:exec --only database --project ers-card-game \"node tools/rules-test.mjs\"",
-    "test:firestore-rules": "npx --yes firebase-tools@15.28.2 emulators:exec --only firestore --project ers-card-game \"node tools/firestore-rules-test.mjs\""
+    "test:firestore-rules": "npx --yes firebase-tools@15.28.2 emulators:exec --only firestore --project ers-card-game \"node tools/firestore-rules-test.mjs\"",
+    "fuzz:pantheon": "node tools/fuzz-pantheon.mjs --duels 6"
   },
   "devDependencies": {
     "playwright": "^1.48.0"

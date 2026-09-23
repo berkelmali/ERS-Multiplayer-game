@@ -1629,6 +1629,23 @@ echo  180) KAPILAR: bolum 82 ^(65 test^), 8 mutasyonun 8'i yakalandi; 23 bin
 echo       simule hamlede degismezler tuttu; smoke hayalet kartlari gercek
 echo       tarayicida oynatiyor; RTDB kural testine 14 senaryo + 5 mutant.
 echo.
+echo  --- v3.19.1 -- HATA AVI ^(KONSEY ERS-21^) ------------------
+echo  181) tools\fuzz-pantheon.mjs: gercek kodla binlerce rastgele duello
+echo       ^(cevrimdisi motor + cok oyunculu islemler, sahte bir RTDB'de^);
+echo       her adimdan sonra kurallari kontrol eder. npm run verify'da.
+echo  182) BULUNDU, COK OYUNCULU, HER MASADA: son kartini ^(bir resim karti^)
+echo       oynayan, sonra bos elle YANLIS vuran oyuncu elenir; meydan okumayi
+echo       yine de kazanirsa 'elenmis' kalip siraya sahip oluyordu. Hicbir
+echo       yazma kabul edilmedigi icin masa KALICI olarak donuyordu. Duzeldi.
+echo  183) Meydan okuma odulunun uc kopyasi tek fonksiyonda birlesti; zaman
+echo       asimiyla kazanilan meydan okuma artik maci da bitirebilir.
+echo  184) Oynayamayan birinde kalan sira artik sonrakine gecer ve odaya
+echo       'forcedTurnPass' olarak YAZILIR; fuzzer bunu hata sayar.
+echo  185) Sadece hayaletten olusan bir yigini kazanmak artik 'geri donus'
+echo       sayilmaz; sayfa acildiktan sonraki ilk turda da tur sayaci var;
+echo       '1 ghost cards' yazimi duzeldi.
+echo  186) KAPILAR: 2800 test, 9 senaryo, 3 mutasyonun 3'u yakalandi.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1753,5 +1770,14 @@ echo   - Ust uste 3 mac kazan: mac sonu ekraninda 'Solid Win' TEK kez olmali
 echo   - COK OYUNCULU ^(iki hesap, ikisi de sert yenilenmis^): tanrili masada
 echo     bir Cift yakala: IKI ekranda da hayalet rozeti ayni olmali ve yigini
 echo     kazanan IKI ekranda da ayni kisi gorunmeli
+echo.
+echo  --- v3.19.1 ------------------------------------------------
+echo   - Sayfayi yenile, hemen bir botlu mac baslat ve HIC dokunma: ilk
+echo     turda sayac cubugu gorunmeli, sure dolunca kart yanmali
+echo   - Tanrilarin Masasi: hayalet iceren bir yigini kazan; gunlukte tek
+echo     hayalet icin 'A ghost card vaporized' ^(TR: 'Bir hayalet kart^)
+echo     yazmali, '1 ghost cards' DEGIL
+echo   - COK OYUNCULU ^(iki hesap^): bir mac bitir; masa hic takilmamali.
+echo     Takilirsa F12 konsolunda 'forced turn pass' satiri var mi, bak
 echo.
 pause

@@ -11,7 +11,7 @@ import { NetQuality } from "./netQuality.js";
 import { ConnectionBanner } from "./connectionBanner.js";
 import { Localization } from "./localization.js?v=3";
 import { AuthSystem } from "./auth.js";
-import { applySlapWin, applySlapBurn, awardPile, dropHollowHand, realCount } from "./slapOutcome.js";
+import { applySlapWin, applySlapBurn, awardChallenge, dropHollowHand, getNextPlayer as nextSeat } from "./slapOutcome.js";
 import { applyGodSlapWin, applyGodBurn } from "./pantheonRoom.js";
 import * as FairSlap from "./fairSlap.js";
 import { registerProtocol } from "./roomProtocol.js";
@@ -709,6 +709,36 @@ export const FirebaseSync = {
     },
 
 
+    /**
+     * v3.19.1 — a turn held by a seat that cannot take it is passed on.
+     * Both the play and the timeout transaction used to return the room
+     * unchanged for an eliminated seat (and the timeout one for an empty
+     * hand), so a turn that landed there was held forever and the table froze
+     * — found by tools/fuzz-pantheon.mjs. A defender with no cards is not
+     * "unable": its empty turn loses the challenge, handled by the callers.
+     * Returns true when the turn was passed (or there is no one to pass to).
+     */
+    _passIfUnable(data, playerIndex) {
+        const holder = data.players[playerIndex];
+        const ch = data.challenge || {};
+        const defending = ch.active && ch.defenderId === playerIndex;
+        const empty = !holder.cards || holder.cards.length === 0;
+        if (defending && empty) return false;
+        if (!holder.eliminated && !empty) return false;
+        const next = nextSeat(data.players, playerIndex);
+        if (next !== null && next !== playerIndex) {
+            data.activePlayerId = next;
+            // Council ERS-21: a forced pass repairs a state that should not
+            // exist, so it must never be silent. It is stamped in the room
+            // (every client sees it) and logged, and tools/fuzz-pantheon.mjs
+            // fails on any stamp — the repair cannot hide the next freeze bug.
+            const prev = data.forcedTurnPass || {};
+            data.forcedTurnPass = { seat: playerIndex, to: next, count: (prev.count || 0) + 1, at: NetQuality.serverNow() };
+            console.warn(`forced turn pass: seat ${playerIndex} could not act (eliminated=${!!holder.eliminated}, cards=${(holder.cards || []).length}); turn to seat ${next}`);
+        }
+        return true;
+    },
+
     async pushPlayCard({ playerIndex }) {
         if (!this.roomId) return;
         if (this.USE_SERVER_VALIDATION) return this._pushPlayCardSecure(playerIndex);
@@ -732,46 +762,15 @@ export const FirebaseSync = {
                 }
 
                 if (data.activePlayerId !== playerIndex) return data;
-                if (data.players[playerIndex].eliminated) return data;
+                if (this._passIfUnable(data, playerIndex)) return data;
 
                 const players = [...data.players];
                 let challenge = data.challenge || { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
                 if (!players[playerIndex].cards || players[playerIndex].cards.length === 0) {
                     // Defender has 0 cards and it's their turn to play in a challenge -> Attacker wins!
                     if (challenge.active && challenge.defenderId === playerIndex) {
-                        const winnerId = challenge.attackerId;
-                        // v3.19.0: the one award path (ghosts vanish, winner stamped).
-                        awardPile(data, players, winnerId);
-
-                        players.forEach((p, i) => {
-                            if (i === winnerId) {
-                                p.streak = p.streak || 0;
-                            } else {
-                                if (p.streak < 3) p.streak = 0;
-                            }
-                        });
-
-                        players.forEach((p, i) => {
-                            if (i !== winnerId && (!p.cards || p.cards.length === 0)) {
-                                p.eliminated = true;
-                            }
-                        });
-
-                        data.players = players;
-                        data.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
-                        data.activePlayerId = winnerId;
-                        data.lastWinReason = 'challenge';
-
-                        const nonEliminated = players.filter(p => !p.eliminated);
-                        if (realCount(players[winnerId].cards) === 52 || nonEliminated.length <= 1) {
-                            data.gameOver = true;
-                            data.status = 'finished';
-                            if (nonEliminated.length === 1) {
-                                data.winnerId = players.findIndex(p => !p.eliminated);
-                            } else {
-                                data.winnerId = winnerId;
-                            }
-                        }
+                        // v3.19.1: the one challenge award (slapOutcome.awardChallenge).
+                        awardChallenge(data, players, challenge.attackerId);
                     }
                     return data;
                 }
@@ -808,58 +807,8 @@ export const FirebaseSync = {
                         challenge.chancesLeft = (challenge.chancesLeft || 1) - 1;
                         // If they have no cards left, they instantly fail the challenge
                         if (challenge.chancesLeft <= 0 || players[playerIndex].cards.length === 0) {
-                            const winnerId = challenge.attackerId;
                             data.pile = pile;
-                            awardPile(data, players, winnerId);
-
-                            // Update streaks for challenge win (kept as is for winner, kept if streak >= 3 for others, reset otherwise)
-                            players.forEach((p, i) => {
-                                if (i === winnerId) {
-                                    p.streak = p.streak || 0;
-                                } else {
-                                    if (p.streak < 3) {
-                                        p.streak = 0;
-                                    }
-                                }
-                            });
-
-                            // NEW: Elimination Logic
-                            players.forEach((p, i) => {
-                                if (i !== winnerId && (!p.cards || p.cards.length === 0)) {
-                                    p.eliminated = true;
-                                }
-                            });
-
-                            data.players = players;
-                            data.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
-                            data.activePlayerId = winnerId;
-                            data.lastWinReason = 'challenge';
-
-                            // NEW: Persistent Win Condition
-                            const nonEliminated = players.filter(p => !p.eliminated);
-
-                            if (realCount(players[winnerId].cards) === 52 || nonEliminated.length <= 1) {
-                                data.gameOver = true;
-                                data.status = 'finished';
-                                if (nonEliminated.length === 1) {
-                                    data.winnerId = players.findIndex(p => !p.eliminated);
-                                } else if (realCount(players[winnerId].cards) === 52) {
-                                    data.winnerId = winnerId;
-                                } else {
-                                    data.winnerId = -1;
-                                }
-                            }
-
-                            // Robust Host Migration
-                            const currentHost = players.find(p => p.uid === data.hostId);
-                            if (!currentHost || currentHost.eliminated || currentHost.status === 'disconnected') {
-                                const nextHost = players.find(p => !p.uid.startsWith('bot_') && !p.eliminated && p.status !== 'disconnected');
-                                if (nextHost) {
-                                    data.hostId = nextHost.uid;
-                                    data.hostUsername = nextHost.name;
-                                }
-                            }
-
+                            awardChallenge(data, players, challenge.attackerId);
                             return data;
                         } else {
                             nextActiveId = playerIndex;
@@ -1012,11 +961,16 @@ export const FirebaseSync = {
                 if (!data || data.gameOver || !data.gameStarted) return;
                 if (!data.players || !data.players[playerIndex]) return;
                 if (data.activePlayerId !== playerIndex) return data;
-                if (data.players[playerIndex].eliminated) return data;
+                if (this._passIfUnable(data, playerIndex)) return data;
 
                 const players = [...data.players];
                 const p = players[playerIndex];
-                if (!p.cards || p.cards.length === 0) return data;
+                if (!p.cards || p.cards.length === 0) {
+                    // A defender with nothing left to play has lost the challenge.
+                    const ch = data.challenge || {};
+                    if (ch.active && ch.defenderId === playerIndex) awardChallenge(data, players, ch.attackerId);
+                    return data;
+                }
 
                 const cards = [...p.cards];
                 const burned = cards.shift();
@@ -1032,31 +986,7 @@ export const FirebaseSync = {
                 let challenge = data.challenge || { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
 
                 if (challenge.active) {
-                    const winnerId = challenge.attackerId;
-                    awardPile(data, players, winnerId);
-
-                    // Update streaks for challenge win on timeout (kept as is for winner, kept if streak >= 3 for others, reset otherwise)
-                    players.forEach((px, i) => {
-                        if (i === winnerId) {
-                            px.streak = px.streak || 0;
-                        } else {
-                            if (px.streak < 3) {
-                                px.streak = 0;
-                            }
-                        }
-                    });
-
-                    data.pile = [];
-                    data.burnPile = [];
-                    data.challenge = { active: false, attackerId: null, defenderId: null, chancesLeft: 0 };
-                    data.activePlayerId = winnerId;
-                    data.lastWinReason = 'challenge';
-                    
-                    players.forEach((px, i) => {
-                        if (i !== winnerId && (!px.cards || px.cards.length === 0)) {
-                            px.eliminated = true;
-                        }
-                    });
+                    awardChallenge(data, players, challenge.attackerId);
                 } else {
                     // Reset streak on normal timeout
                     players[playerIndex].streak = 0;

@@ -63,9 +63,19 @@ export function vaporize(cards) {
  */
 export function awardPile(data, players, winnerId) {
     const { kept, vanished } = vaporize([...(data.burnPile || []), ...(data.pile || [])]);
-    const hand = players[winnerId].cards || [];
+    const winner = players[winnerId];
+    const wasEliminated = !!winner.eliminated;
+    const hand = winner.cards || [];
     hand.push(...kept);
-    players[winnerId].cards = hand;
+    winner.cards = hand;
+    // v3.19.1 — a seat that takes a pile is back in, on EVERY award path, not
+    // only a slap. Found by tools/fuzz-pantheon.mjs: an attacker plays its last
+    // card (a face card), slaps wrong with an empty hand (dead slap: out), then
+    // wins the challenge — and sat on 7 cards, eliminated, holding the turn.
+    // Every write refused it and the table froze. A pile of ghosts only brings
+    // nothing, so it brings nobody back either.
+    if (hand.length > 0) winner.eliminated = false;
+    data.lastResurrectedId = wasEliminated && hand.length > 0 ? winnerId : null;
     let gone = vanished;
     for (const p of players) {
         if (p && Array.isArray(p.cards) && p.cards.length > 0 && realCount(p.cards) === 0) {
@@ -77,6 +87,39 @@ export function awardPile(data, players, winnerId) {
     data.burnPile = [];
     data.lastPile = { winner: winnerId, vanished: gone, seq: ((data.lastPile && data.lastPile.seq) || 0) + 1 };
     return gone;
+}
+
+/**
+ * Who leads after a pile is won: the winner — unless the pile left it nothing
+ * to lead with (a pile of ghosts only), in which case the next seat that can.
+ */
+export function leaderAfterAward(players, winnerId) {
+    return (players[winnerId].cards || []).length > 0 ? winnerId : getNextPlayer(players, winnerId);
+}
+
+/**
+ * A challenge is won: the attacker takes the table. THE one copy (v3.19.1).
+ * firebaseSync.js carried three hand-written ones (defender out of cards,
+ * chances spent, defender timed out) and the burn branch below a fourth; they
+ * had drifted — the timeout copy never checked for the end of the match and
+ * none of them brought an eliminated attacker back in.
+ */
+export function awardChallenge(data, players, winnerId) {
+    awardPile(data, players, winnerId);
+    players.forEach((p, i) => {
+        if (i === winnerId) p.streak = p.streak || 0;
+        else if (p.streak < 3) p.streak = 0;
+    });
+    players.forEach((p, i) => {
+        if (i !== winnerId && (!p.cards || p.cards.length === 0)) p.eliminated = true;
+    });
+    data.players = players;
+    data.challenge = { ...EMPTY_CHALLENGE };
+    data.activePlayerId = leaderAfterAward(players, winnerId);
+    data.lastWinReason = 'challenge';
+    resolveEndOfMatch(data, players, winnerId, realCount(players[winnerId].cards) === 52);
+    migrateHostIfNeeded(data, players);
+    return data;
 }
 
 /** After a card leaves a hand: a hand of ghosts only is empty. Returns how many vanished. */
@@ -135,29 +178,15 @@ export function applySlapWin(data, seatIndex) {
     const players = [...data.players];
 
     const winnerId = seatIndex;
-    // Recorded BEFORE the pile lands, because after it lands the seat has cards
-    // and there is no way left to tell that it was out.
-    const wasEliminated = !!players[winnerId].eliminated;
+    // Whether the seat was out, and whether taking this pile brought it back,
+    // is decided (and stamped as lastResurrectedId) inside awardPile.
     awardPile(data, players, winnerId);
     const playerCards = players[winnerId].cards;
 
-    // SLAP BACK IN. The rules panel has promised this in four languages since
-    // long before any code could do it: "You can still slap the pile even with
-    // 0 cards — a successful slap resurrects you with the pile!" and a whole
-    // section headed "Spectator Mode & Slap Back".
-    //
-    // Three modules were already written for the moment: victoryScreen.js tears
-    // down the defeat screen on `resurrected`, ui.js announces it, and
-    // multiplayerMode.js counts it. The victory screen even shows a "Slap
-    // Backs" statistic and awards an MVP badge for two or more. Nothing
-    // anywhere emitted the event, and nothing anywhere cleared this flag — so
-    // the statistic was pinned at zero by construction and the badge could
-    // never be awarded.
-    //
-    // This is the exact inverse of the rule six lines below it, which puts a
-    // seat OUT when it holds nothing. A seat that just took the pile holds
-    // something. One line, in the one place both halves of the rule belong.
-    players[winnerId].eliminated = false;
+    // SLAP BACK IN. The rules panel has promised it in four languages since
+    // long before any code could do it; the flag is cleared in awardPile (the
+    // v3.19.1 move: it used to be cleared here only, so a pile won by
+    // CHALLENGE left an eliminated seat eliminated with cards in hand).
 
     // Streaks: the winner renews at the shield cap rather than climbing past
     // it; everyone below the cap resets, and anyone AT the cap keeps their
@@ -178,13 +207,9 @@ export function applySlapWin(data, seatIndex) {
     });
 
     data.players = players;
-    data.activePlayerId = winnerId;
+    data.activePlayerId = leaderAfterAward(players, winnerId);
     data.challenge = { ...EMPTY_CHALLENGE };
     data.lastWinReason = 'slap';
-    // Written into the room so every client learns about it from the same
-    // transaction that caused it, rather than each one guessing from a diff.
-    // Cleared on every other win, or the banner would fire again next pile.
-    data.lastResurrectedId = wasEliminated ? winnerId : null;
 
     resolveEndOfMatch(data, players, winnerId, realCount(playerCards) === 52);
     migrateHostIfNeeded(data, players);
@@ -227,23 +252,7 @@ export function applySlapBurn(data, seatIndex, now) {
             const challenge = data.challenge || { ...EMPTY_CHALLENGE };
             if (challenge.active && challenge.defenderId === burnerId) {
                 // Burning the last card mid-challenge hands the pile to the attacker.
-                const winnerId = challenge.attackerId;
-                awardPile(data, players, winnerId);
-
-                players.forEach((px, i) => {
-                    if (i === winnerId) px.streak = px.streak || 0;
-                    else if (px.streak < 3) px.streak = 0;
-                });
-                players.forEach((px, i) => {
-                    if (i !== winnerId && (!px.cards || px.cards.length === 0)) px.eliminated = true;
-                });
-
-                data.players = players;
-                data.challenge = { ...EMPTY_CHALLENGE };
-                data.activePlayerId = winnerId;
-                data.lastWinReason = 'challenge';
-
-                resolveEndOfMatch(data, players, winnerId, realCount(players[winnerId].cards) === 52);
+                awardChallenge(data, players, challenge.attackerId);
             } else if (data.activePlayerId === burnerId) {
                 data.activePlayerId = getNextPlayer(players, burnerId);
                 data.challenge = { ...EMPTY_CHALLENGE };
