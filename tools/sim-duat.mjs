@@ -19,6 +19,7 @@
  * reached dawn, ended in the Duat by tries or by rounds, and the average hour.
  */
 import * as NodeModule from 'node:module';
+import { pathToFileURL } from 'node:url';
 if (NodeModule.registerHooks) NodeModule.registerHooks({ resolve: (await import('./fuzz/hooks.mjs')).resolveSync });
 else NodeModule.register('./fuzz/hooks.mjs', import.meta.url);
 
@@ -173,7 +174,9 @@ export function run({ n = 300, diffs = ['medium', 'hard'], heroes = ['slow', 'av
     return rows;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL, not `file://${argv[1]}`: on Windows argv[1] is D:\..., and the
+// string version never matches, so the CLI printed nothing (the verify gate read NaN).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
     const e = arg('--edge', null);   // r,a,lift  e.g. 0.7,0.1,1
     if (e) { const [r, a, lift] = e.split(',').map(Number); withEdge({ r, a, lift }); }

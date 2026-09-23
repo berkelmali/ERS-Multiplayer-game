@@ -20,6 +20,7 @@
  *
  *   node tools/sim-pantheon.mjs [--n 1500] [--gods bastet,ra] [--json]
  */
+import { pathToFileURL } from 'node:url';
 import { matchSlap } from '../public/js/slapRules.js';
 import { ghostClones, addGhosts, vaporize, realCount, GHOST_PER_SLAP, GHOST_HELD_MAX } from '../public/js/ghostCards.js';
 
@@ -234,7 +235,7 @@ export function run({ n = 1500, gods = GODS.map(g => g.id), heroes = Object.keys
     return rows;
 }
 
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('sim-pantheon.mjs')) {
+if ((process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) || process.argv[1]?.endsWith('sim-pantheon.mjs')) {
     const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
     const rows = run({
         n: Number(arg('--n', 1500)),
