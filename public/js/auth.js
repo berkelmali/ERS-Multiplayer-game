@@ -2,6 +2,8 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, si
 import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { app } from "./firebaseConfig.js";
 import EventBus from "./eventbus.js";
+import { cleanName } from "./safeText.js";
+import { createRecord } from "./playerRecord.js";
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);
@@ -38,20 +40,16 @@ export const AuthSystem = {
             // username uniqueness via a query before creating the account!
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
-            // Set the display name on the Auth profile
-            await updateProfile(userCredential.user, { displayName: username });
+            // The name is cleaned BEFORE it is stored anywhere: it is shown to
+            // other players (leaderboard, tables), so only letters, digits,
+            // spaces and _ . - survive (safeText.js, enforced by firestore.rules).
+            const safeName = cleanName(username);
+            await updateProfile(userCredential.user, { displayName: safeName });
 
-            // Since onAuthStateChanged might fire immediately, proactively seed the Firestore profile 
-            // with the EXACT chosen username instead of letting userProfile.js guess it from the email!
-            const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
-            const userRef = doc(db, "users", userCredential.user.uid);
-            await setDoc(userRef, {
-                username: username,
-                email: email,
-                totalScore: 0,
-                gamesPlayed: 0,
-                gamesWon: 0
-            }, { merge: true }); // Merge ensures we don't clobber if userProfile.js raced us.
+            // Seed the private record with the chosen name. The email is NOT
+            // copied into Firestore: Authentication already holds it, and the
+            // record used to be world-readable (security review, v3.18.0).
+            await createRecord(userCredential.user, safeName);
 
             return { success: true };
         } catch (error) {

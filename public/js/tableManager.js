@@ -1,4 +1,5 @@
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, deleteDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { playerIdsOf } from "./tableIds.js";
 import { ref, set, onDisconnect, onValue, off, get, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { app, rtdb } from "./firebaseConfig.js";
 import { AuthSystem } from "./auth.js";
@@ -40,6 +41,7 @@ export const TableManager = {
             hostId: uid,
             hostUsername: name,
             players: [{ uid, name, index: 0 }],
+            playerIds: { [uid]: true },   // security review: firestore.rules reads membership here
             // v3.0.0: the table's House Rules are fixed at creation time and
             // shown in the waiting room, so nobody joins under one rule set and
             // plays under another. startGame() copies this into the game room.
@@ -102,7 +104,7 @@ export const TableManager = {
                 // Reconnect!
                 existingPlayer.status = 'online';
                 existingPlayer.disconnectedAt = null;
-                await updateDoc(tableRef, { players: data.players });
+                await updateDoc(tableRef, { players: data.players, playerIds: playerIdsOf(data.players) });
 
                 // Sync to RTDB lobbyRooms
                 const rtdbRef = ref(rtdb, `lobbyRooms/${tableIdUpper}`);
@@ -152,6 +154,7 @@ export const TableManager = {
 
         await updateDoc(tableRef, {
             players: data.players,
+            playerIds: playerIdsOf(data.players),
             "gameState.playerCount": data.players.filter(p => !p.uid.startsWith('bot_') && p.status !== 'disconnected').length
         });
 
@@ -318,7 +321,7 @@ export const TableManager = {
                                                 const targetP = currentData.players.find(x => x.uid === p.uid);
                                                 if (targetP && targetP.status === 'disconnected' && currentData.gameState.status === 'waiting') {
                                                     let newPlayers = currentData.players.filter(x => x.uid !== p.uid);
-                                                    await updateDoc(checkRef, { players: newPlayers, "gameState.playerCount": newPlayers.filter(x => !x.uid.startsWith('bot_') && x.status !== 'disconnected').length });
+                                                    await updateDoc(checkRef, { players: newPlayers, playerIds: playerIdsOf(newPlayers), "gameState.playerCount": newPlayers.filter(x => !x.uid.startsWith('bot_') && x.status !== 'disconnected').length });
                                                     
                                                     // Sync to RTDB
                                                     const rtdbRef = ref(rtdb, `lobbyRooms/${tableId}`);
@@ -414,6 +417,7 @@ export const TableManager = {
         try {
             await updateDoc(tableRef, {
                 players: newPlayers,
+                playerIds: playerIdsOf(newPlayers),
                 hostId: newHostId,
                 hostUsername: newHostUsername,
                 "gameState.playerCount": newPlayers.filter(p => !p.uid.startsWith('bot_') && p.status !== 'disconnected').length
@@ -496,6 +500,7 @@ export const TableManager = {
                         let newPlayers = latestData.players.filter(p => p.uid !== uid);
                         await updateDoc(tableRef, {
                             players: newPlayers,
+                            playerIds: playerIdsOf(newPlayers),
                             "gameState.playerCount": newPlayers.filter(p => !p.uid.startsWith('bot_') && p.status !== 'disconnected').length
                         });
 
@@ -529,6 +534,7 @@ export const TableManager = {
                 let newPlayers = data.players.filter(p => p.uid !== uid);
                 await updateDoc(tableRef, {
                     players: newPlayers,
+                    playerIds: playerIdsOf(newPlayers),
                     "gameState.playerCount": newPlayers.filter(p => !p.uid.startsWith('bot_') && p.status !== 'disconnected').length
                 });
 
@@ -707,6 +713,7 @@ export const TableManager = {
                 // 4. Update Firestore table with the new Waiting Room configuration, clearing the old game Room ID
                 await updateDoc(tableRef, {
                     players: activeRealPlayers,
+                    playerIds: playerIdsOf(activeRealPlayers),
                     hostId: newHostId,
                     god: data.god || null,
                     hostUsername: newHostUsername,

@@ -4,6 +4,7 @@ import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { app, rtdb, functions } from "./firebaseConfig.js";
 import { GameState, SHIELD_DURATION_MS } from "./game.js";
 import EventBus from "./eventbus.js";
+import { playerIdsOf } from "./tableIds.js";
 import { matchSlap } from "./slapRules.js";
 import { HouseRules } from "./houseRules.js";
 import { NetQuality } from "./netQuality.js";
@@ -383,13 +384,9 @@ export const FirebaseSync = {
             if (winnerActualId !== -1) {
                 const winnerUid = (data.players[winnerActualId] || {}).uid;
 
-                // Score increment for human winner
-                import('./auth.js').then(({ AuthSystem }) => {
-                    if (AuthSystem.currentUser && AuthSystem.currentUser.uid === winnerUid) {
-                        const userRef = doc(db, "users", AuthSystem.currentUser.uid);
-                        updateDoc(userRef, { score: increment(1) }).catch(e => console.error("Failed to update score", e));
-                    }
-                });
+                // The winner's record is written once, by ScoreSystem on
+                // gameOver (playerRecord.js). A second write here used to bump a
+                // stray `score` field nothing reads; firestore.rules now refuses it.
 
                 EventBus.emit('gameOver', (winnerActualId - this.localPlayerIndex + 4) % 4);
             } else {
@@ -981,7 +978,7 @@ export const FirebaseSync = {
                         p.name = assignedBotName;
                         p.status = 'online';
                         p.disconnectedAt = null;
-                        await updateDoc(tableRef, { players: newPlayers });
+                        await updateDoc(tableRef, { players: newPlayers, playerIds: playerIdsOf(newPlayers) });
                     }
                 }
             }

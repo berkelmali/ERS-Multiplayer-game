@@ -17,22 +17,129 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 1. Users: public read (global leaderboard), private write.
+    // ── Shared helpers (security review, v3.18.0) ─────────────────────────
+    function signedIn() { return request.auth != null; }
+    function isUser(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // A display name other players will see. MIRRORED in public/js/safeText.js
+    // (NAME_PATTERN); test section 81 fails the build if the two differ.
+    function validName(n) {
+      return n is string && n.matches('^[\\p{L}\\p{N} _.\\-]{1,24}$');
+    }
+
+    // ── 1. Users: PRIVATE. ─────────────────────────────────────────────────
+    //    Until v3.18.0 this collection was world-readable AND held each
+    //    player's email: anyone could list every account's address without
+    //    signing in. The email lives in Firebase Authentication; the client
+    //    no longer writes it here and deletes an old copy at sign-in.
+    //    The leaderboard reads /leaderboard instead (block 2).
+    //
+    //    A record moves one finished match at a time (playerRecord.js):
+    //    each counter +0 or +1, score only with a win, a win only with a game,
+    //    at most once every 10 s. This bounds a forged record; it does not
+    //    prove a match happened — only a server-refereed match can.
+    function counterStep(f) {
+      return request.resource.data.get(f, 0) is int
+             && (request.resource.data.get(f, 0) == resource.data.get(f, 0)
+                 || request.resource.data.get(f, 0) == resource.data.get(f, 0) + 1);
+    }
+    function grew(f) { return request.resource.data.get(f, 0) != resource.data.get(f, 0); }
+    function validReflex(r) { return r is int && r >= 80 && r <= 60000; }
+
     match /users/{userId} {
+      allow read: if isUser(userId);
+
+      allow create: if isUser(userId)
+        && request.resource.data.keys().hasOnly(['username', 'totalScore', 'gamesPlayed', 'gamesWon', 'bestReflex', 'updatedAt'])
+        && validName(request.resource.data.username)
+        && request.resource.data.get('totalScore', 0) == 0
+        && request.resource.data.get('gamesPlayed', 0) == 0
+        && request.resource.data.get('gamesWon', 0) == 0
+        && request.resource.data.get('bestReflex', null) == null
+        && (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt == request.time);
+
+      allow update: if isUser(userId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['username', 'totalScore', 'gamesPlayed', 'gamesWon', 'bestReflex', 'updatedAt', 'email'])
+        // `email` may only change by being REMOVED.
+        && !('email' in request.resource.data.diff(resource.data).affectedKeys() && 'email' in request.resource.data)
+        && (!('username' in request.resource.data.diff(resource.data).affectedKeys()) || validName(request.resource.data.username))
+        && counterStep('totalScore') && counterStep('gamesPlayed') && counterStep('gamesWon')
+        && request.resource.data.get('totalScore', 0) - resource.data.get('totalScore', 0)
+             == request.resource.data.get('gamesWon', 0) - resource.data.get('gamesWon', 0)
+        && request.resource.data.get('gamesWon', 0) - resource.data.get('gamesWon', 0)
+             <= request.resource.data.get('gamesPlayed', 0) - resource.data.get('gamesPlayed', 0)
+        && (!('bestReflex' in request.resource.data.diff(resource.data).affectedKeys())
+            || (validReflex(request.resource.data.bestReflex)
+                && (!validReflex(resource.data.get('bestReflex', null))
+                    || request.resource.data.bestReflex < resource.data.bestReflex)))
+        && (!('updatedAt' in request.resource.data.diff(resource.data).affectedKeys())
+            || request.resource.data.updatedAt == request.time)
+        // A counter moves only with a fresh stamp, and not within 10 s of the last.
+        && (!(grew('totalScore') || grew('gamesPlayed') || grew('gamesWon'))
+            || (request.resource.data.get('updatedAt', null) == request.time
+                && (resource.data.get('updatedAt', null) == null
+                    || request.time > resource.data.updatedAt + duration.value(10, 's'))));
+
+      allow delete: if false;
+    }
+
+    // ── 2. Leaderboard: public, and only a mirror. ─────────────────────────
+    //    A name and a score. The score must equal the private record's score
+    //    after this commit (getAfter), so it can only follow a record that
+    //    block 1 let move.
+    match /leaderboard/{userId} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if isUser(userId)
+        && request.resource.data.keys().hasOnly(['username', 'totalScore', 'updatedAt'])
+        && validName(request.resource.data.username)
+        && request.resource.data.totalScore is int
+        && request.resource.data.totalScore
+             == getAfter(/databases/$(database)/documents/users/$(userId)).data.get('totalScore', 0)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isUser(userId);
     }
 
-    // 2. Multiplayer tables: host controls creation and deletion.
+    // ── 3. Multiplayer tables. ─────────────────────────────────────────────
+    //    Until v3.18.0 ANY signed-in user could rewrite ANY table. Now:
+    //    the host and seated players may update it; a stranger may only JOIN
+    //    a waiting table by adding exactly themselves. `playerIds` is the map
+    //    of seated people (tableIds.js) — rules cannot look inside `players`.
+    //    Only the host may start a game or change its rules and god.
+    function ids(d) { return d.get('playerIds', {}); }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
     match /multiplayer_tables/{tableId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.hostId == request.auth.uid;
-      allow delete: if request.auth != null && resource.data.hostId == request.auth.uid;
-      // Any signed-in player may update, so joining and leaving work.
-      allow update: if request.auth != null;
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.hostId == request.auth.uid
+        && request.auth.uid in ids(request.resource.data)
+        && request.resource.data.tableId == tableId;
+
+      allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
+
+      allow update: if signedIn()
+        && request.resource.data.tableId == resource.data.tableId
+        // A new host must be a seated person (a bot conversion may leave the
+        // old one listed as host; that is not a reason to refuse the write).
+        && (!('hostId' in changed()) || request.resource.data.hostId in ids(request.resource.data))
+        && (
+             resource.data.hostId == request.auth.uid
+             || (
+                  (request.auth.uid in ids(resource.data)
+                   || (resource.data.gameState.status == 'waiting'
+                       && request.auth.uid in ids(request.resource.data)
+                       && ids(request.resource.data).keys().removeAll(ids(resource.data).keys()).hasOnly([request.auth.uid])
+                       && ids(resource.data).keys().removeAll(ids(request.resource.data).keys()).size() == 0))
+                  && changed().hasOnly(['players', 'playerIds', 'gameState', 'hostId', 'hostUsername'])
+                  && request.resource.data.gameState.status == resource.data.gameState.status
+                  && request.resource.data.gameState.get('roomId', null) == resource.data.gameState.get('roomId', null)
+                )
+           );
     }
 
-    // 3. Daily Challenge boards (v3.0.0, hardened v3.1.1).
+    // ── 4. Daily Challenge boards (v3.0.0, hardened v3.1.1).
     //
     //    ⚠️ READ THIS BEFORE TRUSTING THE BOARD. The score is computed in the
     //    browser and written here directly. NOTHING below verifies that a
@@ -93,19 +200,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // 4. Game rooms. NOTE: live match state runs on the Realtime Database
-    //    (see database.rules.json); this block is the Firestore-side mirror
-    //    kept from the original rule set.
-    match /gameRooms/{roomId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid in request.resource.data.playerIds;
-      allow update: if request.auth != null && request.auth.uid in resource.data.playerIds;
-
-      match /slapAttempts/{attemptId} {
-        allow create: if request.auth != null &&
-                      request.auth.uid in get(/databases/$(database)/documents/gameRooms/$(roomId)).data.playerIds;
-        allow read: if request.auth != null;
-      }
+    // ── 5. Firestore game rooms: CLOSED. ─────────────────────────────────────
+    //    Live matches run on the Realtime Database (database.rules.json).
+    //    Nothing in the client reads or writes these paths; an open rule on an
+    //    unused path is attack surface with no user.
+    match /gameRooms/{roomId}/{document=**} {
+      allow read, write: if false;
     }
   }
 }

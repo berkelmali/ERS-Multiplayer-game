@@ -7,6 +7,7 @@ import { CardSkins } from './cardSkins.js';
 import { renderRulesBadge } from './rulesBadge.js';
 import { LOADING_WATCHDOG_MS } from './errorCodes.js';
 import { MatchContext } from './matchContext.js';
+import { cleanName } from './safeText.js';
 
 export const UIManager = {
     initialized: false,
@@ -363,7 +364,8 @@ export const UIManager = {
         });
 
         EventBus.off('botReplacement');
-        EventBus.on('botReplacement', ({ oldName, newName }) => {
+        EventBus.on('botReplacement', ({ oldName: rawOld, newName: rawNew }) => {
+            const oldName = cleanName(rawOld), newName = cleanName(rawNew);
             const rawMsg = Localization.get('botReplacedMsg') || "{old} disconnected! {new} replaced them.";
             const logMsg = rawMsg.replace('{old}', `<strong>${oldName}</strong>`).replace('{new}', `<strong>${newName}</strong>`);
             const notifMsg = rawMsg.replace('{old}', oldName).replace('{new}', newName);
@@ -616,10 +618,12 @@ export const UIManager = {
     getVisualName(visualId) {
         if (visualId === -1) return Localization.get('totalDefeat') || 'Total Defeat';
         if (GameManager.activeMode === 'multiplayer' && GameManager.modeInstance.getVisualNames) {
+            // Names in a room are chosen by other people and reach innerHTML
+            // (log, seats, banners): only a cleaned name leaves here.
             const names = GameManager.modeInstance.getVisualNames();
-            return names[visualId] || (Localization.get('noWinner') || 'No Winner');
+            return names[visualId] ? cleanName(names[visualId]) : (Localization.get('noWinner') || 'No Winner');
         }
-        if (visualId === 0) return Settings.config.playerName || Localization.get('you');
+        if (visualId === 0) return Settings.config.playerName ? cleanName(Settings.config.playerName) : Localization.get('you');
         if (MatchContext.seatNames && MatchContext.seatNames[visualId]) return MatchContext.seatNames[visualId];
         return Localization.get(`bot${visualId}`);
     },

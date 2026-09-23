@@ -1,6 +1,6 @@
 {
   "name": "ers-web",
-  "version": "3.18.0",
+  "version": "3.18.1",
   "private": true,
   "type": "module",
   "description": "Egyptian Rat Screw — realtime multiplayer web game. The client has no build step; these scripts cover verification, the Cloud Functions rule mirror, and deployment.",
@@ -24,7 +24,8 @@
     "check:lobby": "node tools/check-lobby.mjs",
     "check:orphan-classes": "node tools/check-orphan-classes.mjs",
     "check:promises": "node tools/check-promises.mjs",
-    "test:rules": "npx --yes firebase-tools@15.28.2 emulators:exec --only database --project ers-card-game \"node tools/rules-test.mjs\""
+    "test:rules": "npx --yes firebase-tools@15.28.2 emulators:exec --only database --project ers-card-game \"node tools/rules-test.mjs\"",
+    "test:firestore-rules": "npx --yes firebase-tools@15.28.2 emulators:exec --only firestore --project ers-card-game \"node tools/firestore-rules-test.mjs\""
   },
   "devDependencies": {
     "playwright": "^1.48.0"
