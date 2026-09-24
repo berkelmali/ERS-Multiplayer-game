@@ -1734,6 +1734,24 @@ echo       tokenlari verir. Firavun Destesi once/sonra goruntusu ayni.
 echo  209) KAPILAR: 2973 test ^(yeni bolum 87^); gece indeks kontrasti
 echo       en kotu 4.85:1. Ayrinti: COUNCIL-v3.21.0-gods-deck.md
 echo.
+echo  --- v3.21.1 -- KOYU KAPLAMALARDA OKUNMAYAN KART YAZILARI ---
+echo  210) SORUN OLCULDU: 11 koyu kaplamada ^(Golden, Neon, Shadow, Inferno,
+echo       Frost, Emerald, Royal, Sakura, Phantom, Holographic, Obsidian^)
+echo       siyah takim yazisi 1.0:1 kontrastlaydi -- siyah uzerine siyah.
+echo       Kirmizi takim da 2.25-4.22:1 ile sinirin altindaydi. Magazada VE
+echo       yigindaki kendi kartlarinda.
+echo  211) COZUM: her kaplamaya kendi iki indeks rengi: sinek/maca icin
+echo       kaplamanin rengine calan beyaza yakin ton, kupa/karo icin doygun
+echo       kirmizi. Her renk, kaplamanin arka planinin EN ACIK noktasina karsi
+echo       en az 4.5:1. Kaplamalarin yuzu degismedi.
+echo  212) KIRMIZI/SIYAH AYRIMI ^(gozden gecirme^): iki takim rengi arasi
+echo       CIEDE2000 en az 30, renk korlugu simulasyonunda ^(protanopi,
+echo       doteranopi^) en az 15. Klasik deste referans: 47 / 34 / 49.
+echo       Ilk renklerde Inferno 12, Tanrilarin Destesi 9 kaliyordu; duzeldi.
+echo  213) KAPI: bolum 88 her kaplamanin rengini style.css'ten okuyup olcer;
+echo       yeni bir kaplama bu renkler olmadan eklenirse test adini verip duser.
+echo       2979 test. Ayrinti: COUNCIL-v3.21.1-dark-skins.md
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1901,5 +1919,12 @@ echo     Gods' ^(MYTHIC, 2000^); onizlemede Khepri bocegi ve kirmizi gunes
 echo   - Satin al + kusan: kart dusunce altin kanatlar acilmali, yildizlar
 echo     merkezden disari yanmali; alttaki kartlar sakin kalmali
 echo   - Firavun Destesi'ni yeniden kusan: eskisi gibi gorunmeli
+echo.
+echo  --- v3.21.1 ------------------------------------------------
+echo   - Magaza: Neon, Shadow, Inferno, Frost, Emerald, Royal, Phantom,
+echo     Holographic, Obsidian onizlemelerinde 'A' ve maca okunmali
+echo   - Obsidian'i kusan, botlarla oyna: yigindaki kendi kartlarinin rakami
+echo     ve takimi rahat okunmali; kupa/karo acikca kirmizi, maca/sinek
+echo     beyaza yakin olmali -- iki takim bir bakista ayrilmali
 echo.
 pause

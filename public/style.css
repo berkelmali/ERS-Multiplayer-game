@@ -3329,9 +3329,11 @@ body.high-legibility .stat-value {
 }
 
 /* --- 24. Card Skins (v2.9.0 — Enhanced, 12 Skins) --- */
-/* Only overrides background/border/box-shadow — .card.red/.card.black (which
-   only set text color) are left completely untouched, so suit-color
-   readability is preserved regardless of equipped skin. */
+/* Each skin overrides background/border/box-shadow. The index colours are NOT
+   left to .card.red/.card.black: eleven of these faces are near-black, and the
+   engine's #0d1117 on them measured 1.0 : 1 — black on black (council ERS-26).
+   Every dark skin sets its own two index colours below ("Readable indices"),
+   each >= 4.5 : 1 against every stop of its gradient; the suite checks it. */
 
 /* ═══ GOLDEN ═══ — Luxurious gold metallic */
 .card.card-skin-golden {
@@ -3458,6 +3460,37 @@ body.high-legibility .stat-value {
 .card.card-skin-obsidian .card-top,
 .card.card-skin-obsidian .card-bottom { filter: drop-shadow(0 0 4px rgba(200, 200, 200, 0.5)); }
 .card.card-skin-obsidian .card-center { filter: drop-shadow(0 0 8px rgba(200, 200, 200, 0.3)); }
+
+/* --- Readable indices on the dark skins (v3.21.1, council ERS-26) ---
+   ♠♣ near-white with a trace of the skin's accent, ♥♦ a saturated red — each
+   >= 4.5 : 1 against the LIGHTEST stop of that skin's background (worst case).
+   The pair is also kept APART (ERS-26 review): CIEDE2000 >= 30 between the
+   two, and >= 15 under simulated protanopia and deuteranopia, so red and black
+   still read as two suits for colour-blind players. The red is as deep as the
+   face allows; lightness carries the difference where hue cannot.
+   test_gameLogic.mjs section 88 recomputes all of it from this file. */
+.card.card-skin-golden.black      { color: #fff1b8; }
+.card.card-skin-golden.red        { color: #f5a3b4; }
+.card.card-skin-neon.black        { color: #e0fbff; }
+.card.card-skin-neon.red          { color: #ff3d44; }
+.card.card-skin-shadow.black      { color: #fbfbfb; }
+.card.card-skin-shadow.red        { color: #ff3a33; }
+.card.card-skin-inferno.black     { color: #fff7ee; }
+.card.card-skin-inferno.red       { color: #ff6675; }
+.card.card-skin-frost.black       { color: #e6f6ff; }
+.card.card-skin-frost.red         { color: #ff675c; }
+.card.card-skin-emerald.black     { color: #f4fffa; }
+.card.card-skin-emerald.red       { color: #ff968f; }
+.card.card-skin-royal.black       { color: #faf8ff; }
+.card.card-skin-royal.red         { color: #ff5d52; }
+.card.card-skin-sakura.black      { color: #fff9fc; }
+.card.card-skin-sakura.red        { color: #ff675c; }
+.card.card-skin-phantom.black     { color: #dffcf8; }
+.card.card-skin-phantom.red       { color: #ff2945; }
+.card.card-skin-holographic.black { color: #fcfaff; }
+.card.card-skin-holographic.red   { color: #ff5447; }
+.card.card-skin-obsidian.black    { color: #f9f9f9; }
+.card.card-skin-obsidian.red      { color: #ff2929; }
 
 /* --- Shared skin overlay layer (shimmer + particles injected by JS) --- */
 .card-skin-overlay {
@@ -6999,7 +7032,7 @@ body.duat-journey #bottom-player { position: relative; }
     --pd-line: #e0bd66;
     --pd-panel: rgba(255, 226, 150, 0.07);
     --pd-idx-black: #f5dfa0;
-    --pd-idx-red: #ff9a85;
+    --pd-idx-red: #eea0af;
     --pd-suit-black: var(--pd-turq);
     --pd-suit-red: var(--pd-carn);
     --pd-ground: radial-gradient(ellipse at 50% 40%, var(--pd-lapis-mid) 0%, #172f72 55%, var(--pd-lapis-edge) 100%);
