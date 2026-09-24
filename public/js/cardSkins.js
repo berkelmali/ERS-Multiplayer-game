@@ -16,7 +16,7 @@ import EventBus from './eventbus.js';
 
 // Rarity tiers used in shop UI badges
 // 'common' = free/no badge, 'epic' = mid-tier, 'rare' = premium, 'legendary' = ultra-premium,
-// 'mythic' = the one skin above them (v3.20.0, the Pharaoh's Deck)
+// 'mythic' = the art decks above them (v3.20.0 the Pharaoh's Deck, v3.21.0 the Deck of the Gods)
 //
 // color/color2/color3/particleCount drive the in-game particle/glow effects
 // (see ui.js::_injectCardSkinFX and shopUI.js's preview rendering). This used
@@ -44,6 +44,9 @@ export const CARD_SKINS = [
     // style.css, and only the top card of the pile moves. `art` names the
     // decorator that draws its figures. 1 000: twice the dearest skin.
     { id: 'pharaoh',     nameKey: 'skinPharaohName',     cost: 1000, cssClass: 'card-skin-pharaoh',    rarity: 'mythic',    art: 'pharaoh' },
+    // v3.21.0 (council ERS-25) — its sister by night: lapis lazuli, the gods on
+    // the court cards, the winged sun and the stars. The operator's price.
+    { id: 'gods',        nameKey: 'skinGodsName',        cost: 2000, cssClass: 'card-skin-gods',       rarity: 'mythic',    art: 'gods' },
 ];
 
 const COINS_KEY = 'ers_coins';
@@ -178,7 +181,7 @@ export const CardSkins = {
         return skin ? skin.cssClass : '';
     },
 
-    /** Which decorator draws a skin's own art ('pharaoh'), or null. */
+    /** Which art deck draws a skin's figures ('pharaoh', 'gods'), or null. */
     getSkinArt(skinId) {
         const skin = CARD_SKINS.find((s) => s.id === skinId);
         return (skin && skin.art) || null;

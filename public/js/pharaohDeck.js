@@ -27,6 +27,8 @@
  * The markup here is constant — nothing a player typed reaches innerHTML.
  */
 
+import { godsCourtSvg, WINGED_SUN, STARS } from './godsDeck.js';
+
 /** The shop id of the skin (cardSkins.js). */
 export const PHARAOH_SKIN = 'pharaoh';
 
@@ -149,40 +151,67 @@ export function courtSvg(rank) {
     }
 }
 
+/** The decks that dress a card, by the skin's `art` (cardSkins.js). */
+export const ART_DECKS = Object.freeze({
+    pharaoh: { figure: courtSvg, night: false },
+    gods: { figure: godsCourtSvg, night: true }
+});
+
+/** The stars' layer (the Deck of the Gods): fixed places, a wave of delays. */
+const STARS_HTML = STARS.map(([x, y, d]) => `<i style="left:${x}%;top:${y}%;--d:${d}s"></i>`).join('');
+
 /**
- * Dresses one card element in the deck. Idempotent: a second call (the shop's
- * hover cycle rebuilds the class list and the centre text, then calls this
- * again) replaces the layers rather than stacking them.
+ * Dresses one card element in an art deck. Idempotent: a second call (the
+ * shop's hover cycle rebuilds the class list and the centre text, then calls
+ * this again) replaces the layers rather than stacking them.
  *
- *   .pd-layer.pd-fx      the sun disc and the light sweep (behind the art)
+ *   .pd-deck             the class every structural rule in style.css keys on
+ *   .pd-layer.pd-fx      the sun disc and the light sweep (behind the art),
+ *                        and by night the winged sun
+ *   .pd-layer.pd-stars   by night: twelve stars
  *   .pd-layer.pd-glyphs  the two hieroglyph columns
  *   .card-center         the figure, for J/Q/K/A
  */
-export function decoratePharaohCard(cardEl, card) {
-    if (!cardEl || !card || typeof document === 'undefined') return;
+export function decorateArtCard(cardEl, card, art) {
+    const deck = ART_DECKS[art];
+    if (!cardEl || !card || !deck || typeof document === 'undefined') return;
     for (const old of cardEl.querySelectorAll('.pd-layer')) old.remove();
     cardEl.classList.remove('pd-court', 'pd-ace');
+    cardEl.classList.add('pd-deck');
 
     const fx = document.createElement('div');
     fx.className = 'pd-layer pd-fx';
-    fx.innerHTML = '<div class="pd-sun"></div><div class="pd-sweep"></div>';
+    fx.innerHTML = '<div class="pd-sun"></div>'
+        + (deck.night ? `<div class="pd-wings">${WINGED_SUN}</div>` : '')
+        + '<div class="pd-sweep"></div>';
 
     const glyphs = document.createElement('div');
     glyphs.className = 'pd-layer pd-glyphs';
     glyphs.innerHTML = '<div class="pd-col pd-col-l"></div><div class="pd-col pd-col-r"></div>';
 
     cardEl.prepend(glyphs);
+    if (deck.night) {
+        const stars = document.createElement('div');
+        stars.className = 'pd-layer pd-stars';
+        stars.innerHTML = STARS_HTML;
+        cardEl.prepend(stars);
+    }
     cardEl.prepend(fx);
 
-    const art = courtSvg(card.rank);
+    const figure = deck.figure(card.rank);
     const center = cardEl.querySelector('.card-center');
-    if (art && center) {
+    if (figure && center) {
         const sign = SUIT_SIGN[card.suit] || '';
         // A court card carries its suit beside the figure, as painted (the
         // king, double-ended, carries it at both ends).
         const pips = card.rank === 14 ? ''
             : `<span class="pd-pip pd-pip-a">${sign}</span>` + (card.rank === 13 ? `<span class="pd-pip pd-pip-b">${sign}</span>` : '');
-        center.innerHTML = art + pips;
+        center.innerHTML = figure + pips;
         cardEl.classList.add(card.rank === 14 ? 'pd-ace' : 'pd-court');
     }
+}
+
+/** The Pharaoh's Deck (v3.20.0): kept as its own name for the call sites and tests. */
+export function decoratePharaohCard(cardEl, card) {
+    decorateArtCard(cardEl, card, 'pharaoh');
 }

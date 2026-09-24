@@ -1720,6 +1720,20 @@ echo  205) KAPILAR: 2945 test ^(yeni bolum 86^); kontrast olculdu: kirmizi
 echo       indeks parsomenin en koyu kenarinda 4.67:1. Ayrinti:
 echo       COUNCIL-v3.20.0-pharaoh-deck.md
 echo.
+echo  --- v3.21.0 -- TANRILARIN DESTESI: FIRAVUN DESTESININ GECE KARDESI ---
+echo  206) YENI KAPLAMA 'Tanrilarin Destesi' ^(2000 jeton, MYTHIC^): lacivert
+echo       lapis lazuli zemin, altin kakma cerceve, hiyeroglif sutunlari.
+echo       K: Osiris ^(yesil yuz, atef taci, cift basli^), Q: kanatlari acik
+echo       Isis, J: sahin basli Horus, A: gunesi kaldiran bocek Khepri.
+echo  207) EFEKT 'Nut'un Gecesi': kart duserken kanatli gunes acilir, merkezden
+echo       disari bir yildiz dalgasi yanar, kart laciverte parlar; sonra
+echo       yildizlar goz kirpar. En fazla 12 yildiz, yalniz opacity/transform;
+echo       yalnizca en ustteki kart hareket eder; 'hareketi azalt'ta durur.
+echo  208) IKI DESTE TEK KOD: .pd-deck ortak yapi, her kaplama sadece renk
+echo       tokenlari verir. Firavun Destesi once/sonra goruntusu ayni.
+echo  209) KAPILAR: 2973 test ^(yeni bolum 87^); gece indeks kontrasti
+echo       en kotu 4.85:1. Ayrinti: COUNCIL-v3.21.0-gods-deck.md
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1880,5 +1894,12 @@ echo     onizlemede Horus'un Gozu. Ustune gel: K, Q, J figurleri sirayla
 echo   - Jetonun yetmiyorsa dugmede 'mevcut / 1000' yazmali
 echo   - Satin al + kusan, botlarla oyna: kartin dusunce altin gunes, cerceveden
 echo     isik; alttaki kartlar sakin kalmali. Telefonda takilma olmamali
+echo.
+echo  --- v3.21.0 ------------------------------------------------
+echo   - Magaza: Firavun Destesi'nin yaninda lacivert cerceveli 'Deck of the
+echo     Gods' ^(MYTHIC, 2000^); onizlemede Khepri bocegi ve kirmizi gunes
+echo   - Satin al + kusan: kart dusunce altin kanatlar acilmali, yildizlar
+echo     merkezden disari yanmali; alttaki kartlar sakin kalmali
+echo   - Firavun Destesi'ni yeniden kusan: eskisi gibi gorunmeli
 echo.
 pause

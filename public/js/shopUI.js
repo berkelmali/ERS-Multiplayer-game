@@ -3,7 +3,7 @@ import { Localization } from './localization.js?v=3';
 import { CardSkins, CARD_SKINS } from './cardSkins.js';
 import { getRankName, getSuitSymbol } from './game.js';
 import EventBus from './eventbus.js';
-import { decoratePharaohCard } from './pharaohDeck.js';
+import { decorateArtCard } from './pharaohDeck.js';
 
 // Rarity badge config — color palette + label per tier
 const RARITY_CONFIG = {
@@ -317,9 +317,9 @@ export const ShopUI = {
         });
     },
 
-    /** A skin with art of its own (the Pharaoh's Deck) draws it on the preview. */
+    /** A skin with art of its own (the art decks) draws it on the preview. */
     _decorate(cardEl, card, skin) {
-        if (skin && skin.art === 'pharaoh') decoratePharaohCard(cardEl, card);
+        if (skin && skin.art) decorateArtCard(cardEl, card, skin.art);
     },
 
     _buildCardElement(card, skin) {
