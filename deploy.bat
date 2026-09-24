@@ -1752,6 +1752,23 @@ echo  213) KAPI: bolum 88 her kaplamanin rengini style.css'ten okuyup olcer;
 echo       yeni bir kaplama bu renkler olmadan eklenirse test adini verip duser.
 echo       2979 test. Ayrinti: COUNCIL-v3.21.1-dark-skins.md
 echo.
+echo  --- v3.21.2 -- KONSEYIN SERT INCELEMESI ^(ERS-27^) ---
+echo  214) COK OYUNCULUDA KAPLAMA HIC GORUNMUYORDU ^(eski hata^): oda her
+echo       guncellemede yigini silip kaplamasiz yeniden ciziyordu -- kartin
+echo       ayni anda. Artik yigin artimli senkronlanir: masadaki kartlar
+echo       korunur, yalniz yeni gelen eklenir, senin kartin kaplamali kalir,
+echo       efektler her guncellemede bastan oynamaz.
+echo  215) EKRANDA OLCULEN KONTRAST: kaplamalarin kendi renkli parlamasi
+echo       kirmizi yazinin etrafini aciyordu ^(Neon 4.12, Holographic 4.01^).
+echo       Simdi her yazinin altinda ince koyu bir hale var, yazilar parilti
+echo       katmaninin USTUNDE; bazi kirmizilar bir ton acildi. Olculen en
+echo       dusuk: 4.73:1 ^(Phantom^).
+echo  216) SMOKE'A IKI YENI ADIM: ^(1^) 11 koyu kaplamanin 44 yazisi, ekranda
+echo       gercekten boyanmis piksellere karsi olculur ^(PNG cozulur^);
+echo       ^(2^) cok oyunculu yeniden cizimde kartin ayni oge olarak ve
+echo       kaplamali kaldigi dogrulanir. Eski kod ile ^(2^) duser -- denendi.
+echo       2994 test. Ayrinti: COUNCIL-v3.21.2-hard-review.md
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1926,5 +1943,10 @@ echo     Holographic, Obsidian onizlemelerinde 'A' ve maca okunmali
 echo   - Obsidian'i kusan, botlarla oyna: yigindaki kendi kartlarinin rakami
 echo     ve takimi rahat okunmali; kupa/karo acikca kirmizi, maca/sinek
 echo     beyaza yakin olmali -- iki takim bir bakista ayrilmali
+echo.
+echo  --- v3.21.2 ------------------------------------------------
+echo   - COK OYUNCULU: kaplama kusanmis olarak iki tarayicida bir oda ac;
+echo     kendi oynadigin kart yiginda kaplamali KALMALI ^(onceden hemen
+echo     duz karta donuyordu^); diger oyuncunun karti duz olmali
 echo.
 pause

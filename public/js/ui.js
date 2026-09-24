@@ -13,6 +13,13 @@ import { decorateArtCard } from './pharaohDeck.js';
 
 export const UIManager = {
     initialized: false,
+    /**
+     * v3.21.2 (council ERS-27) — the pile cards YOU laid, by identity. The
+     * room's snapshot knows the pile but not who laid each card, so the
+     * multiplayer redraw asks this set which cards to dress in your skin.
+     * A real card is unique by rank and suit; a ghost is never yours.
+     */
+    _yours: new Set(),
 
     /** Incremented by clearBotTells(); see applyBotTells() for what it guards. */
     _tellGeneration: 0,
@@ -74,6 +81,7 @@ export const UIManager = {
 
         EventBus.off('gameStarted');
         EventBus.on('gameStarted', () => {
+            this._yours.clear();
             this.previousStatuses = {};
             this.shieldExpireTimestamps = [0, 0, 0, 0];
 
@@ -604,16 +612,14 @@ export const UIManager = {
 
         this.clearGameTimers();
         this.updateAll(false);
-        // Redraw pile
-        this.pileEl.innerHTML = '';
-        if (GameState.pile && GameState.pile.length > 0) {
-            GameState.pile.forEach(card => {
-                const div = this.createCardElement(card);
-                const rot = (card.suit.length + card.rank * 7) % 30 - 15; // deterministic rotation
-                div.style.transform = `rotate(${rot}deg) scale(1)`;
-                this.pileEl.appendChild(div);
-            });
-        }
+        // Redraw pile — v3.21.2 (council ERS-27): incrementally. The room
+        // calls this right after cardPlayed has drawn the new card (skinned,
+        // flying in) in the same tick; wiping and rebuilding the pile here
+        // replaced it with an undressed copy, so no skin ever survived a
+        // snapshot online. Keep every element the room's pile still starts
+        // with, drop what it no longer has, append only what is new — dressed
+        // in your skin when it was yours. Burned cards stay while the pile does.
+        this.syncPileElements(GameState.pile || []);
 
         // Sync Challenge Banner state
         if (GameState.challenge && GameState.challenge.active) {
@@ -855,8 +861,51 @@ export const UIManager = {
         import('./audioManager.js').then(m => m.AudioManager.setTensionLevel && m.AudioManager.setTensionLevel(level));
     },
 
+    /** The identity a pile element carries (createCardElement sets it). */
+    pileKey(card) {
+        return `${card.rank}${card.suit}${isGhost(card) ? '~ghost' : ''}`;
+    },
+
+    /** Makes #pile-cards show `pile`, reusing the elements already there (see handleGameSynced). */
+    syncPileElements(pile) {
+        if (!this.pileEl) return;
+        if (!pile.length) {
+            this.pileEl.innerHTML = '';
+            this._yours.clear();
+            return;
+        }
+        const onTable = Array.from(this.pileEl.children).filter(el => !el.dataset.burned);
+        let same = 0;
+        while (same < onTable.length && same < pile.length && onTable[same].dataset.key === this.pileKey(pile[same])) same++;
+        onTable.slice(same).forEach(el => el.remove());
+        pile.slice(same).forEach(card => {
+            const div = this.createCardElement(card);
+            const rot = (card.suit.length + card.rank * 7) % 30 - 15; // deterministic rotation
+            div.style.transform = `rotate(${rot}deg) scale(1)`;
+            if (this._yours.has(this.pileKey(card))) this.dressYourCard(div, card);
+            this.pileEl.appendChild(div);
+        });
+    },
+
+    /** Your skin on a pile card: its class, its effects, and an art deck's figures. */
+    dressYourCard(div, card) {
+        const skinId = Settings.config.equippedCardSkin;
+        if (!skinId || skinId === 'classic') return;
+        const skinClass = CardSkins.getSkinClass(skinId);
+        if (!skinClass) return;
+        div.classList.add(skinClass);
+        // Inject live visual effects into gameplay cards
+        this._injectCardSkinFX(div, skinId);
+        // v3.20.0 — a skin with figures of its own (the art decks).
+        const art = CardSkins.getSkinArt(skinId);
+        if (art) decorateArtCard(div, card, art);
+    },
+
     renderPileCard(card, playerId) {
         const div = this.createCardElement(card);
+        // Remember what you laid, so a redraw can dress it again (ERS-27).
+        if (playerId === 0 && !isGhost(card)) this._yours.add(this.pileKey(card));
+        else this._yours.delete(this.pileKey(card));
 
         // --- Card Skins (v2.9.0, see cardSkins.js / CLAUDE.md §6.28) ---
         // Applied only to cards YOU played (playerId 0) — this is a local
@@ -866,17 +915,9 @@ export const UIManager = {
         // field (e.g. players[i].cardSkin in the RTDB schema) — a natural
         // next step, deliberately NOT done here to avoid touching the
         // multiplayer schema for a purely decorative feature in this pass.
-        if (playerId === 0 && Settings.config.equippedCardSkin && Settings.config.equippedCardSkin !== 'classic') {
-            const skinClass = CardSkins.getSkinClass(Settings.config.equippedCardSkin);
-            if (skinClass) {
-                div.classList.add(skinClass);
-                // Inject live visual effects into gameplay cards
-                this._injectCardSkinFX(div, Settings.config.equippedCardSkin);
-                // v3.20.0 — a skin with figures of its own (the art decks).
-                const art = CardSkins.getSkinArt(Settings.config.equippedCardSkin);
-                if (art) decorateArtCard(div, card, art);
-            }
-        }
+        // Online, the room's redraw keeps this element (syncPileElements) —
+        // until v3.21.2 it replaced it in the same tick (council ERS-27).
+        if (playerId === 0) this.dressYourCard(div, card);
 
         const rot = (Math.random() - 0.5) * 28; // slight random rotation for naturalness
         div.style.transform = `rotate(${rot}deg)`;
@@ -1018,6 +1059,7 @@ export const UIManager = {
 
     renderBurnedCard(card) {
         const div = this.createCardElement(card);
+        div.dataset.burned = '1';   // not part of the pile's sequence (syncPileElements)
         const rot = (Math.random() - 0.5) * 45;
         div.style.transform = `rotate(${rot}deg) scale(1)`;
         this.pileEl.prepend(div);
@@ -1026,6 +1068,7 @@ export const UIManager = {
     createCardElement(card) {
         const div = document.createElement('div');
         div.className = `card ${card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black'}${isGhost(card) ? ' ghost' : ''}`;
+        div.dataset.key = this.pileKey(card);
         const rankStr = getRankName(card.rank);
         const suitStr = getSuitSymbol(card.suit);
         div.innerHTML = `

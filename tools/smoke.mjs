@@ -34,6 +34,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, normalize } from 'node:path';
 import { chromium } from 'playwright';
+import { inflateSync } from 'node:zlib';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const pub = join(root, 'public');
@@ -2457,6 +2458,130 @@ await step('the Tomb: a hand face up, a card laid, the guardian answers, nothing
     if (!r.menu) throw new Error('leaving the tomb did not return to the menu');
     if (r.leaked.length) throw new Error('shared match events fired: ' + r.leaked.join(', '));
     console.log('         rules first, then a hand of 3 face up, a card laid, the guardian answered, back to menu, 0 shared events');
+});
+
+// ── v3.21.2 (council ERS-27): what the player actually sees ───────────────────
+//
+// A PNG from the browser, decoded here with zlib — no dependency. Colour types
+// 2 (RGB) and 6 (RGBA), 8-bit, not interlaced: what Chromium writes.
+function decodePng(buf) {
+    let off = 8, w = 0, h = 0, type = 0;
+    const idat = [];
+    while (off < buf.length) {
+        const len = buf.readUInt32BE(off), tag = buf.toString('ascii', off + 4, off + 8);
+        const data = buf.subarray(off + 8, off + 8 + len);
+        if (tag === 'IHDR') { w = data.readUInt32BE(0); h = data.readUInt32BE(4); type = data[9]; if (data[8] !== 8 || data[12] !== 0) throw new Error('png: only 8-bit, non-interlaced'); }
+        if (tag === 'IDAT') idat.push(data);
+        off += 12 + len;
+    }
+    const bpp = type === 6 ? 4 : type === 2 ? 3 : 0;
+    if (!bpp) throw new Error('png: colour type ' + type);
+    const raw = inflateSync(Buffer.concat(idat)), stride = w * bpp, px = Buffer.alloc(h * stride);
+    for (let y = 0; y < h; y++) {
+        const f = raw[y * (stride + 1)], src = y * (stride + 1) + 1;
+        for (let x = 0; x < stride; x++) {
+            const a = x >= bpp ? px[y * stride + x - bpp] : 0, b = y ? px[(y - 1) * stride + x] : 0, c = x >= bpp && y ? px[(y - 1) * stride + x - bpp] : 0;
+            let v = raw[src + x];
+            if (f === 1) v += a; else if (f === 2) v += b; else if (f === 3) v += (a + b) >> 1;
+            else if (f === 4) { const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); v += (pa <= pb && pa <= pc) ? a : pb <= pc ? b : c; }
+            px[y * stride + x] = v & 255;
+        }
+    }
+    return { w, h, at: (x, y) => { const i = y * stride + x * bpp; return [px[i], px[i + 1], px[i + 2]]; } };
+}
+const relLum = ([r, g, b]) => [r, g, b].map(c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }).reduce((s, c, i) => s + c * [0.2126, 0.7152, 0.0722][i], 0);
+const wcag = (a, b) => { const [x, y] = [relLum(a), relLum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+await step('dark skins: every index reads against the pixels actually painted around it', async () => {
+    const skins = ['golden', 'neon', 'shadow', 'inferno', 'frost', 'emerald', 'royal', 'sakura', 'phantom', 'holographic', 'obsidian'];
+    const c2 = await browser.newContext({ viewport: { width: 1000, height: 900 }, deviceScaleFactor: 2 });
+    const p2 = await c2.newPage();
+    try {
+        await p2.setContent(`<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${base}/style.css">
+            <style>body{margin:0;background:#1b2027;display:flex;flex-wrap:wrap;gap:14px;padding:10px;width:980px}
+            .slot{position:relative;width:130px;height:195px}*{animation:none!important;transition:none!important}</style></head>
+            <body>${skins.flatMap(k => [['black', '♠', 'A'], ['red', '♥', 'K']].map(([c, s, r]) =>
+                `<div class="slot"><div class="card ${c} card-skin-${k}" data-id="${k} ${s}"><div class="card-top">${r} ${s}</div><div class="card-center">${s}</div><div class="card-bottom">${r} ${s}</div></div></div>`)).join('')}</body></html>`,
+            { waitUntil: 'load' });
+        await p2.waitForTimeout(300);
+        const boxes = await p2.evaluate(() => [...document.querySelectorAll('.card')].map(c => ({
+            id: c.dataset.id, color: getComputedStyle(c).color.match(/\d+/g).slice(0, 3).map(Number),
+            parts: ['.card-top', '.card-center'].map(s => { const r = c.querySelector(s).getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })
+        })));
+        const shot = decodePng(await p2.screenshot());
+        await p2.addStyleTag({ content: '.card-top,.card-bottom,.card-center{color:#ff00ff!important;-webkit-text-stroke:0!important}' });
+        await p2.waitForTimeout(200);
+        const keyed = decodePng(await p2.screenshot());
+        const worst = [];
+        for (const b of boxes) {
+            for (const [pi, [bx, by, bw, bh]] of b.parts.entries()) {
+                const x0 = Math.max(0, Math.floor(bx * 2) - 12), y0 = Math.max(0, Math.floor(by * 2) - 12);
+                const x1 = Math.min(shot.w - 1, Math.ceil((bx + bw) * 2) + 12), y1 = Math.min(shot.h - 1, Math.ceil((by + bh) * 2) + 12);
+                const W = x1 - x0 + 1, H = y1 - y0 + 1, mask = new Uint8Array(W * H);
+                for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+                    const [r, g, bl] = keyed.at(x0 + x, y0 + y);
+                    mask[y * W + x] = r > 200 && g < 80 && bl > 200 ? 1 : 0;
+                }
+                const dist = new Uint8Array(W * H).fill(255);   // Chebyshev distance to the glyph, capped
+                for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (mask[y * W + x]) {
+                    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+                        const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+                        const d = Math.max(Math.abs(dx), Math.abs(dy)), i = Y * W + X; if (d < dist[i]) dist[i] = d;
+                    }
+                }
+                let n = 0; const sum = [0, 0, 0];
+                for (let i = 0; i < W * H; i++) if (!mask[i] && dist[i] >= 3 && dist[i] <= 6) { const c = shot.at(x0 + i % W, y0 + Math.floor(i / W)); sum[0] += c[0]; sum[1] += c[1]; sum[2] += c[2]; n++; }
+                if (!n) { worst.push(`${b.id} ${pi ? 'pip' : 'index'}: no glyph found`); continue; }
+                const ratio = wcag(b.color, sum.map(v => v / n));
+                if (ratio < 4.5) worst.push(`${b.id} ${pi ? 'pip' : 'index'} ${ratio.toFixed(2)} : 1`);
+            }
+        }
+        if (worst.length) throw new Error('below 4.5 : 1 as painted: ' + worst.join(', '));
+        console.log(`         ${boxes.length * 2} glyphs on ${skins.length} dark skins, each >= 4.5 : 1 against what surrounds it on screen`);
+    } finally { await c2.close(); }
+});
+
+await step('online, your skin survives the room\'s redraw — and nothing replays', async () => {
+    const r = await page.evaluate(async () => {
+        const { UIManager } = await import('./js/ui.js');
+        const { Settings } = await import('./js/settings.js');
+        const GS = window.GameState;
+        const saved = { skin: Settings.config.equippedCardSkin, pile: GS.pile };
+        const el = document.getElementById('pile-cards');
+        const out = {};
+        try {
+            Settings.config.equippedCardSkin = 'gods';
+            UIManager.syncPileElements([]);
+            const mine = { rank: 13, suit: 'spades' }, theirs = { rank: 9, suit: 'hearts' }, late = { rank: 4, suit: 'clubs' };
+            GS.pile = [mine];
+            UIManager.renderPileCard(mine, 0);                     // cardPlayed …
+            const first = el.lastElementChild;
+            UIManager.handleGameSynced({ players: [] });           // … then gameSynced, same tick, as in firebaseSync
+            out.sameNode = el.lastElementChild === first;
+            out.dressed = first.classList.contains('card-skin-gods') && first.classList.contains('pd-deck');
+            GS.pile = [mine, theirs];
+            UIManager.renderPileCard(theirs, 1);
+            UIManager.handleGameSynced({ players: [] });
+            out.afterTheirs = [el.children.length, el.children[0] === first, el.children[1].classList.contains('card-skin-gods')];
+            GS.pile = [mine, theirs, late];                         // a card that arrived with no cardPlayed
+            UIManager.handleGameSynced({ players: [] });
+            out.appended = [el.children.length, el.children[0] === first, el.children[2].dataset.key];
+            GS.pile = [];
+            UIManager.handleGameSynced({ players: [] });
+            out.cleared = el.children.length;
+        } finally {
+            Settings.config.equippedCardSkin = saved.skin;
+            GS.pile = saved.pile || [];
+            UIManager.syncPileElements([]);
+        }
+        return out;
+    });
+    if (!r.sameNode) throw new Error('the redraw replaced the card you just laid: ' + JSON.stringify(r));
+    if (!r.dressed) throw new Error('your card lost its skin in the redraw: ' + JSON.stringify(r));
+    if (r.afterTheirs[0] !== 2 || !r.afterTheirs[1] || r.afterTheirs[2]) throw new Error('another player\'s card changed yours, or wore your skin: ' + JSON.stringify(r));
+    if (r.appended[0] !== 3 || !r.appended[1] || r.appended[2] !== '4clubs') throw new Error('a card from the room was not appended in place: ' + JSON.stringify(r));
+    if (r.cleared !== 0) throw new Error('a won pile did not clear the table: ' + JSON.stringify(r));
+    console.log('         laid, synced, synced again, appended from the room, cleared: your card is the same element, still dressed');
 });
 
 // Firebase is stubbed, so its own failures are expected noise. Anything else

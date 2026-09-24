@@ -3343,8 +3343,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-golden .card-top,
-.card.card-skin-golden .card-bottom { filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.7)); }
-.card.card-skin-golden .card-center { filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.5)); }
+.card.card-skin-golden .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 6px rgba(255, 215, 0, 0.7)); }
+.card.card-skin-golden .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 10px rgba(255, 215, 0, 0.5)); }
 
 /* ═══ NEON ═══ — Electric cyan glow */
 .card.card-skin-neon {
@@ -3354,8 +3354,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-neon .card-top,
-.card.card-skin-neon .card-bottom { filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.8)); }
-.card.card-skin-neon .card-center { filter: drop-shadow(0 0 12px rgba(0, 229, 255, 0.6)); }
+.card.card-skin-neon .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 6px rgba(0, 229, 255, 0.8)); }
+.card.card-skin-neon .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 12px rgba(0, 229, 255, 0.6)); }
 
 /* ═══ SHADOW ═══ — Matte black with crimson accents (inspired by black playing cards) */
 .card.card-skin-shadow {
@@ -3365,8 +3365,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-shadow .card-top,
-.card.card-skin-shadow .card-bottom { filter: drop-shadow(0 0 5px rgba(229, 62, 62, 0.6)); }
-.card.card-skin-shadow .card-center { filter: drop-shadow(0 0 8px rgba(229, 62, 62, 0.4)); }
+.card.card-skin-shadow .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 5px rgba(229, 62, 62, 0.6)); }
+.card.card-skin-shadow .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 8px rgba(229, 62, 62, 0.4)); }
 
 /* ═══ INFERNO ═══ — Volcanic fire and molten lava */
 .card.card-skin-inferno {
@@ -3376,8 +3376,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-inferno .card-top,
-.card.card-skin-inferno .card-bottom { filter: drop-shadow(0 0 6px rgba(255, 107, 53, 0.7)); }
-.card.card-skin-inferno .card-center { filter: drop-shadow(0 0 10px rgba(255, 60, 0, 0.5)); }
+.card.card-skin-inferno .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 6px rgba(255, 107, 53, 0.7)); }
+.card.card-skin-inferno .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 10px rgba(255, 60, 0, 0.5)); }
 
 /* ═══ FROST ═══ — Icy blue and crystalline white */
 .card.card-skin-frost {
@@ -3387,8 +3387,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-frost .card-top,
-.card.card-skin-frost .card-bottom { filter: drop-shadow(0 0 5px rgba(125, 211, 252, 0.7)); }
-.card.card-skin-frost .card-center { filter: drop-shadow(0 0 10px rgba(186, 230, 253, 0.5)); }
+.card.card-skin-frost .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 5px rgba(125, 211, 252, 0.7)); }
+.card.card-skin-frost .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 10px rgba(186, 230, 253, 0.5)); }
 
 /* ═══ EMERALD ═══ — Deep green gem with jade glow */
 .card.card-skin-emerald {
@@ -3398,8 +3398,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-emerald .card-top,
-.card.card-skin-emerald .card-bottom { filter: drop-shadow(0 0 5px rgba(52, 211, 153, 0.7)); }
-.card.card-skin-emerald .card-center { filter: drop-shadow(0 0 10px rgba(52, 211, 153, 0.5)); }
+.card.card-skin-emerald .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 5px rgba(52, 211, 153, 0.7)); }
+.card.card-skin-emerald .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 10px rgba(52, 211, 153, 0.5)); }
 
 /* ═══ ROYAL ═══ — Regal purple with amethyst glow */
 .card.card-skin-royal {
@@ -3409,8 +3409,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-royal .card-top,
-.card.card-skin-royal .card-bottom { filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.7)); }
-.card.card-skin-royal .card-center { filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.5)); }
+.card.card-skin-royal .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 6px rgba(167, 139, 250, 0.7)); }
+.card.card-skin-royal .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 10px rgba(167, 139, 250, 0.5)); }
 
 /* ═══ SAKURA ═══ — Cherry blossom pink, soft and elegant */
 .card.card-skin-sakura {
@@ -3420,8 +3420,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-sakura .card-top,
-.card.card-skin-sakura .card-bottom { filter: drop-shadow(0 0 5px rgba(249, 168, 212, 0.7)); }
-.card.card-skin-sakura .card-center { filter: drop-shadow(0 0 10px rgba(249, 168, 212, 0.5)); }
+.card.card-skin-sakura .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 5px rgba(249, 168, 212, 0.7)); }
+.card.card-skin-sakura .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 10px rgba(249, 168, 212, 0.5)); }
 
 /* ═══ PHANTOM ═══ — Ghostly dark with eerie teal shimmer */
 .card.card-skin-phantom {
@@ -3431,8 +3431,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-phantom .card-top,
-.card.card-skin-phantom .card-bottom { filter: drop-shadow(0 0 6px rgba(79, 209, 197, 0.7)); }
-.card.card-skin-phantom .card-center { filter: drop-shadow(0 0 12px rgba(79, 209, 197, 0.5)); }
+.card.card-skin-phantom .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 6px rgba(79, 209, 197, 0.7)); }
+.card.card-skin-phantom .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 12px rgba(79, 209, 197, 0.5)); }
 
 /* ═══ HOLOGRAPHIC ═══ — Rainbow prismatic, shifts through hues */
 .card.card-skin-holographic {
@@ -3447,8 +3447,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-holographic .card-top,
-.card.card-skin-holographic .card-bottom { filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.6)); }
-.card.card-skin-holographic .card-center { filter: drop-shadow(0 0 10px rgba(78, 205, 196, 0.5)); }
+.card.card-skin-holographic .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 6px rgba(167, 139, 250, 0.6)); }
+.card.card-skin-holographic .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 10px rgba(78, 205, 196, 0.5)); }
 
 /* ═══ OBSIDIAN ═══ — Pure volcanic black glass, minimal and deadly */
 .card.card-skin-obsidian {
@@ -3458,8 +3458,8 @@ body.high-legibility .stat-value {
     overflow: hidden;
 }
 .card.card-skin-obsidian .card-top,
-.card.card-skin-obsidian .card-bottom { filter: drop-shadow(0 0 4px rgba(200, 200, 200, 0.5)); }
-.card.card-skin-obsidian .card-center { filter: drop-shadow(0 0 8px rgba(200, 200, 200, 0.3)); }
+.card.card-skin-obsidian .card-bottom { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 4px rgba(200, 200, 200, 0.5)); }
+.card.card-skin-obsidian .card-center { filter: drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 1.6px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 8px rgba(200, 200, 200, 0.3)); }
 
 /* --- Readable indices on the dark skins (v3.21.1, council ERS-26) ---
    ♠♣ near-white with a trace of the skin's accent, ♥♦ a saturated red — each
@@ -3472,25 +3472,53 @@ body.high-legibility .stat-value {
 .card.card-skin-golden.black      { color: #fff1b8; }
 .card.card-skin-golden.red        { color: #f5a3b4; }
 .card.card-skin-neon.black        { color: #e0fbff; }
-.card.card-skin-neon.red          { color: #ff3d44; }
+.card.card-skin-neon.red          { color: #ff6f70; }
 .card.card-skin-shadow.black      { color: #fbfbfb; }
-.card.card-skin-shadow.red        { color: #ff3a33; }
+.card.card-skin-shadow.red        { color: #ff5752; }
 .card.card-skin-inferno.black     { color: #fff7ee; }
 .card.card-skin-inferno.red       { color: #ff6675; }
 .card.card-skin-frost.black       { color: #e6f6ff; }
-.card.card-skin-frost.red         { color: #ff675c; }
+.card.card-skin-frost.red         { color: #ff7a7a; }
 .card.card-skin-emerald.black     { color: #f4fffa; }
 .card.card-skin-emerald.red       { color: #ff968f; }
 .card.card-skin-royal.black       { color: #faf8ff; }
 .card.card-skin-royal.red         { color: #ff5d52; }
 .card.card-skin-sakura.black      { color: #fff9fc; }
-.card.card-skin-sakura.red        { color: #ff675c; }
+.card.card-skin-sakura.red        { color: #ff7a88; }
 .card.card-skin-phantom.black     { color: #dffcf8; }
-.card.card-skin-phantom.red       { color: #ff2945; }
+.card.card-skin-phantom.red       { color: #ff4e47; }
 .card.card-skin-holographic.black { color: #fcfaff; }
-.card.card-skin-holographic.red   { color: #ff5447; }
+.card.card-skin-holographic.red   { color: #ff6b66; }
 .card.card-skin-obsidian.black    { color: #f9f9f9; }
-.card.card-skin-obsidian.red      { color: #ff2929; }
+.card.card-skin-obsidian.red      { color: #ff4e47; }
+
+/* The characters sit ABOVE the skin's overlay (v3.21.2, council ERS-27): the
+   shimmer (z-index 2–3) used to pass over the index and tint glyph and ground
+   alike, dropping a red index to 2.7 : 1 at its peak. Each index and pip also
+   carries a tight near-black halo before its coloured glow (the filters
+   above), so the pixels next to a glyph are dark whatever the glow does. */
+.card.card-skin-golden .card-top, .card.card-skin-golden .card-bottom,
+.card.card-skin-neon .card-top, .card.card-skin-neon .card-bottom,
+.card.card-skin-shadow .card-top, .card.card-skin-shadow .card-bottom,
+.card.card-skin-inferno .card-top, .card.card-skin-inferno .card-bottom,
+.card.card-skin-frost .card-top, .card.card-skin-frost .card-bottom,
+.card.card-skin-emerald .card-top, .card.card-skin-emerald .card-bottom,
+.card.card-skin-royal .card-top, .card.card-skin-royal .card-bottom,
+.card.card-skin-sakura .card-top, .card.card-skin-sakura .card-bottom,
+.card.card-skin-phantom .card-top, .card.card-skin-phantom .card-bottom,
+.card.card-skin-holographic .card-top, .card.card-skin-holographic .card-bottom,
+.card.card-skin-obsidian .card-top, .card.card-skin-obsidian .card-bottom { z-index: 4; }
+.card.card-skin-golden .card-center,
+.card.card-skin-neon .card-center,
+.card.card-skin-shadow .card-center,
+.card.card-skin-inferno .card-center,
+.card.card-skin-frost .card-center,
+.card.card-skin-emerald .card-center,
+.card.card-skin-royal .card-center,
+.card.card-skin-sakura .card-center,
+.card.card-skin-phantom .card-center,
+.card.card-skin-holographic .card-center,
+.card.card-skin-obsidian .card-center { position: relative; z-index: 4; }
 
 /* --- Shared skin overlay layer (shimmer + particles injected by JS) --- */
 .card-skin-overlay {
