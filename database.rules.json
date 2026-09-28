@@ -1,9 +1,10 @@
 {
   "rules": {
     "lobbyRooms": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
       "$tableId": {
         ".read": "auth != null",
-        ".write": "auth != null && (!data.exists() ? (newData.child('hostId').val() === auth.uid && newData.child('playerIds').child(newData.child('hostId').val()).exists()) : (!newData.exists() ? (data.child('hostId').val() === auth.uid || data.child('playerIds').child(auth.uid).exists()) : ((data.child('hostId').val() === auth.uid || data.child('playerIds').child(auth.uid).exists() || (data.child('gameState').child('status').val() === 'waiting' && newData.child('playerIds').child(auth.uid).exists())) && newData.child('tableId').val() === data.child('tableId').val() && newData.child('playerIds').child(newData.child('hostId').val()).exists())))",
+        ".write": "(auth != null && (!data.exists() ? (newData.child('hostId').val() === auth.uid && newData.child('playerIds').child(newData.child('hostId').val()).exists()) : (!newData.exists() ? (data.child('hostId').val() === auth.uid || data.child('playerIds').child(auth.uid).exists()) : ((data.child('hostId').val() === auth.uid || data.child('playerIds').child(auth.uid).exists() || (data.child('gameState').child('status').val() === 'waiting' && newData.child('playerIds').child(auth.uid).exists())) && newData.child('tableId').val() === data.child('tableId').val() && newData.child('playerIds').child(newData.child('hostId').val()).exists())))) || (auth != null && root.child('admins').child(auth.uid).val() === true && !newData.exists() && (data.child('gameState').child('roomId').isString() ? (!root.child('gameRooms').child(data.child('gameState').child('roomId').val()).exists() || (root.child('gameRooms').child(data.child('gameState').child('roomId').val()).child('gameOver').val() === true || (root.child('gameRooms').child(data.child('gameState').child('roomId').val()).child('lastPlayTime').isNumber() && root.child('gameRooms').child(data.child('gameState').child('roomId').val()).child('lastPlayTime').val() < now - 900000))) : true) && (data.child('gameState').child('status').val() === 'playing' || !root.child('online').child(data.child('hostId').val()).exists()))",
         "players": {
           ".validate": "newData.hasChildren()"
         }
@@ -13,7 +14,7 @@
       ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
       "$roomId": {
         ".read": "auth != null && data.child('playerIds').child(auth.uid).exists()",
-        ".write": "auth != null && (!data.exists() || data.child('playerIds').child(auth.uid).exists()) && (!(data.child('god').exists() || newData.child('god').exists()) || root.child('clientVersions').child(auth.uid).val() >= 2)",
+        ".write": "(auth != null && (!data.exists() || data.child('playerIds').child(auth.uid).exists()) && (!(data.child('god').exists() || newData.child('god').exists()) || root.child('clientVersions').child(auth.uid).val() >= 2)) || (auth != null && root.child('admins').child(auth.uid).val() === true && !newData.exists() && (data.child('gameOver').val() === true || (data.child('lastPlayTime').isNumber() && data.child('lastPlayTime').val() < now - 900000)))",
         "players": {
           "$playerId": {
             "activeEmoji": {
@@ -40,6 +41,15 @@
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         ".write": false
+      }
+    },
+    "online": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      "$uid": {
+        "$conn": {
+          ".write": "auth != null && auth.uid === $uid && $conn.matches(/^[-0-9A-Za-z_]{20}$/)",
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        }
       }
     }
   }

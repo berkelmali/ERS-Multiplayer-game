@@ -2693,6 +2693,8 @@ const colDocs = (q) => Object.keys(store.fs)
     .filter(p => p.startsWith(q.path + '/') && p.split('/').length === q.path.split('/').length + 1)
     .map(snapDoc).filter(d => (q.where || []).every(([f, v]) => d.data()[f] === v));
 export const getDocs = async (q) => { const docs = colDocs(q); return { docs, empty: !docs.length, forEach: (f) => docs.forEach(f) }; };
+const removals = (globalThis.__removes = globalThis.__removes || []);
+export const deleteDoc = async (r) => { removals.push('fs:' + r.path); delete store.fs[r.path]; (store.listeners || []).forEach(f => f()); };
 export const onSnapshot = (q, next) => {
     const fire = () => { if (q.kind === 'doc') next(snapDoc(q.path)); else { const docs = colDocs(q); next({ docs, forEach: (f) => docs.forEach(f) }); } };
     setTimeout(fire, 0); (store.listeners = store.listeners || []).push(fire); return noop;
@@ -2717,11 +2719,19 @@ export const onValue = (r, next, err) => {
             next({ val: () => store.db.gameRooms || null });
         }
         else if (r.path === '.info/connected') next({ val: () => true });
+        else if (r.path === 'online') next({ val: () => store.db.online || null });
         else next({ val: () => (r.path === '.info/serverTimeOffset' ? 0 : (store.db[r.path] ?? null)) });
     }, 0);
     return noop;
 };
 export const set = async () => {};
+export const remove = async (r) => {
+    removals.push('db:' + r.path);
+    const [top, id] = r.path.split('/');
+    delete store.db[r.path];
+    if (id && store.db[top] && typeof store.db[top] === 'object') delete store.db[top][id];
+    if (top === 'gameRooms' && globalThis.__admPushRooms) globalThis.__admPushRooms({ ...(store.db.gameRooms || {}) });
+};
 `;
     const now = Date.now();
     const today = Math.floor(now / 86400000);
@@ -2747,9 +2757,19 @@ export const set = async () => {};
                 tableId: 'CCC333', hostId: 'p4', hostUsername: 'P4', createdAt: now - 60000,
                 players: [{ uid: 'p4', name: 'P4', index: 0 }, { uid: 'x/../admins', name: 'Sneaky', index: 1 }],
                 playerIds: { p4: true }, gameState: { status: 'waiting', playerCount: 2 }
+            },
+            // v3.22.3: old enough to close, but its host is connected (online/p5).
+            'multiplayer_tables/DDD444': {
+                tableId: 'DDD444', hostId: 'p5', hostUsername: 'P5', createdAt: now - 2 * 3600e3,
+                players: [{ uid: 'p5', name: 'P5', index: 0 }], playerIds: { p5: true }, gameState: { status: 'waiting', playerCount: 1 }
             }
         },
         db: { 'presence/h1': 'offline', 'presence/p2': 'online', 'presence/p3': 'online', 'presence/p4': 'online',
+              // v3.22.3: two tabs for Ayşe, one for p5; a lobby mirror with no table behind it.
+              online: { p2: { '-Aaaaaaaaaaaaaaaaaaa': now - 120000, '-Bbbbbbbbbbbbbbbbbbb': now - 60000 }, p5: { '-Ccccccccccccccccccc': now - 30000 } },
+              lobbyRooms: { AAA111: { tableId: 'AAA111', hostId: 'h1', gameState: { status: 'playing', roomId: 'ROOM01' } },
+                            ORPH01: { tableId: 'ORPH01', hostId: 'gone', hostUsername: 'Gone', gameState: { status: 'waiting' } } },
+              'lobbyRooms/AAA111': { tableId: 'AAA111', hostId: 'h1', gameState: { status: 'playing', roomId: 'ROOM01' } },
               gameRooms: { ROOM01: {
                   hostId: 'h1', playerIds: { h1: true, p2: true }, activePlayerId: 0, lastPlayTime: now, gameOver: false,
                   players: [
@@ -2778,7 +2798,7 @@ export const set = async () => {};
         await p.waitForFunction(() => /AAA111/.test(document.getElementById('adm-problems').textContent), null, { timeout: 5000 });
 
         await p.click('.adm-tab[data-view="tables"]');
-        await p.waitForFunction(() => document.querySelectorAll('#adm-tables .adm-table').length === 3, null, { timeout: 5000 });
+        await p.waitForFunction(() => document.querySelectorAll('#adm-tables .adm-table').length === 4, null, { timeout: 5000 });
         const t = await p.evaluate(() => ({
             text: document.getElementById('adm-tables').textContent,
             imgs: document.querySelectorAll('#adm-tables img').length,
@@ -2843,6 +2863,35 @@ export const set = async () => {};
         if (!/card-count/.test(verdict) || !/turn-empty/.test(verdict)) throw new Error('the room analysis missed a lost card or a stuck turn: ' + verdict.slice(0, 300));
         if (shots) await p.screenshot({ path: `${shots}/admin-room.png`, fullPage: true });
 
+        // v3.22.3 (council ERS-30): who is online, and closing what is dead.
+        await p.click('.adm-tab[data-view="online"]');
+        await p.waitForFunction(() => document.querySelectorAll('#adm-online tbody tr').length === 2, null, { timeout: 5000 });
+        const online = await p.evaluate(() => ({ text: document.getElementById('adm-online').textContent, count: document.getElementById('adm-online-count').textContent }));
+        if (online.count !== '2' || !/Ayşe/.test(online.text) || !/p2/.test(online.text) || !/AAA111/.test(online.text) || !/p5/.test(online.text))
+            throw new Error('the online list does not show who is connected and where: ' + online.text.slice(0, 300));
+        if (shots) await p.screenshot({ path: `${shots}/admin-online.png`, fullPage: true });
+
+        await p.click('.adm-tab[data-view="tables"]');
+        await p.waitForFunction(() => /ORPH01/.test(document.getElementById('adm-orphans').textContent), null, { timeout: 5000 });
+        const cl = await p.evaluate(() => {
+            const card = (id) => [...document.querySelectorAll('#adm-tables .adm-table')].find(a => a.textContent.includes(id));
+            return {
+                aaa: !!card('AAA111').querySelector('.adm-btn--danger'),
+                bbb: !!card('BBB222').querySelector('.adm-btn--danger'),
+                ddd: card('DDD444').textContent,
+                sweep: document.getElementById('adm-tables-sweep').hidden ? '' : document.getElementById('adm-tables-sweep').textContent
+            };
+        });
+        if (!cl.aaa || cl.bbb || !/Ev sahibi şu an bağlı/.test(cl.ddd) || !/\(1\)/.test(cl.sweep))
+            throw new Error('the page offers the wrong tables for closing: ' + JSON.stringify(cl));
+        await p.evaluate(() => [...document.querySelectorAll('#adm-tables .adm-table')].find(a => a.textContent.includes('AAA111')).querySelector('.adm-btn--danger').click());
+        await p.click('#adm-confirm button[value="ok"]');
+        await p.waitForFunction(() => !globalThis.__ADM_STORE__.fs['multiplayer_tables/AAA111'], null, { timeout: 5000 });
+        const removed = await p.evaluate(() => globalThis.__removes.slice());
+        if (removed.join(',') !== 'db:gameRooms/ROOM01,db:lobbyRooms/AAA111,fs:multiplayer_tables/AAA111')
+            throw new Error('the close did not go room → lobby → table: ' + removed.join(','));
+        if (shots) await p.screenshot({ path: `${shots}/admin-tables-closed.png`, fullPage: true });
+
         await p.click('.adm-tab[data-view="players"]');
         await p.fill('#adm-search', 'Ayşe');
         await p.press('#adm-search', 'Enter');
@@ -2866,7 +2915,7 @@ export const set = async () => {};
         const audit = await p.textContent('#adm-audit');
         if (!/smoke test/.test(audit) || !/=HYPERLINK/.test(audit)) throw new Error('the audit log does not list both grants');
         if (errs.length) throw new Error('page errors: ' + errs.join(' | '));
-        console.log('         admin only; hostile name drawn as text; "x/../admins" never reached a path; 3 table checks; room analysis; +50 audited');
+        console.log('         admin only; hostile name drawn as text; "x/../admins" never reached a path; 3 table checks; room analysis; online list; dead table closed room→lobby→table; +50 audited');
     } finally { await ctx2.close(); }
 });
 

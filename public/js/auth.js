@@ -4,6 +4,7 @@ import { app } from "./firebaseConfig.js";
 import EventBus from "./eventbus.js";
 import { cleanName } from "./safeText.js";
 import { createRecord } from "./playerRecord.js";
+import { OnlinePresence } from "./onlinePresence.js";
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);
@@ -60,6 +61,9 @@ export const AuthSystem = {
 
     async logout() {
         try {
+            // v3.22.3: withdraw the online marker while the write is still ours —
+            // after sign-out the connection stays open, so onDisconnect never fires.
+            await OnlinePresence.stop();
             await signOut(auth);
             return { success: true };
         } catch (error) {

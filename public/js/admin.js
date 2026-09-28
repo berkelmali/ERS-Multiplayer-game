@@ -11,7 +11,12 @@
  *     point, the rules refuse every admin read and write to anyone else, so a
  *     player who un-hides this page gets refusals, not data.
  *   · Live rooms are READ ONLY: database.rules.json gives an admin a read on
- *     /gameRooms and no write anywhere (tools/rules-test.mjs, section 6).
+ *     /gameRooms and no write anywhere (tools/rules-test.mjs, section 6) —
+ *     with one exception since v3.22.3 (council ERS-30): an admin may DELETE a
+ *     room, lobby or table that the server's own data calls dead (over, idle
+ *     15 minutes, host gone). Never an edit, never a live one (section 7).
+ *   · The online list (v3.22.3) reads online/{uid}/{conn}, written by each
+ *     signed-in tab (onlinePresence.js) and removed by the server on disconnect.
  *   · Nothing player-chosen ever reaches innerHTML: every node is built with
  *     `h()` below, text through text nodes. Names are player input.
  *   · Every id that becomes part of a database path passes adminCore.safeId.
@@ -24,14 +29,15 @@
  */
 import { app, rtdb } from './firebaseConfig.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { ref, get, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getFirestore, collection, doc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { ref, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { WalletAdmin } from './wallet.js';
 import { CARD_SKINS } from './cardSkins.js';
 import { EARN_DAILY_CAP, ADMIN_GRANT_MAX, ADMIN_DAILY_CAP, dayNumber } from './walletRules.js';
 import {
     adminEmailFor, asList, toMillis, formatAge, cardLabel, presenceState,
-    tableDiagnostics, roomDiagnostics, roomEvents, summarize, toCsv, safeId
+    tableDiagnostics, roomDiagnostics, roomEvents, summarize, toCsv, safeId,
+    roomIsDead, tableClosePlan, CLOSE_REASON, onlineRows, orphanLobbies, lobbyDeletable
 } from './adminCore.js';
 import { isBotSeat, realCount } from './slapOutcome.js';
 import { ghostCount } from './ghostCards.js';
@@ -120,6 +126,9 @@ const S = {
     grants: [], grantsAt: null, grantsErr: null,
     names: new Map(),
     rooms: null, roomsAt: null, roomsErr: null, primed: false,
+    online: null, onlineAt: null, onlineErr: null,   // online/{uid}/{conn} (v3.22.3)
+    lobbies: null, lobbiesErr: null,                  // lobbyRooms, fetched on demand
+    closing: new Set(),                               // table/room ids with a delete in flight
     roomFeed: new Map(),      // roomId → events, newest last
     feed: [],                 // every room, newest last
     paused: false,
@@ -226,8 +235,9 @@ function stopAll() {
     S.unsubs = [];
     S.tables.clear(); S.grants = []; S.rooms = null; S.primed = false;
     S.roomFeed.clear(); S.feed = [];
-    S.tablesErr = S.grantsErr = S.roomsErr = null;
-    S.tablesAt = S.grantsAt = S.roomsAt = null;
+    S.tablesErr = S.grantsErr = S.roomsErr = S.onlineErr = S.lobbiesErr = null;
+    S.tablesAt = S.grantsAt = S.roomsAt = S.onlineAt = null;
+    S.online = null; S.lobbies = null; S.closing.clear();
 }
 
 function startAll() {
@@ -253,6 +263,25 @@ function startAll() {
     // Live rooms: READ ONLY (database.rules.json, admins/{uid} === true).
     S.unsubs.push(onValue(ref(rtdb, 'gameRooms'), (snap) => onRooms(snap.val()),
         (e) => { S.rooms = null; S.roomsErr = (e && (e.code || e.message)) || 'denied'; scheduleRender(); }));
+
+    // Who is connected (v3.22.3). Bounded by concurrent players: the server
+    // removes an entry when its tab's connection drops.
+    S.unsubs.push(onValue(ref(rtdb, 'online'), (snap) => {
+        S.online = snap.val() || {};
+        Object.keys(S.online).forEach(resolveName);
+        S.onlineAt = Date.now(); S.onlineErr = null;
+        scheduleRender();
+    }, (e) => { S.online = null; S.onlineErr = (e && (e.code || e.message)) || 'denied'; scheduleRender(); }));
+    refreshLobbies();
+}
+
+/** lobbyRooms is read on demand (tables tab, after a close), not streamed. */
+async function refreshLobbies() {
+    try {
+        const snap = await get(ref(rtdb, 'lobbyRooms'));
+        S.lobbies = snap.val() || {}; S.lobbiesErr = null;
+    } catch (e) { S.lobbies = null; S.lobbiesErr = (e && (e.code || e.message)) || 'denied'; }
+    scheduleRender();
 }
 
 /** Every snapshot of /gameRooms: diff each room against the last one we saw. */
@@ -287,6 +316,7 @@ async function refreshPresence(force) {
         catch (e) { S.presence.set(u, { value: null, at: Date.now() }); }
     }));
     if (force) {
+        refreshLobbies();
         await Promise.all([...S.tables.keys()].filter(safeId).map(async (id) => {
             try { const s = await get(ref(rtdb, `lobbyRooms/${id}`)); S.mirrors.set(id, s.exists() ? s.val() : null); }
             catch (e) { S.mirrors.delete(id); }
@@ -316,6 +346,7 @@ function render() {
     if (S.view === 'overview') renderOverview();
     if (S.view === 'rooms') renderRooms();
     if (S.view === 'tables') renderTables();
+    if (S.view === 'online') renderOnline();
     if (S.view === 'audit') renderAudit();
 }
 
@@ -329,12 +360,14 @@ function renderChrome() {
     conn.className = `adm-chip ${offline ? 'is-bad' : S.connected ? 'is-good' : ''}`;
     $('adm-rooms-count').textContent = S.rooms ? String(S.rooms.size) : '';
     $('adm-tables-count').textContent = S.tables.size ? String(S.tables.size) : '';
+    $('adm-online-count').textContent = S.online ? String(Object.keys(S.online).length) : '';
 
     const notes = [];
     if (offline) notes.push('Sunucuyla bağlantı yok — gösterilen veriler son bağlantı anına ait, akış duraklamış olabilir.');
     if (S.roomsErr) notes.push(`Canlı odalar okunamıyor (${S.roomsErr}). Realtime Database'de admins/${S.user ? S.user.uid : 'UID'} = true olmalı.`);
     if (S.tablesErr) notes.push(`Masalar okunamadı (${S.tablesErr}).`);
     if (S.grantsErr) notes.push(`Denetim kaydı okunamadı (${S.grantsErr}).`);
+    if (S.onlineErr && !S.roomsErr) notes.push(`Çevrimiçi listesi okunamıyor (${S.onlineErr}) — database.rules.json v3.22.3 yayınlandı mı? (deploy-db-rules.bat)`);
     const b = $('adm-banner');
     clear(b);
     b.hidden = !notes.length;
@@ -499,7 +532,7 @@ function renderRooms() {
         return;
     }
     const r = S.rooms.get(S.selRoom);
-    detail.append(roomDetail(S.selRoom, r, roomFindings(r), serverNow(), S.roomFeed.get(S.selRoom) || []));
+    detail.append(roomDetail(S.selRoom, r, roomFindings(r), serverNow(), S.roomFeed.get(S.selRoom) || [], true));
 }
 
 function seatCard(p, i, r, now) {
@@ -521,7 +554,7 @@ function seatCard(p, i, r, now) {
         bot ? null : h('button', { type: 'button', class: 'adm-linkbtn adm-mono', onclick: () => copy(p.uid), title: 'kimliği kopyala' }, shortId(p.uid)));
 }
 
-function roomDetail(id, r, f, now, feed) {
+function roomDetail(id, r, f, now, feed, live = false) {
     const players = asList(r.players);
     const pile = asList(r.pile), burn = asList(r.burnPile);
     const c = r.challenge || {};
@@ -552,7 +585,8 @@ function roomDetail(id, r, f, now, feed) {
             h('h3', {}, 'Oda ', h('span', { class: 'adm-mono' }, id)),
             h('span', { class: `adm-status ${r.gameOver ? 'is-done' : 'is-playing'}` }, r.gameOver ? '🏁 bitti' : '▶ oynanıyor'),
             h('span', { class: 'adm-muted' }, age === null ? '' : `son hamle ${formatAge(age)} önce`),
-            h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => copy(id) }, 'Kodu kopyala')),
+            h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => copy(id) }, 'Kodu kopyala'),
+            live && roomIsDead(r, now) ? h('button', { type: 'button', class: 'adm-btn adm-btn--danger', disabled: S.closing.has(id) || null, onclick: () => deleteRoom(id) }, '🗑 Odayı sil') : null),
         r.gameOver ? h('p', { class: 'adm-winner' }, '🏆 ', Number.isInteger(r.winnerIndex) && r.winnerIndex >= 0 ? `Kazanan: ${(players[r.winnerIndex] || {}).name || `koltuk ${r.winnerIndex}`}` : 'Berabere') : null,
         h('div', { class: 'adm-seatgrid' }, players.map((p, i) => seatCard(p, i, r, now))),
         h('div', { class: 'adm-pilebar' }, h('span', { class: 'adm-muted' }, 'Yığının üstü: '),
@@ -585,7 +619,8 @@ $('adm-room-analyze').addEventListener('click', () => {
 // ── lobby tables ───────────────────────────────────────────────────────────
 function seatChip(p, t) {
     const bot = isBotSeat(p);
-    const pres = bot ? 'bot' : presenceState((S.presence.get(p.uid) || {}).value);
+    // v3.22.3: a connection marker (online/{uid}) is proof of online; presence/{uid} is only written on joining a table.
+    const pres = bot ? 'bot' : (S.online && S.online[p.uid]) ? 'online' : presenceState((S.presence.get(p.uid) || {}).value);
     const word = bot ? 'bot' : p.status === 'disconnected' ? 'kopuk' : pres === 'online' ? 'çevrimiçi' : pres === 'offline' ? 'çevrimdışı' : 'bilinmiyor';
     const dot = bot ? '🤖' : p.status === 'disconnected' ? '🔌' : pres === 'online' ? '🟢' : pres === 'offline' ? '⚫' : '⚪';
     return h('span', { class: `adm-seat ${p.status === 'disconnected' ? 'is-off' : ''}`, title: `${word}${bot ? '' : ` · ${p.uid}`}` },
@@ -606,11 +641,19 @@ function renderTables() {
     if (hideOld) rows = rows.filter(r => !(r.age !== null && r.age > 24 * 3600e3 && r.t.gameState && r.t.gameState.status !== 'playing'));
     if (onlyProblems) rows = rows.filter(r => r.f.some(f => f.level !== 'info'));
     rows.sort((a, b) => (summarize(a.f).error ? 0 : 1) - (summarize(b.f).error ? 0 : 1) || (a.age ?? 0) - (b.age ?? 0));
+    renderOrphans();
     $('adm-tables-meta').textContent = `${rows.length} / ${S.tables.size} masa · güncellendi ${S.tablesAt ? clock(S.tablesAt) : '—'}`;
     if (!rows.length) { list.append(emptyState(S.tables.size ? 'Filtreye uyan masa yok' : 'Masa yok', S.tables.size ? 'Filtreleri gevşet.' : 'Bir oyuncu masa açtığında burada görünür.')); return; }
 
+    const closable = rows.filter(({ t }) => closePlanFor(t).ok);
+    const sweep = $('adm-tables-sweep');
+    sweep.hidden = !closable.length;
+    sweep.textContent = `🧹 Ölü masaları kapat (${closable.length})`;
+    sweep.onclick = () => sweepTables(closable.map(x => x.t));
+
     rows.forEach(({ t, f, age }) => {
         const st = (t.gameState && t.gameState.status) || '?';
+        const plan = closePlanFor(t);
         const roomId = t.gameState && t.gameState.roomId;
         const sum = summarize(f);
         const live = roomId && S.rooms && S.rooms.has(roomId);
@@ -628,8 +671,140 @@ function renderTables() {
                 live ? h('button', { type: 'button', class: 'adm-btn adm-btn--primary', onclick: () => openRoom(roomId) }, `Odayı canlı izle (${roomId})`) : null,
                 roomId && !live ? h('span', { class: 'adm-muted' }, `oda ${roomId} canlı listede yok`) : null,
                 h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => copy(t.id) }, 'Masa kodunu kopyala'),
-                h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => pickPlayerFromTable(t) }, 'Ev sahibine jeton'))));
+                h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => pickPlayerFromTable(t) }, 'Ev sahibine jeton'),
+                plan.ok ? h('button', { type: 'button', class: 'adm-btn adm-btn--danger', disabled: S.closing.has(t.id) || null, onclick: () => closeTable(t) }, '🗑 Masayı kapat')
+                    : h('span', { class: 'adm-muted', title: CLOSE_REASON[plan.reason] || '' }, plan.reason === 'young' ? '' : `kapatılamaz: ${CLOSE_REASON[plan.reason] || plan.reason}`))));
     });
+}
+
+function renderOrphans() {
+    const box = clear($('adm-orphans'));
+    if (S.lobbiesErr) { box.append(h('p', { class: 'adm-muted' }, `Lobi kayıtları okunamadı (${S.lobbiesErr}).`)); return; }
+    if (!S.lobbies || !S.tablesAt) { box.append(...skeleton(1)); return; }
+    // Only meaningful against the whole table list: the listener holds the newest 300.
+    const ids = orphanLobbies(S.lobbies, S.tables);
+    if (!ids.length) { box.append(emptyState('✓ Sahipsiz kayıt yok', 'Her lobi aynasının arkasında bir masa var.')); return; }
+    ids.forEach(id => {
+        const lb = S.lobbies[id] || {};
+        const ok = lobbyDeletable(lb, { now: serverNow(), rooms: S.rooms || new Map(), online: S.online || {} }) && S.rooms !== null && S.online !== null;
+        box.append(h('div', { class: 'adm-row adm-row--static' },
+            h('span', { class: 'adm-row-title' }, h('span', { class: 'adm-mono' }, id), ' · ', (lb.gameState && lb.gameState.status) || '?', ' · ev sahibi ', lb.hostUsername || shortId(lb.hostId)),
+            h('div', { class: 'adm-toolbar' }, ok
+                ? h('button', { type: 'button', class: 'adm-btn adm-btn--danger', disabled: S.closing.has(id) || null, onclick: () => deleteLobby(id) }, '🗑 Kaydı sil')
+                : h('span', { class: 'adm-muted' }, 'silinemez: odası canlı ya da ev sahibi bağlı'))));
+    });
+}
+
+// ── cleanup (v3.22.3, council ERS-30) ──────────────────────────────────────
+// Order matters: the room first (its rule reads its own lastPlayTime), then
+// the lobby mirror (its rule reads the room), then the Firestore table. Each
+// step is refused by the server unless the thing is dead; the page only
+// avoids offering what would be refused, and reports every step.
+function closePlanFor(t) {
+    const roomId = t.gameState && typeof t.gameState.roomId === 'string' ? safeId(t.gameState.roomId) : null;
+    const room = !roomId ? null : S.rooms ? (S.rooms.get(roomId) || null) : undefined;
+    // Unknown is treated as present: the lobby rule would refuse anyway.
+    const hostOnline = S.online ? !!S.online[t.hostId] : true;
+    return tableClosePlan(t, { now: serverNow(), room, hostOnline });
+}
+
+async function closeSteps(t, plan) {
+    const id = safeId(t.id);
+    if (!id) throw new Error('bad-id');
+    if (plan.room) {
+        const rid = safeId(plan.room);
+        if (rid) await remove(ref(rtdb, `gameRooms/${rid}`));
+    }
+    const lb = await get(ref(rtdb, `lobbyRooms/${id}`));
+    if (lb.exists()) await remove(ref(rtdb, `lobbyRooms/${id}`));
+    await deleteDoc(doc(db, 'multiplayer_tables', id));
+}
+
+async function closeTable(t) {
+    const plan = closePlanFor(t);
+    if (!plan.ok) { toast(CLOSE_REASON[plan.reason] || plan.reason, 'error'); return; }
+    const ok = await confirmDialog('Masayı kapat',
+        `Masa ${t.id} (${(t.gameState && t.gameState.status) || '?'}) silinecek` +
+        `${plan.room ? `, odası ${plan.room} ile birlikte` : ''}. Geri alınamaz; oyunculara bildirim gitmez.`);
+    if (!ok) return;
+    S.closing.add(t.id); render();
+    try { await closeSteps(t, plan); toast(`Masa ${t.id} kapatıldı`); }
+    catch (e) { toast(`Sunucu reddetti: ${(e && (e.code || e.message)) || e}`, 'error'); }
+    finally { S.closing.delete(t.id); refreshLobbies(); render(); }
+}
+
+async function sweepTables(list) {
+    const todo = list.filter(t => closePlanFor(t).ok);
+    if (!todo.length) return;
+    const ok = await confirmDialog('Ölü masaları kapat',
+        `${todo.length} masa silinecek (bitmiş, 30 dk başlatılmamış ya da 2 saatten eski; odası canlı olan yok). Geri alınamaz.`);
+    if (!ok) return;
+    let done = 0, failed = 0;
+    for (const t of todo) {
+        S.closing.add(t.id);
+        try { await closeSteps(t, closePlanFor(t)); done++; }
+        catch (e) { failed++; console.warn('[admin] close failed', t.id, e && e.code); }
+        finally { S.closing.delete(t.id); }
+    }
+    toast(`${done} masa kapatıldı${failed ? ` · ${failed} reddedildi` : ''}`, failed ? 'warn' : 'ok');
+    refreshLobbies(); render();
+}
+
+async function deleteRoom(id) {
+    const rid = safeId(id);
+    const r = rid && S.rooms && S.rooms.get(rid);
+    if (!r || !roomIsDead(r, serverNow())) { toast('Oda canlı — silinemez', 'error'); return; }
+    const ok = await confirmDialog('Odayı sil', `Oda ${rid} (${r.gameOver ? 'bitmiş' : '15 dakikadır hamle yok'}) silinecek. Geri alınamaz.`);
+    if (!ok) return;
+    S.closing.add(rid); render();
+    try { await remove(ref(rtdb, `gameRooms/${rid}`)); toast(`Oda ${rid} silindi`); }
+    catch (e) { toast(`Sunucu reddetti: ${(e && e.code) || e}`, 'error'); }
+    finally { S.closing.delete(rid); render(); }
+}
+
+async function deleteLobby(id) {
+    const lid = safeId(id);
+    if (!lid) return;
+    const ok = await confirmDialog('Lobi kaydını sil', `Sahipsiz lobi kaydı ${lid} silinecek. Arkasında masa yok.`);
+    if (!ok) return;
+    S.closing.add(lid); render();
+    try { await remove(ref(rtdb, `lobbyRooms/${lid}`)); toast(`Kayıt ${lid} silindi`); }
+    catch (e) { toast(`Sunucu reddetti: ${(e && e.code) || e}`, 'error'); }
+    finally { S.closing.delete(lid); refreshLobbies(); }
+}
+
+// ── online (v3.22.3) ───────────────────────────────────────────────────────
+bindCheck('adm-online-intable', 'onlineInTable', false, () => renderOnline());
+$('adm-online-filter').addEventListener('input', () => renderOnline());
+function renderOnline() {
+    const box = clear($('adm-online'));
+    if (S.onlineErr) {
+        box.append(emptyState('Liste okunamıyor', `Sunucu reddetti (${S.onlineErr}). Realtime Database'de admins/${S.user.uid} = true olmalı ve v3.22.3 kuralları yayınlanmış olmalı.`));
+        return;
+    }
+    if (!S.online) { box.append(...skeleton(3)); return; }
+    box.removeAttribute('aria-busy');
+    const all = onlineRows(S.online, { tables: S.tables, rooms: S.rooms || new Map(), names: S.names });
+    const f = $('adm-online-filter').value.trim().toLowerCase();
+    let rows = all;
+    if ($('adm-online-intable').checked) rows = rows.filter(r => r.table || r.room);
+    if (f) rows = rows.filter(r => [r.name, r.uid].some(x => String(x || '').toLowerCase().includes(f)));
+    $('adm-online-meta').textContent = `${rows.length} / ${all.length} hesap · ${all.filter(r => r.table || r.room).length} masada`;
+    if (!rows.length) { box.append(emptyState(all.length ? 'Filtreye uyan yok' : 'Şu an kimse bağlı değil', all.length ? 'Filtreyi değiştir.' : 'Giriş yapmış bir oyuncu sekmeyi açtığında burada belirir.')); return; }
+    const now = serverNow();
+    box.append(h('table', { class: 'adm-tbl' },
+        h('caption', { class: 'adm-sr' }, 'Bağlı hesaplar, en yeni önce'),
+        h('thead', {}, h('tr', {}, ['Oyuncu', 'Kimlik', 'Sekme', 'Bağlı', 'Nerede', ''].map(x => h('th', { scope: 'col' }, x)))),
+        h('tbody', {}, rows.map(r => h('tr', {},
+            h('td', {}, h('strong', {}, r.name || '—')),
+            h('td', {}, h('button', { type: 'button', class: 'adm-linkbtn adm-mono', onclick: () => copy(r.uid), title: 'kimliği kopyala' }, `${r.uid} ⧉`)),
+            h('td', { class: 'adm-num' }, String(r.tabs)),
+            h('td', {}, formatAge(Math.max(0, now - r.since))),
+            h('td', {}, h('span', { class: 'adm-online-where' },
+                r.table ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => go('tables') }, `🃏 ${r.table}`) : null,
+                r.room && S.rooms && S.rooms.has(r.room) ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => openRoom(r.room) }, '🔴 odayı izle') : null,
+                !r.table && !r.room ? h('span', { class: 'adm-muted' }, 'menüde') : null)),
+            h('td', {}, h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => { go('players'); selectPlayer({ uid: r.uid, username: r.name || '' }); } }, 'Profil / jeton')))))));
 }
 
 function pickPlayerFromTable(t) {
@@ -771,4 +946,4 @@ $('adm-audit-csv').addEventListener('click', () => {
 window.addEventListener('online', () => renderChrome());
 window.addEventListener('offline', () => renderChrome());
 // Ages ("son hamle 4 sn önce") tick without new data.
-setInterval(() => { if (S.user && (S.view === 'overview' || S.view === 'rooms' || S.view === 'tables')) render(); }, 5000);
+setInterval(() => { if (S.user && ['overview', 'rooms', 'tables', 'online'].includes(S.view)) render(); }, 5000);

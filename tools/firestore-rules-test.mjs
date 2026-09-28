@@ -74,7 +74,8 @@ async function http(method, url, who, body) {
     return { status: res.status, text };
 }
 /**
- * One commit of several writes. Each write: { path, data, mask?, mustNotExist? }.
+ * One commit of several writes. Each write: { path, data, mask?, mustNotExist? },
+ * or { path, delete: true } for a document delete.
  * `mask` lists the fields this write touches (the rest of the document is kept,
  * which is what the client SDK's update() does); a masked field absent from
  * `data` is DELETED. A SERVER_TIME value becomes a request-time transform.
@@ -82,6 +83,7 @@ async function http(method, url, who, body) {
 async function commit(who, writes) {
     const body = {
         writes: writes.map(w => {
+            if (w.delete) return { delete: `${ROOT}/${w.path}` };
             const out = { update: { name: `${ROOT}/${w.path}`, fields: encFields(w.data) } };
             const plain = Object.keys(w.data).filter(k => w.data[k] !== SERVER_TIME);
             if (w.mask) out.updateMask = { fieldPaths: w.mask.filter(k => w.data[k] !== SERVER_TIME) };
@@ -109,6 +111,7 @@ async function loadRules(content) {
 // ── fixtures ────────────────────────────────────────────────────────────────
 const LONG_AGO = () => new Date(Date.now() - 60_000);
 const JUST_NOW = () => new Date(Date.now() - 1_000);
+const ago = (minutes) => new Date(Date.now() - minutes * 60_000);
 const record = (over = {}) => ({ username: 'Berk', totalScore: 5, gamesPlayed: 9, gamesWon: 5, bestReflex: 400, updatedAt: LONG_AGO(), ...over });
 const table = (over = {}) => ({
     tableId: 'ABC123', hostId: 'host', hostUsername: 'Host',
@@ -388,6 +391,34 @@ const SCENARIOS = [
         commit('evil', [{ path: 'multiplayer_tables/ABC123', data: table() }])],
     ['a host creates their own table', true, async () =>
         commit('host', [{ path: 'multiplayer_tables/ABC123', data: table({ playerIds: { host: true }, players: [{ uid: 'host', name: 'Host', index: 0 }] }) }])],
+    // v3.22.3 (council ERS-30): an admin closes tables the players never tidied —
+    // dead ones only. `ago(m)` is a createdAt m minutes in the past.
+    ['an admin closes a finished table', true, async () => {
+        await seed('admins/boss', { note: 'owner' });
+        await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'finished', playerCount: 2, roomId: 'R1' }, createdAt: ago(3) }));
+        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+    ['an admin closes a lobby nobody started for 30 minutes', true, async () => {
+        await seed('admins/boss', { note: 'owner' });
+        await seed('multiplayer_tables/ABC123', table({ createdAt: ago(31) }));
+        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+    ['an admin cannot close a fresh lobby', false, async () => {
+        await seed('admins/boss', { note: 'owner' });
+        await seed('multiplayer_tables/ABC123', table({ createdAt: ago(5) }));
+        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+    ['an admin cannot close a match under 2 hours old', false, async () => {
+        await seed('admins/boss', { note: 'owner' });
+        await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'playing', playerCount: 2, roomId: 'R1' }, createdAt: ago(60) }));
+        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+    ['an admin closes a table opened more than 2 hours ago', true, async () => {
+        await seed('admins/boss', { note: 'owner' });
+        await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'playing', playerCount: 2, roomId: 'R1' }, createdAt: ago(121) }));
+        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+    ['a player who is neither host nor admin cannot close even a dead table', false, async () => {
+        await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'finished', playerCount: 2 }, createdAt: ago(300) }));
+        return commit('mem', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+    ['the host still closes their own table at any age', true, async () => {
+        await seed('multiplayer_tables/ABC123', table({ createdAt: ago(1) }));
+        return commit('host', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
     // Closed paths
     ['the unused Firestore game rooms are closed', false, async () => {
         await seed('gameRooms/R1', { playerIds: ['u1'] }); return get('u1', 'gameRooms/R1'); }],
@@ -442,6 +473,11 @@ const MUTANTS = [
         "allow create, update: if isUser(userId) && isAdmin()\n        || request.resource.data.keys().hasOnly(['day', 'given', 'lastGrantId'])"],
     ['the daily counter need not add the grant up',
         "== ((resource != null && resource.data.day == today()) ? resource.data.given : 0)", ">= 0"],
+    // v3.22.3 — admin table cleanup (council ERS-30): every staleness bound is load-bearing.
+    ['an admin may close any table', "&& (resource.data.gameState.status == 'finished'", "&& (true"],
+    ['a waiting lobby may be closed at any age', "(resource.data.gameState.status == 'waiting' && resource.data.createdAt < request.time - duration.value(30, 'm'))", "(resource.data.gameState.status == 'waiting')"],
+    ['a running match may be closed after 30 minutes', "|| resource.data.createdAt < request.time - duration.value(2, 'h'));", "|| resource.data.createdAt < request.time - duration.value(30, 'm'));"],
+    ['anyone may close a dead table', "      return isAdmin()\n             && (resource.data.gameState.status == 'finished'", "      return signedIn()\n             && (resource.data.gameState.status == 'finished'"],
 ];
 
 (async () => {

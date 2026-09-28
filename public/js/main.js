@@ -32,6 +32,7 @@ import { HouseRules } from './houseRules.js';
 import { SlapForensics } from './slapForensics.js';
 import { DailyChallenge } from './dailyChallenge.js';
 import { NetQuality } from './netQuality.js';
+import { OnlinePresence } from './onlinePresence.js';
 import { renderRulesBadge } from './rulesBadge.js';
 import { Ads } from './ads.js';
 import { parseInviteCode, parseDailyDate, savePendingInvite, consumePendingInvite, peekPendingInvite, clearPendingInvite } from './inviteLink.js';
@@ -82,6 +83,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // v3.0.0 subsystems. Order matters only for NetQuality, which must be able
     // to answer serverNow() before the first multiplayer transaction is built.
     NetQuality.init();
+    // v3.22.3 — one online/{uid}/{conn} entry per signed-in tab (admin list,
+    // lobby cleanup rule). Rides the connection NetQuality just opened.
+    EventBus.on('authStateChanged', (user) => { OnlinePresence.setUser(user); });
     SlapForensics.init();
     DailyChallenge.init();
     // Exposed for the same reason as window.GameState: the smoke test and the

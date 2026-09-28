@@ -1820,6 +1820,20 @@ echo       paleti, 24/24 kontrast cifti AA^). Durumlar: yukleniyor, bos, kismi
 echo       hata, baglanti yok. Filtreler hatirlaniyor.
 echo       3135 test, RTDB 59 kontrol + 5 yeni mutant, Firestore 114.
 echo.
+echo  --- v3.22.3 -- YONETIM: OLU MASALARI KAPAT, CEVRIMICI OYUNCULAR ---
+echo  228) Neden kapanmamis masalar vardi: masayi oyuncularin tarayicilari
+echo       kapatir ^(mac bitince ev sahibi 5 sn sonra siler^). Herkesin sekmesi
+echo       once kapanirsa hicbir sey silmez. Sunucu kodu yok, TTL yok.
+echo  229) Yonetici artik OLU masa/oda/lobi kaydini SILEBILIR -- duzenleyemez.
+echo       Oda: bitmis ya da 15 dk hamle yok. Masa: bitmis, 30 dk baslamamis
+echo       ya da 2 saatten eski. Bekleyen lobi: ev sahibi bagli degilse.
+echo       Canli bir maci kapatmayi sunucu reddeder ^(konsey ERS-30^).
+echo  230) Cevrimici sekmesi: giris yapmis, sekmesi acik hesaplar, kimlik,
+echo       sekme sayisi, hangi masada. Yeni RTDB dugumu online/{uid}/{baglanti},
+echo       baglanti kopunca sunucu siler. presence/ ile KARISTIRILMADI: o
+echo       dugum masadan dusurme kararina bagli, oyun davranisi degismedi.
+echo       3182 test, RTDB 88 kontrol + 11 yeni mutant, Firestore 125.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -2025,5 +2039,12 @@ echo   - deploy-db-rules.bat ile database.rules.json'u gonder.
 echo   - Konsol, Realtime Database, Data: kokte admins altina senin UID'in,
 echo     deger true ^(boolean, "true" metni DEGIL^).
 echo   - /admin, Canli odalar: bir multiplayer mac ac, olaylari izle.
+echo.
+echo  --- v3.22.3 -- SIRA: ONCE IKI KURAL DOSYASI, SONRA BU ---
+echo   - deploy-rules.bat ^(Firestore: yonetici olu masayi kapatabilir^)
+echo   - deploy-db-rules.bat ^(RTDB: online/, lobi listesi, olu oda silme^)
+echo   - Canli odalar okunamiyor uyarisi: RTDB admins/UID = true EKSIK.
+echo   - /admin, Cevrimici: oyunu baska bir hesapla ac, listede gorunmeli.
+echo   - /admin, Masalar: eski masalarda "Masayi kapat" dugmesi cikmali.
 echo.
 pause

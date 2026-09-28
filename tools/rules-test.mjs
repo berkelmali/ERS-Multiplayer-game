@@ -39,7 +39,8 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { LOBBY_PIECES, composeLobbyWrite, GAMEROOM_PIECES, composeGameRoomWrite, CLIENT_VERSIONS_RULES, ADMIN_ROOMS_READ, ADMINS_RULES } from './lobby-rule.mjs';
+import { LOBBY_PIECES, composeLobbyWrite, GAMEROOM_PIECES, composeGameRoomWrite, CLIENT_VERSIONS_RULES, ADMIN_ROOMS_READ, ADMINS_RULES,
+    CLEANUP_PIECES, composeAdminLobbyDelete, composeAdminRoomDelete, composeLobbyWriteFull, composeGameRoomWriteFull, ONLINE_RULES, ROOM_STALE_MS } from './lobby-rule.mjs';
 import { ROOM_PROTOCOL } from '../public/js/slapOutcome.js';
 
 const HOST = process.env.FIREBASE_DATABASE_EMULATOR_HOST || '127.0.0.1:9000';
@@ -373,8 +374,10 @@ try {
 }
 
 // 2. The file on disk is the expression this test reasons about.
+// v3.22.3: the file carries the player rule OR an admin closing a dead table;
+// sections 3-4 mutate the player half, section 7 the admin half.
 ok('database.rules.json carries exactly the composed lobby rule',
-    LIVE_LOBBY_WRITE === compose(P),
+    LIVE_LOBBY_WRITE === composeLobbyWriteFull(),
     'the file and this test have drifted; rewrite one from the other');
 
 // 3. The real rules must satisfy every scenario.
@@ -532,7 +535,7 @@ async function runRoomScenarios() {
 }
 
 ok('database.rules.json carries exactly the composed game-room rule',
-    LIVE_ROOM_WRITE === composeGameRoomWrite(RP), 'the file and this test have drifted');
+    LIVE_ROOM_WRITE === composeGameRoomWriteFull(), 'the file and this test have drifted');
 ok('database.rules.json carries the clientVersions rules',
     JSON.stringify(rulesFile.rules.clientVersions) === JSON.stringify(CLIENT_VERSIONS_RULES));
 {
@@ -593,7 +596,7 @@ async function runAdminScenarios() {
     await record('an admin flag must be exactly true ("yes" is not an admin)', false, async () => allowed(await tryRead('gameRooms', 'uid_fake')));
     await record('the admin read is READ only: an admin cannot write a room', false, async () =>
         allowed(await tryWrite('gameRooms/ROOM01/gameOver', true, BOSS)));
-    await record('...nor delete one', false, async () => allowed(await tryWrite('gameRooms/ROOM01', null, BOSS)));
+    await record('...nor delete a live one', false, async () => allowed(await tryWrite('gameRooms/ROOM01', null, BOSS)));
     await record('nobody makes themselves an admin', false, async () => allowed(await tryWrite(`admins/${OUT}`, true, OUT)));
     await record('an admin cannot edit the admin list either', false, async () => allowed(await tryWrite('admins/uid_new', true, BOSS)));
     await record('an admin reads their own flag', true, async () => allowed(await tryRead(`admins/${BOSS}`, BOSS)));
@@ -607,7 +610,7 @@ ok('database.rules.json: the admin room read is the composed one',
 ok('database.rules.json: the admins rules are the composed ones',
     JSON.stringify(rulesFile.rules.admins) === JSON.stringify(ADMINS_RULES));
 ok('database.rules.json: no other top-level node grants an admin anything',
-    Object.entries(rulesFile.rules).filter(([k]) => k !== 'gameRooms' && k !== 'admins')
+    Object.entries(rulesFile.rules).filter(([k]) => !['gameRooms', 'admins', 'lobbyRooms', 'online'].includes(k))
         .every(([, v]) => !JSON.stringify(v).includes("child('admins')")));
 {
     for (const [label, was, want] of await runAdminScenarios()) {
@@ -631,6 +634,119 @@ for (const { label, build } of ADMIN_MUTANTS) {
 }
 await loadRules(rulesFile);
 ok(`no admin mutant escaped (${ADMIN_MUTANTS.length})`, adminEscaped === 0, `${adminEscaped} escaped`);
+
+
+// 7. v3.22.3 — ADMIN CLEANUP AND THE ONLINE LIST (council ERS-30).
+//    Tables and rooms are tidied only by the players' browsers; when all of
+//    them are gone first, nothing ever does. An admin may now DELETE — never
+//    edit — a room or lobby, and only one the server's own data calls dead.
+//    online/{uid}/{conn} is a per-connection marker the admin page lists.
+const CONN = '-Nabcdefghijklmnopqr', CONN2 = '-Nzyxwvutsrqponmlkji';
+function rulesWithCleanup({ lobbyDel = composeAdminLobbyDelete(), roomDel = composeAdminRoomDelete(), online = ONLINE_RULES, lobbyRead = ADMIN_ROOMS_READ } = {}) {
+    const clone = JSON.parse(JSON.stringify(rulesFile));
+    clone.rules.lobbyRooms.$tableId['.write'] = `(${composeLobbyWrite()}) || (${lobbyDel})`;
+    clone.rules.gameRooms.$roomId['.write'] = `(${composeGameRoomWrite()}) || (${roomDel})`;
+    clone.rules.lobbyRooms['.read'] = lobbyRead;
+    clone.rules.online = online;
+    return clone;
+}
+const deadRoom = () => ({ ...room(null), lastPlayTime: Date.now() - ROOM_STALE_MS - 60000 });
+const liveRoom = () => ({ ...room(null), lastPlayTime: Date.now() - 60000 });
+const overRoom = () => ({ ...room(null), gameOver: true, winnerIndex: 0, lastPlayTime: Date.now() });
+async function runCleanupScenarios() {
+    const r = [];
+    const record = async (label, want, fn) => r.push([label, await fn(), want]);
+    const fresh = async () => {
+        await asOwner('gameRooms', null); await asOwner('lobbyRooms', null);
+        await asOwner('online', null); await asOwner(`admins/${BOSS}`, true);
+    };
+
+    // rooms
+    await fresh(); await asOwner('gameRooms/ROOM01', overRoom());
+    await record('an admin deletes a finished room', true, async () => allowed(await tryWrite('gameRooms/ROOM01', null, BOSS)));
+    await fresh(); await asOwner('gameRooms/ROOM01', deadRoom());
+    await record('an admin deletes a room nobody moved in for 15 minutes', true, async () => allowed(await tryWrite('gameRooms/ROOM01', null, BOSS)));
+    await fresh(); await asOwner('gameRooms/ROOM01', liveRoom());
+    await record('an admin cannot delete a room that moved a minute ago', false, async () => allowed(await tryWrite('gameRooms/ROOM01', null, BOSS)));
+    await fresh(); await asOwner('gameRooms/ROOM01', overRoom());
+    await record('an admin cannot EDIT even a finished room', false, async () => allowed(await tryWrite('gameRooms/ROOM01/winnerIndex', 2, BOSS)));
+    await fresh(); await asOwner('gameRooms/ROOM01', deadRoom());
+    await record('a player who is not an admin cannot delete a dead room', false, async () => allowed(await tryWrite('gameRooms/ROOM01', null, OUT)));
+
+    // lobbies
+    await fresh(); await asOwner('lobbyRooms/ABC123', table('playing'));
+    await record('an admin deletes a mid-match lobby whose room is gone', true, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
+    await fresh(); await asOwner('lobbyRooms/ABC123', table('playing')); await asOwner('gameRooms/ROOM01', deadRoom());
+    await record('an admin deletes a mid-match lobby whose room is dead', true, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
+    await fresh(); await asOwner('lobbyRooms/ABC123', table('playing')); await asOwner('gameRooms/ROOM01', liveRoom());
+    await record('an admin cannot delete a lobby whose room is live', false, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
+    await fresh(); await asOwner('lobbyRooms/ABC123', table('waiting'));
+    await record('an admin deletes a waiting lobby whose host is disconnected', true, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
+    await fresh(); await asOwner('lobbyRooms/ABC123', table('waiting')); await asOwner(`online/${HOSTU}/${CONN}`, Date.now());
+    await record('an admin cannot delete a waiting lobby whose host is connected', false, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
+    await fresh();
+    await asOwner('lobbyRooms/ABC123', { ...table('waiting'), gameState: { status: 'waiting', playerCount: 2, roomId: 'ROOM01' } });
+    await asOwner(`online/${HOSTU}/${CONN}`, Date.now());
+    await record('...not even when it still names an old, dead room ("play again")', false, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
+    await fresh(); await asOwner('lobbyRooms/ABC123', table('playing')); await asOwner('gameRooms/ROOM01', overRoom());
+    await record('an admin cannot EDIT a dead lobby', false, async () => allowed(await tryWrite('lobbyRooms/ABC123/hostUsername', 'x', BOSS)));
+    await fresh(); await asOwner('lobbyRooms/ABC123', table('waiting'));
+    await record('a stranger cannot delete a waiting lobby whose host left', false, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, OUT)));
+    await record('an admin lists the lobbies (to find orphans)', true, async () => allowed(await tryRead('lobbyRooms', BOSS)));
+    await record('a player cannot list the lobbies', false, async () => allowed(await tryRead('lobbyRooms', OUT)));
+    await record('a player still reads one lobby by its code', true, async () => allowed(await tryRead('lobbyRooms/ABC123', OUT)));
+
+    // the online list
+    await fresh();
+    await record('a player writes their own connection marker (server time)', true, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { '.sv': 'timestamp' }, OUT)));
+    await record('...and removes it (what onDisconnect does)', true, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, null, OUT)));
+    await record('nobody writes a marker for someone else', false, async () => allowed(await tryWrite(`online/${SEAT}/${CONN}`, { '.sv': 'timestamp' }, OUT)));
+    await record('a marker is a number', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, 'here', OUT)));
+    await record('a marker is not dated in the future', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, Date.now() + 3600e3, OUT)));
+    await record('a marker key has the shape of a connection id', false, async () => allowed(await tryWrite(`online/${OUT}/short`, Date.now() - 1000, OUT)));
+    await record('a marker cannot be an object smuggling data', false, async () => allowed(await tryWrite(`online/${OUT}`, { [CONN2]: { name: 'x' } }, OUT)));
+    await asOwner(`online/${OUT}/${CONN}`, Date.now());
+    await record('an admin lists who is online', true, async () => allowed(await tryRead('online', BOSS)));
+    await record('a player cannot list who is online', false, async () => allowed(await tryRead('online', OUT)));
+    await record('...nor read one player\'s markers', false, async () => allowed(await tryRead(`online/${OUT}`, SEAT)));
+
+    await asOwner('gameRooms', null); await asOwner('lobbyRooms', null); await asOwner('online', null); await asOwner('admins', null);
+    return r;
+}
+ok('database.rules.json: the online rules are the composed ones',
+    JSON.stringify(rulesFile.rules.online) === JSON.stringify(ONLINE_RULES));
+ok('database.rules.json: the admin lobby list is the composed read',
+    rulesFile.rules.lobbyRooms['.read'] === ADMIN_ROOMS_READ);
+{
+    for (const [label, was, want] of await runCleanupScenarios()) {
+        ok(label, was === want, `was ${was ? 'ALLOWED' : 'REFUSED'}, wanted ${want ? 'ALLOWED' : 'REFUSED'}`);
+    }
+}
+const CP = CLEANUP_PIECES;
+const onlineWith = (over) => ({ ...ONLINE_RULES, $uid: { $conn: { ...ONLINE_RULES.$uid.$conn, ...over } } });
+const CLEANUP_MUTANTS = [
+    { label: 'anyone may close a dead room or lobby', build: () => rulesWithCleanup({ roomDel: composeAdminRoomDelete({ ...CP, isAdmin: 'auth != null' }), lobbyDel: composeAdminLobbyDelete({ ...CP, isAdmin: 'auth != null' }) }) },
+    { label: 'an admin may edit, not only delete', build: () => rulesWithCleanup({ roomDel: composeAdminRoomDelete({ ...CP, deletes: 'true' }), lobbyDel: composeAdminLobbyDelete({ ...CP, deletes: 'true' }) }) },
+    { label: 'an admin may delete a live room', build: () => rulesWithCleanup({ roomDel: composeAdminRoomDelete({ ...CP, roomDead: 'true' }) }) },
+    { label: 'a lobby may be deleted while its room is live', build: () => rulesWithCleanup({ lobbyDel: composeAdminLobbyDelete({ ...CP, linkedRoomDead: 'true' }) }) },
+    { label: 'a waiting lobby may be deleted while its host is here', build: () => rulesWithCleanup({ lobbyDel: composeAdminLobbyDelete({ ...CP, hostGone: 'true' }) }) },
+    { label: 'any player may list the lobbies', build: () => rulesWithCleanup({ lobbyRead: 'auth != null' }) },
+    { label: 'any player may list who is online', build: () => rulesWithCleanup({ online: { ...ONLINE_RULES, '.read': 'auth != null' } }) },
+    { label: 'a player may write anyone\'s marker', build: () => rulesWithCleanup({ online: onlineWith({ '.write': 'auth != null && $conn.matches(/^[-0-9A-Za-z_]{20}$/)' }) }) },
+    { label: 'the marker key is not checked', build: () => rulesWithCleanup({ online: onlineWith({ '.write': 'auth != null && auth.uid === $uid' }) }) },
+    { label: 'a marker may be dated in the future', build: () => rulesWithCleanup({ online: onlineWith({ '.validate': 'newData.isNumber()' }) }) },
+    { label: 'a marker may hold anything', build: () => rulesWithCleanup({ online: onlineWith({ '.validate': 'true' }) }) }
+];
+console.log('\n--- cleanup / online mutants ---');
+let cleanupEscaped = 0;
+for (const { label, build } of CLEANUP_MUTANTS) {
+    await loadRules(build());
+    const broke = (await runCleanupScenarios()).filter(([, was, want]) => was !== want);
+    if (broke.length) { console.log(`CAUGHT     ${label}`); console.log(`           first miss: ${broke[0][0]}`); }
+    else { cleanupEscaped++; console.log(`ESCAPED    ${label}`); }
+}
+await loadRules(rulesFile);
+ok(`no cleanup/online mutant escaped (${CLEANUP_MUTANTS.length})`, cleanupEscaped === 0, `${cleanupEscaped} escaped`);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) {

@@ -7455,6 +7455,11 @@ body.admin-page {
 .admin-page .adm-btn--primary { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
 .admin-page .adm-btn--primary:hover { filter: brightness(1.06); }
 .admin-page .adm-btn--ghost { background: transparent; }
+/* v3.22.3 — a destructive action reads as one: danger outline, never the primary fill */
+.admin-page .adm-btn--danger { background: transparent; border-color: var(--color-danger); color: var(--color-danger); }
+.admin-page .adm-btn--danger:hover { background: var(--color-surface-2); }
+.admin-page .adm-note { margin: var(--space-2) 0; font-size: 0.85rem; max-width: 80ch; }
+.admin-page .adm-online-where { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .admin-page .adm-wide { width: 100%; margin-top: var(--space-3); min-height: 44px; }
 
 /* inputs */

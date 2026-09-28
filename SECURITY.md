@@ -58,6 +58,21 @@ the report is credited if you want it to be.
   account must not be used to play. Revoking an admin means removing BOTH
   flags: Firestore `admins/{uid}` and RTDB `admins/{uid}`. The room feed on
   the admin page is derived from snapshot differences and is best-effort.
+- Admins may DELETE — never edit — what the server's own data calls dead
+  (v3.22.3, council ERS-30): a game room that is over or has had no move
+  for 15 minutes; a lobby mirror whose room is gone or dead, or whose host
+  has no connection marker; a Firestore table that is finished, a lobby
+  unstarted for 30 minutes, or opened more than 2 hours ago. A live room
+  cannot be deleted. Known limit: Firestore cannot see the room, so a table
+  record over 2 hours old can be deleted while a replayed match is still
+  running in its room (the match continues; reconnecting to it breaks). The
+  admin page never offers that, but a stolen admin password could. A seated
+  player can also pin their room as "alive" by writing a future
+  `lastPlayTime`; the console can still remove it.
+- `online/{uid}/{connectionId}` (v3.22.3) holds one server timestamp per open
+  signed-in tab, removed by the server on disconnect. Only the owner writes
+  it; only admins can list it. It is deliberately separate from
+  `presence/{uid}`, which decides whether a seated player is dropped.
 - Every rule change is run against the Firestore emulator, with deliberately
   broken copies that must be caught, before `deploy-rules.bat` sends it
   (`tools/firestore-rules-test.mjs`).

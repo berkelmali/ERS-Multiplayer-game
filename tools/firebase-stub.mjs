@@ -47,6 +47,7 @@ export const onValue = unsub;
 export const off = noop;
 export const update = async () => {};
 export const remove = async () => {};
+export const push = () => ({ key: '-stubconnection00000' });
 export const set = async () => {};
 export const get = async () => ({ exists: () => false, val: () => null });
 export const onDisconnect = () => ({ set: async () => {}, update: async () => {}, cancel: async () => {}, remove: async () => {} });

@@ -14,7 +14,7 @@
     <title>ERS Yönetim</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
     <meta name="theme-color" content="#0d1117">
-    <link rel="stylesheet" href="style.css?v=3.22.2">
+    <link rel="stylesheet" href="style.css?v=3.22.3">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
 
@@ -57,6 +57,7 @@
             <button type="button" data-view="overview" class="adm-tab is-active" aria-current="page">📊 Genel bakış</button>
             <button type="button" data-view="rooms" class="adm-tab">🔴 Canlı odalar <span id="adm-rooms-count" class="adm-count"></span></button>
             <button type="button" data-view="tables" class="adm-tab">🃏 Masalar <span id="adm-tables-count" class="adm-count"></span></button>
+            <button type="button" data-view="online" class="adm-tab">👥 Çevrimiçi <span id="adm-online-count" class="adm-count"></span></button>
             <button type="button" data-view="players" class="adm-tab">🪙 Oyuncular &amp; jeton</button>
             <button type="button" data-view="audit" class="adm-tab">📜 Denetim kaydı</button>
         </nav>
@@ -119,8 +120,30 @@
                     <label class="adm-check"><input id="adm-hide-finished" type="checkbox" checked> 24 saatten eskileri gizle</label>
                     <span id="adm-tables-meta" class="adm-muted"></span>
                     <button id="adm-tables-refresh" type="button" class="adm-btn adm-btn--ghost">Presence'ı yenile</button>
+                    <button id="adm-tables-sweep" type="button" class="adm-btn adm-btn--danger" hidden>🧹 Ölü masaları kapat</button>
                 </div>
+                <p class="adm-muted adm-note">Masaları oyuncuların tarayıcıları kapatır: maç bitince ev sahibi 5 sn sonra siler. Herkesin sekmesi ondan önce kapanırsa hiçbir şey silmez — o masalar burada kalır. Sunucu yalnızca ölü olanları kapatmana izin verir: bitmiş, 30 dk başlatılmamış ya da 2 saatten eski; odası canlıysa ya da bekleyen masanın ev sahibi bağlıysa asla.</p>
                 <div id="adm-tables" class="adm-list" aria-busy="true"></div>
+                <section class="adm-card" aria-labelledby="h-orphans">
+                    <div class="adm-card-head">
+                        <h3 id="h-orphans">Sahipsiz lobi kayıtları</h3>
+                        <span class="adm-muted">Realtime Database'de kalmış, arkasında masa olmayan lobi aynaları</span>
+                    </div>
+                    <div id="adm-orphans" class="adm-list"></div>
+                </section>
+            </section>
+
+            <!-- Who is connected right now (online/{uid}/{conn}, v3.22.3) -->
+            <section id="view-online" class="adm-view" aria-labelledby="h-online" hidden>
+                <h2 id="h-online" class="adm-sr">Çevrimiçi oyuncular</h2>
+                <div class="adm-toolbar">
+                    <label for="adm-online-filter" class="adm-sr">Filtre</label>
+                    <input id="adm-online-filter" type="search" class="adm-input" placeholder="Filtre: ad veya kimlik" autocomplete="off" spellcheck="false">
+                    <label class="adm-check"><input id="adm-online-intable" type="checkbox"> Yalnız masadakiler</label>
+                    <span id="adm-online-meta" class="adm-muted"></span>
+                </div>
+                <div id="adm-online" class="adm-card adm-scroll" aria-busy="true"></div>
+                <p class="adm-muted adm-note">Giriş yapmış ve sekmesi açık hesaplar (v3.22.3 ve sonrası). Misafirler ve eski sürümü açık kalmış sekmeler görünmez. Sekme kapanınca kayıt sunucu tarafından silinir.</p>
             </section>
 
             <!-- Players & coins -->
@@ -164,7 +187,7 @@
 
     <div id="adm-toast" class="adm-toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="js/admin.js?v=3.22.2"></script>
+    <script type="module" src="js/admin.js?v=3.22.3"></script>
 </body>
 
 </html>

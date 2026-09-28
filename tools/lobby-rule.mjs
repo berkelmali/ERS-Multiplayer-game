@@ -108,3 +108,62 @@ export const CLIENT_VERSIONS_RULES = Object.freeze({
         '.validate': 'newData.isNumber()'
     }
 });
+
+// ─── admin cleanup + online list (v3.22.3, council ERS-30) ─────────────────
+// Tables and rooms are tidied by the players' own browsers — the host deletes
+// both 5 s after a match ends. When every browser is gone first (tab closed,
+// connection lost) nothing ever tidies them. There is no server code, so the
+// admin page can close them, and the rules below are what keep that from
+// becoming "an admin can stop any game": a delete is allowed only when the
+// server's own data says the thing is already dead.
+//
+// Each piece is one sentence; a mutant is one piece swapped for `true`.
+export const ROOM_STALE_MS = 15 * 60 * 1000;   // a live room moves every <= 15 s (turn timeout)
+
+const staleRoom = (r) => `(${r}.child('gameOver').val() === true || (${r}.child('lastPlayTime').isNumber() && ${r}.child('lastPlayTime').val() < now - ${ROOM_STALE_MS}))`;
+const linkedRoom = "root.child('gameRooms').child(data.child('gameState').child('roomId').val())";
+
+export const CLEANUP_PIECES = Object.freeze({
+    /** The writer is an admin: admins/{uid} is exactly true. */
+    isAdmin: ADMIN_ROOMS_READ,
+    /** The write removes the node; an admin never edits one. */
+    deletes: '!newData.exists()',
+    /** The room is over, or nobody has moved in it for 15 minutes. */
+    roomDead: staleRoom('data'),
+    /** The table's room is gone or dead. */
+    linkedRoomDead: `(!${linkedRoom}.exists() || ${staleRoom(linkedRoom)})`,
+    /** A table that is not mid-match needs its host to be disconnected (online/{host} empty). */
+    hostGone: "(data.child('gameState').child('status').val() === 'playing' || !root.child('online').child(data.child('hostId').val()).exists())"
+});
+
+export function composeAdminRoomDelete(p = CLEANUP_PIECES) {
+    return `${p.isAdmin} && ${p.deletes} && ${p.roomDead}`;
+}
+export function composeAdminLobbyDelete(p = CLEANUP_PIECES) {
+    return `${p.isAdmin} && ${p.deletes} && (data.child('gameState').child('roomId').isString() ? ${p.linkedRoomDead} : true) && ${p.hostGone}`;
+}
+
+/** What database.rules.json carries: the player rule, or an admin closing a dead one. */
+export function composeLobbyWriteFull() {
+    return `(${composeLobbyWrite()}) || (${composeAdminLobbyDelete()})`;
+}
+export function composeGameRoomWriteFull() {
+    return `(${composeGameRoomWrite()}) || (${composeAdminRoomDelete()})`;
+}
+
+/**
+ * online/{uid}/{connectionId} = server time, removed by the server when that
+ * connection drops. One entry per open tab, so closing a second tab never
+ * marks a player offline. Deliberately NOT presence/{uid}: tableManager drops
+ * a seated player whose presence reads "offline", and that must stay tied to
+ * joining a table.
+ */
+export const ONLINE_RULES = Object.freeze({
+    '.read': ADMIN_ROOMS_READ,
+    $uid: {
+        $conn: {
+            '.write': 'auth != null && auth.uid === $uid && $conn.matches(/^[-0-9A-Za-z_]{20}$/)',
+            '.validate': 'newData.isNumber() && newData.val() <= now'
+        }
+    }
+});

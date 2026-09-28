@@ -308,3 +308,88 @@ export function toCsv(rows) {
     };
     return rows.map(r => r.map(cell).join(',')).join('\r\n');
 }
+
+// ─── v3.22.3: cleanup and the online list (council ERS-30) ─────────────────
+// These mirror the server rules exactly; the rules decide, the page only
+// avoids offering a button the server would refuse. Tested against each other:
+//   · a room is dead           → database.rules.json gameRooms (ROOM_STALE_MS)
+//   · a table may be closed    → firestore.rules adminMayClose()
+//                                (finished · waiting > STALE_WAITING_MS · any > STALE_PLAYING_MS)
+//   · a lobby mirror may go    → database.rules.json lobbyRooms (room dead, or host offline)
+export const ROOM_DEAD_MS = 15 * 60 * 1000;
+
+/** Over, or nobody has moved in it for 15 minutes (a live room moves every <= 15 s). */
+export function roomIsDead(room, now = Date.now()) {
+    if (!room) return true;
+    if (room.gameOver === true) return true;
+    return typeof room.lastPlayTime === 'number' && room.lastPlayTime < now - ROOM_DEAD_MS;
+}
+
+/**
+ * Can the admin close this table, and what goes with it?
+ *   room        the gameRooms node when the table names one (undefined = not known)
+ *   hostOnline  whether online/{hostId} has an entry
+ * → { ok, reason, room: roomId to delete or null }
+ */
+export function tableClosePlan(table, { now = Date.now(), room, hostOnline = false } = {}) {
+    const t = table || {};
+    const status = t.gameState && t.gameState.status;
+    const created = toMillis(t.createdAt);
+    const age = created === null ? null : now - created;
+    const roomId = t.gameState && typeof t.gameState.roomId === 'string' ? t.gameState.roomId : null;
+    const old = status === 'finished'
+        || (status === 'waiting' && age !== null && age > STALE_WAITING_MS)
+        || (age !== null && age > STALE_PLAYING_MS);
+    if (!old) return { ok: false, reason: 'young', room: null };
+    // Council ERS-30 O1: Firestore cannot see the room, so the page must. Unknown is not dead.
+    if (roomId && room === undefined) return { ok: false, reason: 'room-unknown', room: null };
+    if (roomId && room !== null && !roomIsDead(room, now)) return { ok: false, reason: 'room-live', room: null };
+    if (status !== 'playing' && hostOnline) return { ok: false, reason: 'host-online', room: null };
+    return { ok: true, reason: null, room: roomId && room ? roomId : null };
+}
+
+export const CLOSE_REASON = Object.freeze({
+    young: 'Masa henüz ölü sayılmıyor (bekleyen 30 dk, diğerleri 2 saat dolmadı).',
+    'room-live': 'Odası hâlâ canlı — içinde oynanan bir maç var.',
+    'room-unknown': 'Canlı odalar okunamadığı için odanın durumu bilinmiyor.',
+    'host-online': 'Ev sahibi şu an bağlı — bekleme odasında olabilir.'
+});
+
+/**
+ * online/{uid}/{conn} → one row per connected account, newest first.
+ * `tables` (id → table) and `rooms` (id → room) place each player; `names` is uid → name.
+ */
+export function onlineRows(online, { tables = new Map(), rooms = new Map(), names = new Map() } = {}) {
+    const rows = [];
+    for (const [uid, conns] of Object.entries(online || {})) {
+        if (!safeId(uid) || !conns || typeof conns !== 'object') continue;
+        const times = Object.values(conns).filter(v => typeof v === 'number');
+        if (!times.length) continue;
+        let table = null, room = null, seatName = null;
+        for (const t of tables.values()) {
+            const st = t.gameState && t.gameState.status;
+            if (st === 'finished') continue;
+            const seat = asList(t.players).find(p => p && p.uid === uid);
+            if (seat) { table = t.id; room = (t.gameState && t.gameState.roomId) || null; seatName = typeof seat.name === 'string' ? seat.name : null; break; }
+        }
+        if (!room) for (const [id, r] of rooms) if (!r.gameOver && r.playerIds && r.playerIds[uid]) { room = id; break; }
+        rows.push({ uid, name: names.get(uid) || seatName || null, tabs: times.length, since: Math.min(...times), table, room });
+    }
+    return rows.sort((a, b) => b.since - a.since);
+}
+
+/** Lobby mirrors (RTDB lobbyRooms) with no Firestore table behind them. */
+export function orphanLobbies(lobbies, tables) {
+    return Object.keys(lobbies || {}).filter(id => safeId(id) && !(tables && tables.has(id)));
+}
+
+/** The RTDB lobby rule, mirrored: may this mirror be deleted by an admin? */
+export function lobbyDeletable(lobby, { now = Date.now(), rooms = new Map(), online = {} } = {}) {
+    if (!lobby) return false;
+    const gs = lobby.gameState || {};
+    const roomId = typeof gs.roomId === 'string' ? gs.roomId : null;
+    if (roomId && rooms.has(roomId) && !roomIsDead(rooms.get(roomId), now)) return false;
+    if (gs.status === 'playing') return true;
+    const host = lobby.hostId;
+    return !!host && !(online && online[host]);
+}
