@@ -37,7 +37,7 @@ import { EARN_DAILY_CAP, ADMIN_GRANT_MAX, ADMIN_DAILY_CAP, dayNumber } from './w
 import {
     adminEmailFor, asList, toMillis, formatAge, cardLabel, presenceState,
     tableDiagnostics, roomDiagnostics, roomEvents, summarize, toCsv, safeId,
-    roomIsDead, tableClosePlan, CLOSE_REASON, onlineRows, orphanLobbies, lobbyDeletable
+    roomIsDead, tableClosePlan, CLOSE_REASON, onlineRows, orphanLobbies, lobbyDeletable, ACTIVITY_LABEL
 } from './adminCore.js';
 import { isBotSeat, realCount } from './slapOutcome.js';
 import { ghostCount } from './ghostCards.js';
@@ -787,23 +787,26 @@ function renderOnline() {
     const all = onlineRows(S.online, { tables: S.tables, rooms: S.rooms || new Map(), names: S.names });
     const f = $('adm-online-filter').value.trim().toLowerCase();
     let rows = all;
-    if ($('adm-online-intable').checked) rows = rows.filter(r => r.table || r.room);
+    if ($('adm-online-intable').checked) rows = rows.filter(r => r.table || r.room || (r.activity && r.activity !== 'menu'));
     if (f) rows = rows.filter(r => [r.name, r.uid].some(x => String(x || '').toLowerCase().includes(f)));
-    $('adm-online-meta').textContent = `${rows.length} / ${all.length} hesap · ${all.filter(r => r.table || r.room).length} masada`;
+    const playing = all.filter(r => r.activity && r.activity !== 'menu').length;
+    $('adm-online-meta').textContent = `${rows.length} / ${all.length} hesap · ${playing} oyunda · ${all.filter(r => r.table || r.room).length} masada · canlı`;
     if (!rows.length) { box.append(emptyState(all.length ? 'Filtreye uyan yok' : 'Şu an kimse bağlı değil', all.length ? 'Filtreyi değiştir.' : 'Giriş yapmış bir oyuncu sekmeyi açtığında burada belirir.')); return; }
     const now = serverNow();
     box.append(h('table', { class: 'adm-tbl' },
         h('caption', { class: 'adm-sr' }, 'Bağlı hesaplar, en yeni önce'),
-        h('thead', {}, h('tr', {}, ['Oyuncu', 'Kimlik', 'Sekme', 'Bağlı', 'Nerede', ''].map(x => h('th', { scope: 'col' }, x)))),
+        h('thead', {}, h('tr', {}, ['Oyuncu', 'Kimlik', 'Sekme', 'Bağlı', 'Ne yapıyor', 'Nerede', ''].map(x => h('th', { scope: 'col' }, x)))),
         h('tbody', {}, rows.map(r => h('tr', {},
             h('td', {}, h('strong', {}, r.name || '—')),
             h('td', {}, h('button', { type: 'button', class: 'adm-linkbtn adm-mono', onclick: () => copy(r.uid), title: 'kimliği kopyala' }, `${r.uid} ⧉`)),
             h('td', { class: 'adm-num' }, String(r.tabs)),
             h('td', {}, formatAge(Math.max(0, now - r.since))),
+            h('td', {}, r.activity ? ACTIVITY_LABEL[r.activity] : h('span', { class: 'adm-muted', title: 'v3.22.3 sekmesi — yenilenince görünür' }, 'bilinmiyor'),
+                r.activity ? h('small', { class: 'adm-muted' }, ` · ${formatAge(Math.max(0, now - r.activityAt))}`) : null),
             h('td', {}, h('span', { class: 'adm-online-where' },
                 r.table ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => go('tables') }, `🃏 ${r.table}`) : null,
                 r.room && S.rooms && S.rooms.has(r.room) ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => openRoom(r.room) }, '🔴 odayı izle') : null,
-                !r.table && !r.room ? h('span', { class: 'adm-muted' }, 'menüde') : null)),
+                !r.table && !r.room ? h('span', { class: 'adm-muted' }, '—') : null)),
             h('td', {}, h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => { go('players'); selectPlayer({ uid: r.uid, username: r.name || '' }); } }, 'Profil / jeton')))))));
 }
 

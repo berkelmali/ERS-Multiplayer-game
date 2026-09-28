@@ -1834,6 +1834,14 @@ echo       baglanti kopunca sunucu siler. presence/ ile KARISTIRILMADI: o
 echo       dugum masadan dusurme kararina bagli, oyun davranisi degismedi.
 echo       3182 test, RTDB 88 kontrol + 11 yeni mutant, Firestore 125.
 echo.
+echo  --- v3.22.4 -- CEVRIMICI LISTESI: NE YAPIYOR ---
+echo  231) Liste zaten canliydi; eksik olan oyuncunun NE yaptigiydi. Bot maci
+echo       masa ya da oda birakmaz, bu yuzden "menude" gorunuyordu. Artik her
+echo       sekme tek kelime yazar: menu, bots, daily, legends, match -- yalniz
+echo       ekran degisince, hamle basina asla. Kural bu bes kelime disini ve
+echo       fazladan alani reddeder ^(konsey ERS-31^).
+echo       3192 test, RTDB 93 kontrol + 4 yeni mutant.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -2046,5 +2054,10 @@ echo   - deploy-db-rules.bat ^(RTDB: online/, lobi listesi, olu oda silme^)
 echo   - Canli odalar okunamiyor uyarisi: RTDB admins/UID = true EKSIK.
 echo   - /admin, Cevrimici: oyunu baska bir hesapla ac, listede gorunmeli.
 echo   - /admin, Masalar: eski masalarda "Masayi kapat" dugmesi cikmali.
+echo.
+echo  --- v3.22.4 -- deploy-db-rules.bat ve BU DOSYA ARKA ARKAYA ---
+echo   - Isaret bicimi degisti; arada eski sekmeler listede gorunmez.
+echo   - /admin, Cevrimici: bir sekmede bot maci baslat, "bot macinda" cikmali.
+echo   - Yonetici hesabiyla OYNAMA: ham oda verisi herkesin elini gosterir.
 echo.
 pause

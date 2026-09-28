@@ -86,6 +86,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // v3.22.3 — one online/{uid}/{conn} entry per signed-in tab (admin list,
     // lobby cleanup rule). Rides the connection NetQuality just opened.
     EventBus.on('authStateChanged', (user) => { OnlinePresence.setUser(user); });
+    // v3.22.4 — and what it is doing, for the admin's online list. Written on
+    // a screen change only (a match starts, the menu returns), never per move.
+    const currentActivity = () => GameManager.activeMode === 'multiplayer' ? 'match'
+        : DailyChallenge.active ? 'daily'
+        // Tomb is left out: it runs on its own screen, emits neither event, and
+        // keeps `run` after it ends — it would read as 'legends' forever.
+        : (PantheonMode.armed || DuatMode.armed) ? 'legends'
+        : GameManager.activeMode === 'bots' ? 'bots' : 'menu';
+    EventBus.on('gameStarted', () => OnlinePresence.setActivity(currentActivity()));
+    EventBus.on('gameStateChanged', (st) => OnlinePresence.setActivity(st === 'menu' ? 'menu' : currentActivity()));
     SlapForensics.init();
     DailyChallenge.init();
     // Exposed for the same reason as window.GameState: the smoke test and the

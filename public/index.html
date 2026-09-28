@@ -37,7 +37,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.22.3">
+    <link rel="stylesheet" href="style.css?v=3.22.4">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
@@ -263,7 +263,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.22.3
+        <div id="game-version">Berk Elmalı · v3.22.4
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -583,7 +583,7 @@
 
                 <div class="rules-section">
                     <h3 data-i18n="pGameTitle">🎮 Game data</h3>
-                    <p data-i18n="pGameDesc">Your username and scores are stored in Firebase Firestore so leaderboards can exist. Multiplayer matches are coordinated through Firebase Realtime Database and the room data is deleted when the match ends. A Daily Challenge result is written with exactly nine fields: your account id, your username, the score, your reaction time, whether you finished the run, how long it took, the scenario profile you were given, your starting hand size, and the time you submitted it — nothing else. If you are signed in, your coin balance, the card skins you own and the day of your last wheel spin are stored in Firestore under your account, readable only by you; coins sent by the game's administrator are recorded in an audit log. While you are signed in, each open tab also keeps a connection marker (your account id and the time it connected) under online/ in Realtime Database; the server deletes it when the tab disconnects, and only the administrator can list it.</p>
+                    <p data-i18n="pGameDesc">Your username and scores are stored in Firebase Firestore so leaderboards can exist. Multiplayer matches are coordinated through Firebase Realtime Database and the room data is deleted when the match ends. A Daily Challenge result is written with exactly nine fields: your account id, your username, the score, your reaction time, whether you finished the run, how long it took, the scenario profile you were given, your starting hand size, and the time you submitted it — nothing else. If you are signed in, your coin balance, the card skins you own and the day of your last wheel spin are stored in Firestore under your account, readable only by you; coins sent by the game's administrator are recorded in an audit log. While you are signed in, each open tab also keeps a connection marker under online/ in Realtime Database: your account id, when the tab connected, and what it is doing (menu, bot match, Daily Challenge, Legends or multiplayer — one word, updated when the screen changes); the server deletes it when the tab disconnects, and only the administrator can list it.</p>
                 </div>
 
                 <div class="rules-section">
@@ -1424,7 +1424,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.22.3"></script>
+    <script type="module" src="js/main.js?v=3.22.4"></script>
 </body>
 
 </html>

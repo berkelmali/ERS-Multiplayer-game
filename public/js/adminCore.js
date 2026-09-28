@@ -355,16 +355,26 @@ export const CLOSE_REASON = Object.freeze({
     'host-online': 'Ev sahibi şu an bağlı — bekleme odasında olabilir.'
 });
 
+/** What the page says for each activity word the rules allow (ONLINE_ACTIVITIES). */
+export const ACTIVITY_LABEL = Object.freeze({
+    menu: '🏠 menüde', bots: '🤖 bot maçında', daily: '📅 günlük meydan okumada',
+    legends: '⚱ efsaneler modunda', match: '🔴 multiplayer maçında'
+});
+
 /**
  * online/{uid}/{conn} → one row per connected account, newest first.
+ * `activity` is the word from the tab that changed most recently.
  * `tables` (id → table) and `rooms` (id → room) place each player; `names` is uid → name.
  */
 export function onlineRows(online, { tables = new Map(), rooms = new Map(), names = new Map() } = {}) {
     const rows = [];
     for (const [uid, conns] of Object.entries(online || {})) {
         if (!safeId(uid) || !conns || typeof conns !== 'object') continue;
-        const times = Object.values(conns).filter(v => typeof v === 'number');
-        if (!times.length) continue;
+        // A tab is { at, t, s } (v3.22.4) or a bare number (a v3.22.3 tab still open).
+        const tabs = Object.values(conns).map(v => (typeof v === 'number' ? { at: v, t: v, s: null }
+            : v && typeof v === 'object' && typeof v.at === 'number' ? { at: v.at, t: typeof v.t === 'number' ? v.t : v.at, s: ACTIVITY_LABEL[v.s] ? v.s : null } : null)).filter(Boolean);
+        if (!tabs.length) continue;
+        const latest = tabs.reduce((a, b) => (b.t > a.t ? b : a));
         let table = null, room = null, seatName = null;
         for (const t of tables.values()) {
             const st = t.gameState && t.gameState.status;
@@ -373,7 +383,8 @@ export function onlineRows(online, { tables = new Map(), rooms = new Map(), name
             if (seat) { table = t.id; room = (t.gameState && t.gameState.roomId) || null; seatName = typeof seat.name === 'string' ? seat.name : null; break; }
         }
         if (!room) for (const [id, r] of rooms) if (!r.gameOver && r.playerIds && r.playerIds[uid]) { room = id; break; }
-        rows.push({ uid, name: names.get(uid) || seatName || null, tabs: times.length, since: Math.min(...times), table, room });
+        rows.push({ uid, name: names.get(uid) || seatName || null, tabs: tabs.length, since: Math.min(...tabs.map(x => x.at)),
+            activity: latest.s, activityAt: latest.t, table, room });
     }
     return rows.sort((a, b) => b.since - a.since);
 }

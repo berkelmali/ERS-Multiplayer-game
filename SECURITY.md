@@ -69,9 +69,12 @@ the report is credited if you want it to be.
   admin page never offers that, but a stolen admin password could. A seated
   player can also pin their room as "alive" by writing a future
   `lastPlayTime`; the console can still remove it.
-- `online/{uid}/{connectionId}` (v3.22.3) holds one server timestamp per open
-  signed-in tab, removed by the server on disconnect. Only the owner writes
-  it; only admins can list it. It is deliberately separate from
+- `online/{uid}/{connectionId}` (v3.22.3, activity v3.22.4) holds one marker
+  per open signed-in tab — `{ at, t, s }`: when it connected, when its
+  activity last changed, and one word from a closed list (menu, bots, daily,
+  legends, match), written on a screen change only. The server removes it on
+  disconnect. Only the owner writes it, the rules refuse any other word or
+  field, and only admins can list it. It is deliberately separate from
   `presence/{uid}`, which decides whether a seated player is dropped.
 - Every rule change is run against the Firestore emulator, with deliberately
   broken copies that must be caught, before `deploy-rules.bat` sends it

@@ -40,7 +40,7 @@
 
 import { readFileSync } from 'node:fs';
 import { LOBBY_PIECES, composeLobbyWrite, GAMEROOM_PIECES, composeGameRoomWrite, CLIENT_VERSIONS_RULES, ADMIN_ROOMS_READ, ADMINS_RULES,
-    CLEANUP_PIECES, composeAdminLobbyDelete, composeAdminRoomDelete, composeLobbyWriteFull, composeGameRoomWriteFull, ONLINE_RULES, ROOM_STALE_MS } from './lobby-rule.mjs';
+    CLEANUP_PIECES, composeAdminLobbyDelete, composeAdminRoomDelete, composeLobbyWriteFull, composeGameRoomWriteFull, ONLINE_RULES, ROOM_STALE_MS, ONLINE_ACTIVITIES } from './lobby-rule.mjs';
 import { ROOM_PROTOCOL } from '../public/js/slapOutcome.js';
 
 const HOST = process.env.FIREBASE_DATABASE_EMULATOR_HOST || '127.0.0.1:9000';
@@ -653,6 +653,7 @@ function rulesWithCleanup({ lobbyDel = composeAdminLobbyDelete(), roomDel = comp
 const deadRoom = () => ({ ...room(null), lastPlayTime: Date.now() - ROOM_STALE_MS - 60000 });
 const liveRoom = () => ({ ...room(null), lastPlayTime: Date.now() - 60000 });
 const overRoom = () => ({ ...room(null), gameOver: true, winnerIndex: 0, lastPlayTime: Date.now() });
+const mark = (s = 'menu') => ({ at: Date.now() - 1000, t: Date.now() - 1000, s });
 async function runCleanupScenarios() {
     const r = [];
     const record = async (label, want, fn) => r.push([label, await fn(), want]);
@@ -682,11 +683,11 @@ async function runCleanupScenarios() {
     await record('an admin cannot delete a lobby whose room is live', false, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
     await fresh(); await asOwner('lobbyRooms/ABC123', table('waiting'));
     await record('an admin deletes a waiting lobby whose host is disconnected', true, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
-    await fresh(); await asOwner('lobbyRooms/ABC123', table('waiting')); await asOwner(`online/${HOSTU}/${CONN}`, Date.now());
+    await fresh(); await asOwner('lobbyRooms/ABC123', table('waiting')); await asOwner(`online/${HOSTU}/${CONN}`, mark());
     await record('an admin cannot delete a waiting lobby whose host is connected', false, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
     await fresh();
     await asOwner('lobbyRooms/ABC123', { ...table('waiting'), gameState: { status: 'waiting', playerCount: 2, roomId: 'ROOM01' } });
-    await asOwner(`online/${HOSTU}/${CONN}`, Date.now());
+    await asOwner(`online/${HOSTU}/${CONN}`, mark());
     await record('...not even when it still names an old, dead room ("play again")', false, async () => allowed(await tryWrite('lobbyRooms/ABC123', null, BOSS)));
     await fresh(); await asOwner('lobbyRooms/ABC123', table('playing')); await asOwner('gameRooms/ROOM01', overRoom());
     await record('an admin cannot EDIT a dead lobby', false, async () => allowed(await tryWrite('lobbyRooms/ABC123/hostUsername', 'x', BOSS)));
@@ -696,16 +697,25 @@ async function runCleanupScenarios() {
     await record('a player cannot list the lobbies', false, async () => allowed(await tryRead('lobbyRooms', OUT)));
     await record('a player still reads one lobby by its code', true, async () => allowed(await tryRead('lobbyRooms/ABC123', OUT)));
 
-    // the online list
+    // the online list — a marker is { at, t, s } (v3.22.4)
+    const SV = { '.sv': 'timestamp' };
     await fresh();
-    await record('a player writes their own connection marker (server time)', true, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { '.sv': 'timestamp' }, OUT)));
+    await record('a player writes their own connection marker (server time, activity)', true, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { at: SV, t: SV, s: 'menu' }, OUT)));
+    await record('...changes only the activity when a match starts', true, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/s`, 'bots', OUT)));
     await record('...and removes it (what onDisconnect does)', true, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, null, OUT)));
-    await record('nobody writes a marker for someone else', false, async () => allowed(await tryWrite(`online/${SEAT}/${CONN}`, { '.sv': 'timestamp' }, OUT)));
-    await record('a marker is a number', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, 'here', OUT)));
-    await record('a marker is not dated in the future', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, Date.now() + 3600e3, OUT)));
-    await record('a marker key has the shape of a connection id', false, async () => allowed(await tryWrite(`online/${OUT}/short`, Date.now() - 1000, OUT)));
-    await record('a marker cannot be an object smuggling data', false, async () => allowed(await tryWrite(`online/${OUT}`, { [CONN2]: { name: 'x' } }, OUT)));
-    await asOwner(`online/${OUT}/${CONN}`, Date.now());
+    await record('nobody writes a marker for someone else', false, async () => allowed(await tryWrite(`online/${SEAT}/${CONN}`, { at: SV, t: SV, s: 'menu' }, OUT)));
+    await record('a bare number is no longer a marker', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, Date.now() - 1000, OUT)));
+    await record('a marker is not dated in the future', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { at: Date.now() + 3600e3, t: SV, s: 'menu' }, OUT)));
+    await record('...nor is its last change', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { at: SV, t: Date.now() + 3600e3, s: 'menu' }, OUT)));
+    await record('the activity is a word from the closed list', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { at: SV, t: SV, s: '<img src=x>' }, OUT)));
+    await record('a marker carries all three fields', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { at: SV, s: 'menu' }, OUT)));
+    await record('a marker cannot smuggle an extra field', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { at: SV, t: SV, s: 'menu', name: 'x' }, OUT)));
+    await record('a marker key has the shape of a connection id', false, async () => allowed(await tryWrite(`online/${OUT}/short`, { at: SV, t: SV, s: 'menu' }, OUT)));
+    await record('every activity word the client sends is accepted', true, async () => {
+        for (const s of ONLINE_ACTIVITIES) if (!allowed(await tryWrite(`online/${OUT}/${CONN2}`, { at: SV, t: SV, s }, OUT))) return false;
+        return true;
+    });
+    await asOwner(`online/${OUT}/${CONN}`, mark());
     await record('an admin lists who is online', true, async () => allowed(await tryRead('online', BOSS)));
     await record('a player cannot list who is online', false, async () => allowed(await tryRead('online', OUT)));
     await record('...nor read one player\'s markers', false, async () => allowed(await tryRead(`online/${OUT}`, SEAT)));
@@ -734,8 +744,11 @@ const CLEANUP_MUTANTS = [
     { label: 'any player may list who is online', build: () => rulesWithCleanup({ online: { ...ONLINE_RULES, '.read': 'auth != null' } }) },
     { label: 'a player may write anyone\'s marker', build: () => rulesWithCleanup({ online: onlineWith({ '.write': 'auth != null && $conn.matches(/^[-0-9A-Za-z_]{20}$/)' }) }) },
     { label: 'the marker key is not checked', build: () => rulesWithCleanup({ online: onlineWith({ '.write': 'auth != null && auth.uid === $uid' }) }) },
-    { label: 'a marker may be dated in the future', build: () => rulesWithCleanup({ online: onlineWith({ '.validate': 'newData.isNumber()' }) }) },
-    { label: 'a marker may hold anything', build: () => rulesWithCleanup({ online: onlineWith({ '.validate': 'true' }) }) }
+    { label: 'a marker may be dated in the future', build: () => rulesWithCleanup({ online: onlineWith({ at: { '.validate': 'newData.isNumber()' } }) }) },
+    { label: 'its last change may be dated in the future', build: () => rulesWithCleanup({ online: onlineWith({ t: { '.validate': 'newData.isNumber()' } }) }) },
+    { label: 'the activity may be any text', build: () => rulesWithCleanup({ online: onlineWith({ s: { '.validate': 'newData.isString()' } }) }) },
+    { label: 'a marker may carry extra fields', build: () => rulesWithCleanup({ online: onlineWith({ $other: { '.validate': true } }) }) },
+    { label: 'a marker may lack fields (or be a bare number)', build: () => rulesWithCleanup({ online: onlineWith({ '.validate': 'true' }) }) }
 ];
 console.log('\n--- cleanup / online mutants ---');
 let cleanupEscaped = 0;

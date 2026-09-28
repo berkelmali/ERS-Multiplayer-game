@@ -2766,7 +2766,7 @@ export const remove = async (r) => {
         },
         db: { 'presence/h1': 'offline', 'presence/p2': 'online', 'presence/p3': 'online', 'presence/p4': 'online',
               // v3.22.3: two tabs for Ayşe, one for p5; a lobby mirror with no table behind it.
-              online: { p2: { '-Aaaaaaaaaaaaaaaaaaa': now - 120000, '-Bbbbbbbbbbbbbbbbbbb': now - 60000 }, p5: { '-Ccccccccccccccccccc': now - 30000 } },
+              online: { p2: { '-Aaaaaaaaaaaaaaaaaaa': now - 120000, '-Bbbbbbbbbbbbbbbbbbb': now - 60000 }, p5: { '-Ccccccccccccccccccc': { at: now - 30000, t: now - 10000, s: 'bots' } } },
               lobbyRooms: { AAA111: { tableId: 'AAA111', hostId: 'h1', gameState: { status: 'playing', roomId: 'ROOM01' } },
                             ORPH01: { tableId: 'ORPH01', hostId: 'gone', hostUsername: 'Gone', gameState: { status: 'waiting' } } },
               'lobbyRooms/AAA111': { tableId: 'AAA111', hostId: 'h1', gameState: { status: 'playing', roomId: 'ROOM01' } },
@@ -2867,7 +2867,7 @@ export const remove = async (r) => {
         await p.click('.adm-tab[data-view="online"]');
         await p.waitForFunction(() => document.querySelectorAll('#adm-online tbody tr').length === 2, null, { timeout: 5000 });
         const online = await p.evaluate(() => ({ text: document.getElementById('adm-online').textContent, count: document.getElementById('adm-online-count').textContent }));
-        if (online.count !== '2' || !/Ayşe/.test(online.text) || !/p2/.test(online.text) || !/AAA111/.test(online.text) || !/p5/.test(online.text))
+        if (online.count !== '2' || !/Ayşe/.test(online.text) || !/p2/.test(online.text) || !/AAA111/.test(online.text) || !/p5/.test(online.text) || !/bot maçında/.test(online.text))
             throw new Error('the online list does not show who is connected and where: ' + online.text.slice(0, 300));
         if (shots) await p.screenshot({ path: `${shots}/admin-online.png`, fullPage: true });
 

@@ -152,18 +152,27 @@ export function composeGameRoomWriteFull() {
 }
 
 /**
- * online/{uid}/{connectionId} = server time, removed by the server when that
- * connection drops. One entry per open tab, so closing a second tab never
- * marks a player offline. Deliberately NOT presence/{uid}: tableManager drops
- * a seated player whose presence reads "offline", and that must stay tied to
- * joining a table.
+ * online/{uid}/{connectionId} = { at, t, s } — when this tab connected, when
+ * its activity last changed, and what it is doing (v3.22.4). Removed by the
+ * server when that connection drops. One entry per open tab, so closing a
+ * second tab never marks a player offline. Deliberately NOT presence/{uid}:
+ * tableManager drops a seated player whose presence reads "offline", and that
+ * must stay tied to joining a table.
+ *
+ * `s` is one word from a closed list: nothing a player types can ride in it.
  */
+export const ONLINE_ACTIVITIES = Object.freeze(['menu', 'bots', 'daily', 'legends', 'match']);
+const serverTimeField = { '.validate': 'newData.isNumber() && newData.val() <= now' };
 export const ONLINE_RULES = Object.freeze({
     '.read': ADMIN_ROOMS_READ,
     $uid: {
         $conn: {
             '.write': 'auth != null && auth.uid === $uid && $conn.matches(/^[-0-9A-Za-z_]{20}$/)',
-            '.validate': 'newData.isNumber() && newData.val() <= now'
+            '.validate': "newData.hasChildren(['at', 't', 's'])",
+            at: serverTimeField,
+            t: serverTimeField,
+            s: { '.validate': `newData.isString() && newData.val().matches(/^(${ONLINE_ACTIVITIES.join('|')})$/)` },
+            $other: { '.validate': false }
         }
     }
 });
