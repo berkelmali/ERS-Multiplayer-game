@@ -200,6 +200,170 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── 6. Coins: the server owns the ledger (v3.22.0). ─────────────────────
+    //    Until v3.22.0 the balance and the owned skins lived in localStorage;
+    //    one console line minted any amount. Now `wallets/{uid}` is the only
+    //    balance, and a player may move it in exactly five shapes (walletRules.js
+    //    mirrors each one; the test suite fails the build if the numbers drift):
+    //      create    once: an import of the old local balance, worth ≤ 1000
+    //      spend     down only (a loss, a quit)
+    //      purchase  one catalogue skin in, exactly its price out
+    //      earn      ≤ 80 a write, ≤ 1200 a UTC day
+    //      spin      ≤ 200, once a UTC day by the server's clock
+    //    Any other amount is an admin grant, and only an account with a
+    //    document in /admins may make one. /admins has no client write rule at
+    //    all: an admin is made by hand in the Firebase console, nowhere else.
+    //    Each grant commits with an immutable /coin_grants audit record.
+    //
+    //    What this does NOT do: the browser still decides who won a match, so
+    //    a forger can claim wins — up to the daily cap a real player meets.
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function walletSkinCost() {
+      return {'golden': 150, 'neon': 150, 'shadow': 200, 'inferno': 200, 'frost': 200,
+              'emerald': 250, 'royal': 250, 'sakura': 300, 'phantom': 350,
+              'holographic': 400, 'obsidian': 500, 'pharaoh': 1000, 'gods': 2000};
+    }
+    function today() { return math.floor(request.time.toMillis() / 86400000); }
+    function walletShape(d) {
+      return d.keys().hasOnly(['coins', 'owned', 'earnDay', 'earnedToday', 'spinDay', 'lastGrantId', 'updatedAt'])
+             && d.keys().hasAll(['coins', 'owned', 'earnDay', 'earnedToday', 'spinDay', 'updatedAt'])
+             && d.coins is int && d.coins >= 0
+             && d.owned is list && d.owned.size() <= 20 && 'classic' in d.owned
+             && d.earnDay is int && d.earnedToday is int && d.spinDay is int
+             && d.updatedAt == request.time;
+    }
+    // The imported value: coins plus every owned skin at its price.
+    function ownedValue(o) {
+      return ('golden' in o ? 150 : 0) + ('neon' in o ? 150 : 0) + ('shadow' in o ? 200 : 0)
+           + ('inferno' in o ? 200 : 0) + ('frost' in o ? 200 : 0) + ('emerald' in o ? 250 : 0)
+           + ('royal' in o ? 250 : 0) + ('sakura' in o ? 300 : 0) + ('phantom' in o ? 350 : 0)
+           + ('holographic' in o ? 400 : 0) + ('obsidian' in o ? 500 : 0) + ('pharaoh' in o ? 1000 : 0)
+           + ('gods' in o ? 2000 : 0);
+    }
+    function walletChanged() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function coinDelta() { return request.resource.data.coins - resource.data.coins; }
+
+    function isSpend() {
+      return walletChanged().hasOnly(['coins', 'updatedAt']) && coinDelta() < 0;
+    }
+    function isPurchase() {
+      let n = request.resource.data;
+      let o = resource.data;
+      let added = n.owned.removeAll(o.owned);
+      return walletChanged().hasOnly(['coins', 'owned', 'updatedAt'])
+             && n.owned.hasAll(o.owned)
+             && n.owned.size() == o.owned.size() + 1
+             && added.size() == 1
+             && added[0] in walletSkinCost()
+             && coinDelta() == -walletSkinCost()[added[0]];
+    }
+    function isEarn() {
+      let n = request.resource.data;
+      let o = resource.data;
+      return walletChanged().hasOnly(['coins', 'earnDay', 'earnedToday', 'updatedAt'])
+             && coinDelta() > 0 && coinDelta() <= 80
+             && n.earnDay == today()
+             && n.earnedToday == (o.earnDay == today() ? o.earnedToday : 0) + coinDelta()
+             && n.earnedToday <= 1200;
+    }
+    function isSpin() {
+      return walletChanged().hasOnly(['coins', 'spinDay', 'updatedAt'])
+             && coinDelta() >= 0 && coinDelta() <= 200
+             && resource.data.spinDay < today()
+             && request.resource.data.spinDay == today();
+    }
+    // An admin grant: only the balance moves, and the audit record written in
+    // the same commit names this wallet and this exact amount.
+    function isAdminGrant(userId) {
+      let grant = getAfter(/databases/$(database)/documents/coin_grants/$(request.resource.data.lastGrantId)).data;
+      return isAdmin()
+             && walletChanged().hasOnly(['coins', 'lastGrantId', 'updatedAt'])
+             && request.resource.data.lastGrantId is string
+             && request.resource.data.lastGrantId != resource.data.get('lastGrantId', '')
+             // written in THIS commit — an old record cannot be replayed
+             && !exists(/databases/$(database)/documents/coin_grants/$(request.resource.data.lastGrantId))
+             && grant.to == userId
+             && grant.by == request.auth.uid
+             && grant.amount == coinDelta();
+    }
+
+    match /wallets/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+
+      allow create: if isUser(userId)
+        && walletShape(request.resource.data)
+        && request.resource.data.owned.hasOnly(walletSkinCost().keys().concat(['classic']))
+        && request.resource.data.coins + ownedValue(request.resource.data.owned) <= 1000
+        && request.resource.data.earnDay == -1
+        && request.resource.data.earnedToday == 0
+        && request.resource.data.spinDay == -1
+        && request.resource.data.get('lastGrantId', '') == '';
+
+      allow update: if walletShape(request.resource.data)
+        && ((isUser(userId) && (isSpend() || isPurchase() || isEarn() || isSpin()))
+            || isAdminGrant(userId));
+
+      allow delete: if false;
+    }
+
+    // Admin accounts. Readable by their owner (so the game knows to show the
+    // panel); NO client write rule — created by hand in the Firebase console.
+    match /admins/{userId} {
+      allow read: if isUser(userId);
+      allow write: if false;
+    }
+
+    // The audit trail: created only by an admin, together with the wallet
+    // change it describes; never edited, never deleted.
+    match /coin_grants/{grantId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['to', 'by', 'amount', 'before', 'after', 'note', 'at'])
+        && request.resource.data.keys().hasAll(['to', 'by', 'amount', 'before', 'after', 'note', 'at'])
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.to is string
+        && request.resource.data.amount is int
+        && request.resource.data.amount != 0
+        && request.resource.data.amount >= -100000 && request.resource.data.amount <= 100000
+        && request.resource.data.note is string && request.resource.data.note.size() <= 120
+        && request.resource.data.at == request.time
+        && request.resource.data.before == get(/databases/$(database)/documents/wallets/$(request.resource.data.to)).data.coins
+        && request.resource.data.after == request.resource.data.before + request.resource.data.amount
+        && request.resource.data.after >= 0
+        && getAfter(/databases/$(database)/documents/wallets/$(request.resource.data.to)).data.coins == request.resource.data.after
+        && getAfter(/databases/$(database)/documents/wallets/$(request.resource.data.to)).data.lastGrantId == grantId
+        // ...and the sending admin's daily counter moved with it (below).
+        && getAfter(/databases/$(database)/documents/admin_daily/$(request.auth.uid)).data.lastGrantId == grantId;
+      allow update, delete: if false;
+    }
+
+    // The admin's daily ceiling (v3.22.1, council finding O1). A stolen admin
+    // password must not mean unlimited coins: an admin may GIVE at most 20000
+    // a UTC day (taking back is not counted). The counter moves only together
+    // with a grant written in the same commit, so it cannot be reset alone.
+    // MIRRORED in walletRules.js (ADMIN_DAILY_CAP).
+    function adminGrantAfter(id) {
+      return getAfter(/databases/$(database)/documents/coin_grants/$(id)).data;
+    }
+    match /admin_daily/{userId} {
+      allow read: if isUser(userId) && isAdmin();
+      allow create, update: if isUser(userId) && isAdmin()
+        && request.resource.data.keys().hasOnly(['day', 'given', 'lastGrantId'])
+        && request.resource.data.lastGrantId is string
+        && request.resource.data.lastGrantId != (resource == null ? '' : resource.data.get('lastGrantId', ''))
+        && !exists(/databases/$(database)/documents/coin_grants/$(request.resource.data.lastGrantId))
+        && adminGrantAfter(request.resource.data.lastGrantId).by == userId
+        && request.resource.data.day == today()
+        && request.resource.data.given
+             == ((resource != null && resource.data.day == today()) ? resource.data.given : 0)
+                + (adminGrantAfter(request.resource.data.lastGrantId).amount > 0
+                   ? adminGrantAfter(request.resource.data.lastGrantId).amount : 0)
+        && request.resource.data.given <= 20000;
+      allow delete: if false;
+    }
+
     // ── 5. Firestore game rooms: CLOSED. ─────────────────────────────────────
     //    Live matches run on the Realtime Database (database.rules.json).
     //    Nothing in the client reads or writes these paths; an open rule on an

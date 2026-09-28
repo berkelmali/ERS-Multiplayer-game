@@ -889,7 +889,9 @@ export const UIManager = {
 
     /** Your skin on a pile card: its class, its effects, and an art deck's figures. */
     dressYourCard(div, card) {
-        const skinId = Settings.config.equippedCardSkin;
+        // v3.22.0 — only a skin the wallet owns. The equipped choice is a
+        // setting in localStorage; honouring it blindly was a way round the shop.
+        const skinId = CardSkins.effectiveSkin(Settings.config.equippedCardSkin);
         if (!skinId || skinId === 'classic') return;
         const skinClass = CardSkins.getSkinClass(skinId);
         if (!skinClass) return;

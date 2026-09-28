@@ -19,6 +19,7 @@ export const VictoryScreen = {
         this.isDefeat = false;
         this.redirectTimeout = null;
         this.lastCoinDelta = null;
+        this.lastCoinNote = null;
         // v3.17.0: the finished match's numbers, frozen.
         //
         // GameState.stats is a LIVE object on the running game, and it is
@@ -31,14 +32,18 @@ export const VictoryScreen = {
         this.lastStats = null;
 
         EventBus.on('gameStarted', () => {
+            this.lastCoinNote = null;
             this.lastCoinDelta = null; // Defensive reset — don't show a stale value from a previous match.
         });
 
         // Registered here (init time), well before show() actually runs — see
         // cardSkins.js::computeReward for why this doesn't recompute the
         // formula itself, just displays what was already awarded.
-        EventBus.on('coinsAwarded', ({ amount }) => {
+        EventBus.on('coinsAwarded', ({ winnerId, amount, guest }) => {
             this.lastCoinDelta = amount;
+            // v3.22.0 — coins live in a signed-in wallet. A guest is told how
+            // to earn them; a win on a full day is told why it paid nothing.
+            this.lastCoinNote = guest ? 'guest' : (amount === 0 && winnerId === 0 ? 'capped' : null);
         });
 
         // v3.12.0 — the 1500ms pause is deliberate (the last slap should land
@@ -414,7 +419,11 @@ export const VictoryScreen = {
                 const mvpHtml = mvpText ? `<div class="mvp-moment">${mvpText}</div>` : '';
 
                 let coinHtml = '';
-                if (typeof this.lastCoinDelta === 'number') {
+                if (this.lastCoinNote === 'guest') {
+                    coinHtml = `<div class="coin-result-badge coin-note">🔒 ${Localization.get('coinSignInHint')}</div>`;
+                } else if (this.lastCoinNote === 'capped') {
+                    coinHtml = `<div class="coin-result-badge coin-note">🪙 ${Localization.get('coinDailyCapReached')}</div>`;
+                } else if (typeof this.lastCoinDelta === 'number' && this.lastCoinDelta !== 0) {
                     const isGain = this.lastCoinDelta > 0;
                     const sign = isGain ? '+' : '';
                     coinHtml = `<div class="coin-result-badge ${isGain ? 'coin-gain' : 'coin-loss'}">🪙 ${sign}${this.lastCoinDelta}</div>`;

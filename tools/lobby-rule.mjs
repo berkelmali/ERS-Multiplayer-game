@@ -85,6 +85,21 @@ export function composeGameRoomWrite(p = GAMEROOM_PIECES) {
     return `${p.signedIn} && (${p.creating} || ${p.isSeated}) && (!${p.godRoom} || ${p.speaksProtocol})`;
 }
 
+// ─── admin read of game rooms (v3.22.2, approved by the owner) ─────────────
+// The admin page shows each live room's state and a feed of what happens in
+// it (won, disconnected, slapped). READ ONLY and gameRooms ONLY: no rule here
+// lets an admin write anything. An admin is `admins/{uid} === true`, set by
+// hand in the Firebase console — `admins` has no client write rule at all.
+export const ADMIN_ROOMS_READ = "auth != null && root.child('admins').child(auth.uid).val() === true";
+
+/** Each admin may read their own flag (so the page knows); nobody may write one. */
+export const ADMINS_RULES = Object.freeze({
+    $uid: {
+        '.read': 'auth != null && auth.uid === $uid',
+        '.write': false
+    }
+});
+
 /** Where each user states the protocol their client speaks. Theirs only. */
 export const CLIENT_VERSIONS_RULES = Object.freeze({
     $uid: {

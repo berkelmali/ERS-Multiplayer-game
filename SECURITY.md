@@ -28,6 +28,36 @@ the report is credited if you want it to be.
   newcomer adding exactly themselves to a waiting table.
 - Display names are restricted to letters, digits, spaces and `_ . -`, in the
   client (`public/js/safeText.js`) and in the rules.
+- `wallets/{uid}` (v3.22.0) — a player's coins and owned card skins. Until
+  v3.22.0 both lived in localStorage and one console line could mint any
+  amount. Readable only by the player (and admins). A player may move the
+  balance in five shapes only: spend (down), buy one catalogue skin at exactly
+  its price (the price list is in the rules), earn at most 80 per write and
+  1200 per UTC day, claim the wheel once per UTC day for at most 200, and a
+  one-time import of the old local balance worth at most 1000.
+- Sending coins is admin-only. An admin is an account with a document in
+  `admins/{uid}`, which has **no client write rule** — it can only be created
+  in the Firebase console. Every grant commits atomically with an immutable
+  `coin_grants/{id}` record (who, to whom, amount, before, after, reason); an
+  old record cannot be replayed to cover a new change.
+- The admin page (`/admin`, v3.22.1) is an ordinary page: signing in proves
+  nothing, the rules decide. It is noindex, disallowed in robots.txt and
+  never cached. There is no SQL anywhere; Firestore/RTDB queries are
+  parameterised. The injection surfaces that exist are guarded: every id that
+  becomes part of a database path must match `[A-Za-z0-9_-]` (`safeId`), no
+  player-chosen text ever reaches `innerHTML` (the page builds DOM nodes),
+  and the CSV export defuses formula-leading cells.
+- An admin may GIVE at most 20000 coins per UTC day (council ERS-28): the
+  counter `admin_daily/{uid}` moves in the same commit as every grant and
+  cannot be written on its own, so a stolen admin password is capped too.
+  Recommended: enable multi-factor sign-in for admin accounts, and use the
+  admin page in a separate browser profile — it shares the game's origin
+  and sign-in session.
+- Admins may READ live game rooms (v3.22.2, RTDB `admins/{uid} === true`,
+  set in the console). That includes every player's hand, so an admin
+  account must not be used to play. Revoking an admin means removing BOTH
+  flags: Firestore `admins/{uid}` and RTDB `admins/{uid}`. The room feed on
+  the admin page is derived from snapshot differences and is best-effort.
 - Every rule change is run against the Firestore emulator, with deliberately
   broken copies that must be caught, before `deploy-rules.bat` sends it
   (`tools/firestore-rules-test.mjs`).
@@ -41,6 +71,9 @@ the report is credited if you want it to be.
   Functions exist but are not enabled) and Firebase App Check.
 - The Daily Challenge board is marked unverified in the game for the same
   reason.
+- For the same reason a forged client can claim match wins and so earn coins —
+  but no more than the daily cap a real player meets (1200). It cannot set a
+  balance, buy below price, or spin twice in a day.
 
 ## What must never be in this repository
 

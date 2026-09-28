@@ -1769,6 +1769,57 @@ echo       ^(2^) cok oyunculu yeniden cizimde kartin ayni oge olarak ve
 echo       kaplamali kaldigi dogrulanir. Eski kod ile ^(2^) duser -- denendi.
 echo       2994 test. Ayrinti: COUNCIL-v3.21.2-hard-review.md
 echo.
+echo  --- v3.22.0 -- JETON ACIGI KAPANDI: BAKIYE ARTIK SUNUCUDA ---
+echo  217) ACIK: jeton ve kaplamalar localStorage'daydi; konsola tek satir
+echo       yazan herkes istedigi kadar jeton yaratabiliyordu. Artik bakiye
+echo       Firestore'da wallets/UID belgesinde. Kurallar yalniz su adimlara
+echo       izin verir: harcama, katalog fiyatina tam satin alma, yazma basina
+echo       en fazla 80 ve UTC gunu basina en fazla 1200 kazanc, gunde bir cark
+echo       en fazla 200, hesap basina bir kez en fazla 1000 degerlik aktarim.
+echo  218) JETON GONDERMEK YALNIZ YONETICININ: admins/UID belgesi olan hesap
+echo       profil ekraninda bir panel gorur. Bu belgeyi YALNIZ Firebase
+echo       konsolundan sen olusturabilirsin; istemcinin oraya yazma kurali yok.
+echo       Her gonderim silinemez bir coin_grants denetim kaydi birakir.
+echo  219) MISAFIR jeton kazanmaz, magaza ve cark giris ister. Giris yapan
+echo       oyuncunun eski yerel bakiyesi ilk giriste bir kez, 1000 degerle
+echo       sinirli olarak hesaba tasinir.
+echo  220) SINIR, ACIKCA: bot macinin sonucuna hala tarayici karar veriyor.
+echo       Hileci gunluk tavana kadar sahte kazanc yazabilir, sinirsiz degil.
+echo       3069 test + emulatorde 49 yeni kural senaryosu ve 13 mutant.
+echo.
+echo  --- v3.22.1 -- YONETIM SAYFASI: /admin ---
+echo  221) AYRI SAYFA: https://ers-card-game.web.app/admin . Kullanici adi
+echo       ya da e-posta + sifre ile giris. Kullanici adi "berk" ise giris
+echo       adresi berk@admin.ers-card-game.web.app olur. Giris yetmez: hesabin
+echo       Firestore'da admins/UID belgesi yoksa panel ACILMAZ, kurallar da
+echo       her okuma/yazmayi reddeder.
+echo  222) ICINDEKILER: genel bakis, multiplayer masalari ^(ev sahibi cevrim-
+echo       disi, hayalet masa, eksik playerIds, sahte kimlik, lobi aynasi^),
+echo       oda JSON analizi ^(52 kart, kilitli sira, kapanmamis saplak
+echo       yarisi^), oyuncu arama + jeton gonder/geri al, denetim kaydi + CSV.
+echo  223) ENJEKSIYON: projede SQL yok, sorgular parametreli. Karsiligi olan
+echo       riskler kapatildi: kimlik -^> veritabani yolu ^(safeId^), oyuncu adi
+echo       -^> HTML ^(hic innerHTML yok^), CSV formul enjeksiyonu.
+echo  224) CANLI ODA ICI IZLEME KAPALI: bunun icin RTDB kurallarina yoneticiye
+echo       ozel OKUMA izni gerekir; bu degisiklik onayina birakildi.
+echo  225) KONSEY ^(ERS-28^): yonetici de GUNDE en fazla 20000 jeton
+echo       verebilir ^(geri almak sayilmaz^); sayac her gonderimle ayni
+echo       islemde ilerler, tek basina sifirlanamaz. Masa listesi en yeni
+echo       300 ile sinirli. 3114 test, emulatorde 114 kontrol / 24 mutant.
+echo       ONERI: yonetici hesabinda MFA ac, /admin'i ayri bir tarayici
+echo       profilinde kullan ^(oyunla ayni oturumu paylasir^).
+echo.
+echo  --- v3.22.2 -- YONETIM: CANLI ODALAR VE OLAY AKISI ---
+echo  226) Yonetici artik canli odalari gorur: koltuklar, sira, yigin, kart
+echo       sayilari ve olay akisi ^("Ayse yigini aldi", "Ali'nin baglantisi
+echo       koptu", "Oyun bitti - kazanan Ayse"^). YALNIZ OKUMA: RTDB kurali
+echo       yoneticiye gameRooms okumasi verir, hicbir yere yazma vermez.
+echo       Akis sayfa acikken tutulur; oda mac bitince silindigi icin gecmis yok.
+echo  227) Tasarim yeniden yapildi ^(designfires: dashboard/precise, marka
+echo       paleti, 24/24 kontrast cifti AA^). Durumlar: yukleniyor, bos, kismi
+echo       hata, baglanti yok. Filtreler hatirlaniyor.
+echo       3135 test, RTDB 59 kontrol + 5 yeni mutant, Firestore 114.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -1948,5 +1999,31 @@ echo  --- v3.21.2 ------------------------------------------------
 echo   - COK OYUNCULU: kaplama kusanmis olarak iki tarayicida bir oda ac;
 echo     kendi oynadigin kart yiginda kaplamali KALMALI ^(onceden hemen
 echo     duz karta donuyordu^); diger oyuncunun karti duz olmali
+echo.
+echo  --- v3.22.0 -- SIRA ONEMLI: ONCE KURALLAR ---
+echo   - ONCE deploy-rules.bat ile firestore.rules gonder, SONRA hosting.
+echo     Tersi olursa yeni istemci wallets'a yazamaz ve magaza "yukleniyor"
+echo     da kalir.
+echo   - Kendini yonetici yap: Firebase konsolu, Firestore, admins koleksiyonu,
+echo     belge kimligi = senin UID'in ^(Authentication sekmesinde^), icine
+echo     herhangi bir alan, orn. note = owner.
+echo   - Profil ekraninda yonetici panelini gor; bir test hesabina 10 jeton
+echo     gonder; coin_grants altinda kaydi gor.
+echo   - Konsolda localStorage.setItem^('ers_coins','999999'^) yaz, yenile:
+echo     bakiye DEGISMEMELI.
+echo.
+echo  --- v3.22.1 -- YONETICI HESABI ---
+echo   - Konsol, Authentication, Add user: e-posta berk@admin.ers-card-game.web.app
+echo     ^(veya kendi e-postan^), guclu bir sifre. UID'i kopyala.
+echo   - Firestore, admins koleksiyonu, belge kimligi = o UID, alan note = owner.
+echo   - /admin adresinden gir; masalar ve jeton sekmelerini dene.
+echo   - Yonetici OLMAYAN bir hesapla /admin'i ac: panel acilmamali.
+echo   - ONCE deploy-rules.bat: admin_daily kurali olmadan gonderim reddedilir.
+echo.
+echo  --- v3.22.2 -- RTDB KURALLARI VE YONETICI BAYRAGI ---
+echo   - deploy-db-rules.bat ile database.rules.json'u gonder.
+echo   - Konsol, Realtime Database, Data: kokte admins altina senin UID'in,
+echo     deger true ^(boolean, "true" metni DEGIL^).
+echo   - /admin, Canli odalar: bir multiplayer mac ac, olaylari izle.
 echo.
 pause

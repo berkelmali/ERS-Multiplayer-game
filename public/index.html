@@ -37,7 +37,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.21.2">
+    <link rel="stylesheet" href="style.css?v=3.22.2">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
@@ -263,7 +263,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.21.2
+        <div id="game-version">Berk Elmalı · v3.22.2
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -432,6 +432,12 @@
     <div id="shop-panel" class="screen scrollable-screen">
         <h2 data-i18n="shopTitle">🛍️ Shop</h2>
         <div id="shop-coin-balance" class="shop-coin-balance">🪙 0</div>
+        <!-- v3.22.0 — coins live in a signed-in wallet. Shown to a guest (with
+             a way to sign in) and while the wallet loads; hidden once it is ready. -->
+        <div id="shop-signin" class="shop-signin" hidden>
+            <p id="shop-signin-text" data-i18n="shopSignInToEarn">Sign in to earn coins and unlock card skins.</p>
+            <button id="btn-shop-signin" type="button" class="btn primary" data-i18n="signIn">Sign In</button>
+        </div>
         <div id="shop-notification" class="shop-notification"></div>
         <div id="shop-grid" class="shop-grid">
             <!-- Dynamically rendered by shopUI.js -->
@@ -577,12 +583,12 @@
 
                 <div class="rules-section">
                     <h3 data-i18n="pGameTitle">🎮 Game data</h3>
-                    <p data-i18n="pGameDesc">Your username and scores are stored in Firebase Firestore so leaderboards can exist. Multiplayer matches are coordinated through Firebase Realtime Database and the room data is deleted when the match ends. A Daily Challenge result is written with exactly nine fields: your account id, your username, the score, your reaction time, whether you finished the run, how long it took, the scenario profile you were given, your starting hand size, and the time you submitted it — nothing else.</p>
+                    <p data-i18n="pGameDesc">Your username and scores are stored in Firebase Firestore so leaderboards can exist. Multiplayer matches are coordinated through Firebase Realtime Database and the room data is deleted when the match ends. A Daily Challenge result is written with exactly nine fields: your account id, your username, the score, your reaction time, whether you finished the run, how long it took, the scenario profile you were given, your starting hand size, and the time you submitted it — nothing else. If you are signed in, your coin balance, the card skins you own and the day of your last wheel spin are stored in Firestore under your account, readable only by you; coins sent by the game's administrator are recorded in an audit log.</p>
                 </div>
 
                 <div class="rules-section">
                     <h3 data-i18n="pLocalTitle">💾 Stored in your browser</h3>
-                    <p data-i18n="pLocalDesc">Settings, house rules, slap statistics, your Daily Challenge result for the day, your daily wheel spin, coins and card skins are kept in your browser's localStorage. They never leave your device unless you are signed in and a score is submitted. Clearing your browser data removes all of it.</p>
+                    <p data-i18n="pLocalDesc">Settings, house rules, slap statistics, your Daily Challenge result for the day and your daily wheel spin's tier progress are kept in your browser's localStorage. They never leave your device unless you are signed in and a score is submitted. Clearing your browser data removes all of it.</p>
                 </div>
 
                 <div class="rules-section">
@@ -1022,7 +1028,10 @@
              chance of a transition between its two modes. The mode now lives
              in ONE place — `data-mode` on the form — and CSS reads it. -->
         <div id="account-logged-out" class="account-section">
-            <form id="auth-form" class="auth-card" data-mode="signin" novalidate>
+            <!-- method="post" (v3.22.3, OWASP ZAP): a form with no method submits by GET,
+                 so pressing Enter before the module loads would put the password
+                 in the URL, the browser history and the hosting logs. -->
+            <form id="auth-form" class="auth-card" data-mode="signin" method="post" novalidate>
                 <div class="profile-emblem" aria-hidden="true">♠</div>
                 <p class="profile-intro" data-i18n="profileIntro">Your seat at the table. Keep your score and return to your rivals.</p>
                 <div class="setting-group auth-field" id="auth-username-group">
@@ -1121,6 +1130,28 @@
                 <div id="bot-nemesis-content" class="profile-nemesis-body">
                     <p class="profile-empty" data-i18n="nemesisEmpty">Play some offline matches to build a rivalry record.</p>
                 </div>
+            </div>
+
+            <!-- ADMIN: send coins (v3.22.0). Hidden unless admins/{uid} exists;
+                 firestore.rules refuses these writes for anyone else anyway. -->
+            <div id="admin-coin-panel" class="profile-panel admin-panel" hidden>
+                <h4 class="profile-panel-title" data-i18n="adminTitle">🛡️ Admin — send coins</h4>
+                <p class="profile-history-note" data-i18n="adminNote">Only admin accounts see this panel.</p>
+                <a href="/admin" class="btn secondary admin-open-link" data-i18n="adminOpenFull">Open the full admin panel ↗</a>
+                <div class="admin-row">
+                    <input type="text" id="admin-player-search" class="ui-input crisp-dark admin-input" maxlength="40"
+                        autocomplete="off" data-i18n="adminSearchPh" placeholder="Player name or account ID">
+                    <button type="button" id="btn-admin-search" class="btn secondary admin-btn" data-i18n="adminSearch">Find</button>
+                </div>
+                <div id="admin-player-results" class="admin-results"></div>
+                <div class="admin-row">
+                    <input type="number" id="admin-amount" class="ui-input crisp-dark admin-input" step="1"
+                        data-i18n="adminAmountPh" placeholder="Amount">
+                    <input type="text" id="admin-note" class="ui-input crisp-dark admin-input" maxlength="120"
+                        autocomplete="off" data-i18n="adminNotePh" placeholder="Reason">
+                </div>
+                <button type="button" id="btn-admin-grant" class="btn primary admin-send" data-i18n="adminSend" disabled>Send coins</button>
+                <div id="admin-status" class="admin-status" role="status" aria-live="polite"></div>
             </div>
 
             <div class="menu-buttons sleek-layout">
@@ -1393,7 +1424,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.21.2"></script>
+    <script type="module" src="js/main.js?v=3.22.2"></script>
 </body>
 
 </html>

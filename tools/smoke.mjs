@@ -2008,6 +2008,10 @@ await step('the wheel pays the prize it stops on', async () => {
     // with it.
     const results = await page.evaluate(async () => {
         const { DailySpin } = await import('./js/dailySpin.js');
+        // v3.22.0: the day's spin is the server wallet's. Each spin here gets a
+        // fresh in-memory wallet — the same plans the Firestore ledger commits.
+        const { CardSkins } = await import('./js/cardSkins.js');
+        const { createMemoryLedger } = await import('./js/walletRules.js');
         const canvas = document.getElementById('daily-spin-canvas');
         const pointer = document.querySelector('.wheel-pointer');
         if (!canvas || !pointer) throw new Error('the wheel is not in the markup');
@@ -2028,7 +2032,7 @@ await step('the wheel pays the prize it stops on', async () => {
         // Three indices, not all eight: enough to catch a constant offset,
         // and each spin costs the animation's full length (SPIN_MS).
         for (const want of [0, 3, 6]) {
-            localStorage.removeItem('ers_last_spin_date');
+            createMemoryLedger(CardSkins, { coins: 0 });
             localStorage.removeItem('ers_spin_tier');
             DailySpin.isSpinning = false;
             DailySpin.open();
@@ -2046,7 +2050,7 @@ await step('the wheel pays the prize it stops on', async () => {
                        prize: `${segs[want].coins} ${segs[want].type}` });
             DailySpin.close();
         }
-        localStorage.removeItem('ers_last_spin_date');
+        CardSkins.detachLedger();
         localStorage.removeItem('ers_spin_tier');
         return out;
     });
@@ -2056,6 +2060,68 @@ await step('the wheel pays the prize it stops on', async () => {
             `paid segment ${r.want} (${r.prize}) but stopped on ${r.saw}`).join('; '));
     }
     console.log(`         3 spins, the pointer stopped on the segment that paid, every time`);
+});
+
+await step('coins are the server\'s: a guest is asked to sign in, and nothing on this device can mint them', async () => {
+    const r = await page.evaluate(async () => {
+        const { CardSkins } = await import('./js/cardSkins.js');
+        const { createMemoryLedger } = await import('./js/walletRules.js');
+        const { ShopUI } = await import('./js/shopUI.js');
+        const { DailySpin } = await import('./js/dailySpin.js');
+        const { Settings } = await import('./js/settings.js');
+        const out = {};
+        const savedSkin = Settings.config.equippedCardSkin;
+        try {
+            // The old console line, as a player would type it.
+            localStorage.setItem('ers_coins', '999999');
+            localStorage.setItem('ers_owned_skins', JSON.stringify(['classic', 'gods', 'pharaoh']));
+            CardSkins.detachLedger();
+            out.guestCoins = CardSkins.getCoins();
+            out.guestOwnsGods = CardSkins.isOwned('gods');
+            Settings.config.equippedCardSkin = 'gods';
+            out.guestDrawn = CardSkins.effectiveSkin(Settings.config.equippedCardSkin);
+
+            ShopUI.open();
+            const box = document.getElementById('shop-signin');
+            out.guestPrompt = !!box && !box.hidden && getComputedStyle(box).display !== 'none';
+            out.guestSignInBtn = getComputedStyle(document.getElementById('btn-shop-signin')).display !== 'none';
+            out.guestBalance = document.getElementById('shop-coin-balance').textContent;
+            const locked = document.querySelector('#shop-grid .shop-item[data-skin="golden"] .shop-item-btn');
+            out.guestLockedLabel = locked && locked.textContent;
+            ShopUI.close();
+
+            DailySpin.open();
+            out.guestSpinState = DailySpin.actionState;
+            await DailySpin.spin();
+            out.guestSpinPaid = CardSkins.getCoins();
+            DailySpin.close();
+
+            // Signed in: the prompt goes, and the balance is the wallet's — not the device's.
+            createMemoryLedger(CardSkins, { coins: 150 });
+            ShopUI.open();
+            out.readyPrompt = getComputedStyle(document.getElementById('shop-signin')).display;
+            out.readyBalance = document.getElementById('shop-coin-balance').textContent;
+            document.querySelector('#shop-grid .shop-item[data-skin="golden"] .shop-item-btn').click();
+            await new Promise(res => setTimeout(res, 50));
+            out.bought = [CardSkins.isOwned('golden'), CardSkins.getCoins(), Settings.config.equippedCardSkin];
+            ShopUI.close();
+        } finally {
+            CardSkins.detachLedger();
+            Settings.config.equippedCardSkin = savedSkin;
+            localStorage.removeItem('ers_coins');
+            localStorage.removeItem('ers_owned_skins');
+        }
+        return out;
+    });
+    const want = {
+        guestCoins: 0, guestOwnsGods: false, guestDrawn: 'classic', guestPrompt: true, guestSignInBtn: true,
+        guestBalance: '🪙 0', guestSpinState: 'claimed', guestSpinPaid: 0,
+        readyPrompt: 'none', readyBalance: '🪙 150', bought: [true, 0, 'golden']
+    };
+    const bad = Object.keys(want).filter(k => JSON.stringify(r[k]) !== JSON.stringify(want[k]));
+    if (bad.length) throw new Error(bad.map(k => `${k}: got ${JSON.stringify(r[k])}, want ${JSON.stringify(want[k])}`).join('; '));
+    if (!/🔒/.test(r.guestLockedLabel || '')) throw new Error('a guest\'s skin button does not read as locked: ' + r.guestLockedLabel);
+    console.log('         a forged 999999 local balance reads as 0; guest shop and wheel ask for sign-in; a wallet buys');
 });
 
 await step('the lobby rails are geometry, not decoration', async () => {
@@ -2545,11 +2611,15 @@ await step('online, your skin survives the room\'s redraw — and nothing replay
     const r = await page.evaluate(async () => {
         const { UIManager } = await import('./js/ui.js');
         const { Settings } = await import('./js/settings.js');
+        const { CardSkins } = await import('./js/cardSkins.js');
+        const { createMemoryLedger } = await import('./js/walletRules.js');
         const GS = window.GameState;
         const saved = { skin: Settings.config.equippedCardSkin, pile: GS.pile };
         const el = document.getElementById('pile-cards');
         const out = {};
         try {
+            // v3.22.0: a skin is drawn only if the wallet owns it.
+            createMemoryLedger(CardSkins, { coins: 0, owned: ['classic', 'gods'] });
             Settings.config.equippedCardSkin = 'gods';
             UIManager.syncPileElements([]);
             const mine = { rank: 13, suit: 'spades' }, theirs = { rank: 9, suit: 'hearts' }, late = { rank: 4, suit: 'clubs' };
@@ -2571,6 +2641,7 @@ await step('online, your skin survives the room\'s redraw — and nothing replay
             out.cleared = el.children.length;
         } finally {
             Settings.config.equippedCardSkin = saved.skin;
+            CardSkins.detachLedger();
             GS.pile = saved.pile || [];
             UIManager.syncPileElements([]);
         }
@@ -2582,6 +2653,237 @@ await step('online, your skin survives the room\'s redraw — and nothing replay
     if (r.appended[0] !== 3 || !r.appended[1] || r.appended[2] !== '4clubs') throw new Error('a card from the room was not appended in place: ' + JSON.stringify(r));
     if (r.cleared !== 0) throw new Error('a won pile did not clear the table: ' + JSON.stringify(r));
     console.log('         laid, synced, synced again, appended from the room, cleared: your card is the same element, still dressed');
+});
+
+// ── v3.22.1: the admin page ────────────────────────────────────────────────
+// A context of its own, with a Firebase double that is an in-memory store —
+// scoped to this step, so firebase-stub.mjs stays inert for everything else.
+// The rules themselves are proven in the emulator (firestore-rules-test.mjs);
+// this proves the PAGE: it opens only for an admin, it renders hostile table
+// data as text, it never builds a database path out of a hostile id, it
+// diagnoses the tables, and a grant goes through the audit record.
+await step('the admin page: admin-only, hostile names stay text, hostile ids never reach a path, a grant is audited', async () => {
+    const ADMIN_STUB = `
+const store = globalThis.__ADM_STORE__;
+const paths = (globalThis.__paths = globalThis.__paths || []);
+const noop = () => {};
+export const initializeApp = () => ({});
+export const getDatabase = () => ({});
+export const getFunctions = () => ({});
+export const getAuth = () => ({});
+export const signInWithEmailAndPassword = async () => { throw Object.assign(new Error('stub'), { code: 'auth/invalid-credential' }); };
+export const signOut = async () => {};
+export const onAuthStateChanged = (a, cb) => { setTimeout(() => cb(store.user), 0); return noop; };
+export const getFirestore = () => ({});
+const join = (parts) => parts.filter(p => typeof p === 'string').join('/');
+export const collection = (db, ...segs) => ({ kind: 'col', path: join(segs) });
+let auto = 0;
+export const doc = (base, ...segs) => {
+    const path = base && base.kind === 'col' ? (segs.length ? base.path + '/' + join(segs) : base.path + '/G' + (++auto)) : join(segs);
+    paths.push('fs:' + path);
+    return { kind: 'doc', path, id: path.split('/').pop() };
+};
+const snapDoc = (path) => { const v = store.fs[path]; return { id: path.split('/').pop(), exists: () => v !== undefined, data: () => v }; };
+export const getDoc = async (r) => snapDoc(r.path);
+export const where = (f, op, v) => ({ where: [f, v] });
+export const orderBy = () => ({});
+export const limit = () => ({});
+export const query = (c, ...mods) => ({ kind: 'col', path: c.path, where: mods.filter(m => m.where).map(m => m.where) });
+const colDocs = (q) => Object.keys(store.fs)
+    .filter(p => p.startsWith(q.path + '/') && p.split('/').length === q.path.split('/').length + 1)
+    .map(snapDoc).filter(d => (q.where || []).every(([f, v]) => d.data()[f] === v));
+export const getDocs = async (q) => { const docs = colDocs(q); return { docs, empty: !docs.length, forEach: (f) => docs.forEach(f) }; };
+export const onSnapshot = (q, next) => {
+    const fire = () => { if (q.kind === 'doc') next(snapDoc(q.path)); else { const docs = colDocs(q); next({ docs, forEach: (f) => docs.forEach(f) }); } };
+    setTimeout(fire, 0); (store.listeners = store.listeners || []).push(fire); return noop;
+};
+export const serverTimestamp = () => Date.now();
+export const runTransaction = async (db, fn) => {
+    const writes = [];
+    const tx = { get: async (r) => snapDoc(r.path), set: (r, v) => writes.push([r.path, v, false]), update: (r, v) => writes.push([r.path, v, true]) };
+    const out = await fn(tx);
+    for (const [p, v, merge] of writes) store.fs[p] = merge ? { ...store.fs[p], ...v } : v;
+    (store.listeners || []).forEach(f => f());
+    return out;
+};
+export const ref = (db, path) => { paths.push('db:' + path); return { path }; };
+export const get = async (r) => { const v = store.db[r.path]; return { val: () => (v === undefined ? null : v), exists: () => v !== undefined }; };
+export const onValue = (r, next, err) => {
+    setTimeout(() => {
+        if (r.path === 'gameRooms') {
+            if (store.roomsDenied) { if (err) err({ code: 'PERMISSION_DENIED' }); return; }
+            // The test pushes the next snapshot of /gameRooms through this.
+            globalThis.__admPushRooms = (rooms) => { store.db.gameRooms = rooms; next({ val: () => rooms }); };
+            next({ val: () => store.db.gameRooms || null });
+        }
+        else if (r.path === '.info/connected') next({ val: () => true });
+        else next({ val: () => (r.path === '.info/serverTimeOffset' ? 0 : (store.db[r.path] ?? null)) });
+    }, 0);
+    return noop;
+};
+export const set = async () => {};
+`;
+    const now = Date.now();
+    const today = Math.floor(now / 86400000);
+    const XSS = '<img src=x onerror="window.__xss=1">';
+    const seedStore = {
+        user: { uid: 'boss', email: 'berk@admin.ers-card-game.web.app' },
+        fs: {
+            'admins/boss': { note: 'owner' },
+            'leaderboard/boss': { username: 'Berk', totalScore: 3 },
+            'leaderboard/p2': { username: 'Ayşe', totalScore: 7 },
+            'wallets/p2': { coins: 100, owned: ['classic', 'golden'], earnDay: today, earnedToday: 40, spinDay: -1 },
+            'coin_grants/OLD1': { to: 'p2', by: 'boss', amount: 100, before: 0, after: 100, note: '=HYPERLINK("x")', at: now - 60000 },
+            'multiplayer_tables/AAA111': {
+                tableId: 'AAA111', hostId: 'h1', hostUsername: 'Host', createdAt: now - 3 * 3600e3,
+                players: [{ uid: 'h1', name: XSS, index: 0 }, { uid: 'p2', name: 'Ayşe', index: 1 }, { uid: 'bot_1', name: 'Blitz', index: 2 }],
+                playerIds: { h1: true, p2: true }, gameState: { status: 'playing', playerCount: 2, roomId: 'ROOM01' }
+            },
+            'multiplayer_tables/BBB222': {
+                tableId: 'BBB222', hostId: 'p3', hostUsername: 'Ok', createdAt: now - 60000,
+                players: [{ uid: 'p3', name: 'Ok', index: 0 }], playerIds: { p3: true }, gameState: { status: 'waiting', playerCount: 1 }
+            },
+            'multiplayer_tables/CCC333': {
+                tableId: 'CCC333', hostId: 'p4', hostUsername: 'P4', createdAt: now - 60000,
+                players: [{ uid: 'p4', name: 'P4', index: 0 }, { uid: 'x/../admins', name: 'Sneaky', index: 1 }],
+                playerIds: { p4: true }, gameState: { status: 'waiting', playerCount: 2 }
+            }
+        },
+        db: { 'presence/h1': 'offline', 'presence/p2': 'online', 'presence/p3': 'online', 'presence/p4': 'online',
+              gameRooms: { ROOM01: {
+                  hostId: 'h1', playerIds: { h1: true, p2: true }, activePlayerId: 0, lastPlayTime: now, gameOver: false,
+                  players: [
+                      { uid: 'h1', name: XSS, cards: [{ rank: 5, suit: 'spades' }, { rank: 9, suit: 'hearts' }], status: 'online' },
+                      { uid: 'p2', name: 'Ayşe', cards: [{ rank: 7, suit: 'clubs' }], status: 'online' },
+                      { uid: 'bot_1', name: 'Blitz', cards: [{ rank: 3, suit: 'clubs' }] },
+                      { uid: 'bot_2', name: 'Kobra', cards: [{ rank: 2, suit: 'diamonds' }] }],
+                  pile: [{ rank: 5, suit: 'hearts' }] } } }
+    };
+
+    const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await ctx2.route('**://www.gstatic.com/firebasejs/**', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: ADMIN_STUB }));
+    await ctx2.route('**://fonts.googleapis.com/**', r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+    await ctx2.route('**://fonts.gstatic.com/**', r => r.abort());
+    await ctx2.addInitScript((s) => { globalThis.__ADM_STORE__ = s; }, seedStore);
+    const p = await ctx2.newPage();
+    const errs = [];
+    p.on('pageerror', e => errs.push(String(e)));
+    p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+    const shots = process.env.SMOKE_SHOTS;
+    try {
+        await p.goto(`${base}/admin.html`);
+        await p.waitForSelector('#adm-app:not([hidden])', { timeout: 8000 });
+        const who = await p.textContent('#adm-who');
+        if (!/berk/.test(who)) throw new Error('the panel did not greet the admin: ' + who);
+        await p.waitForFunction(() => /AAA111/.test(document.getElementById('adm-problems').textContent), null, { timeout: 5000 });
+
+        await p.click('.adm-tab[data-view="tables"]');
+        await p.waitForFunction(() => document.querySelectorAll('#adm-tables .adm-table').length === 3, null, { timeout: 5000 });
+        const t = await p.evaluate(() => ({
+            text: document.getElementById('adm-tables').textContent,
+            imgs: document.querySelectorAll('#adm-tables img').length,
+            xss: window.__xss,
+            paths: window.__paths.slice()
+        }));
+        if (shots) await p.screenshot({ path: `${shots}/admin-tables.png`, fullPage: true });
+        if (t.imgs || t.xss) throw new Error('a player name was rendered as HTML');
+        if (!t.text.includes('<img src=x')) throw new Error('the hostile name is not shown as text');
+        if (!/host-offline/.test(t.text) || !/stale-playing/.test(t.text) || !/ids-missing/.test(t.text) || !/bad-id/.test(t.text)) throw new Error('the table checks did not fire: ' + t.text.slice(0, 300));
+        const bad = t.paths.filter(x => /\.\.|x\//.test(x));
+        if (bad.length) throw new Error('a hostile id reached a database path: ' + bad.join(', '));
+
+        // Live rooms: the list, the seats, and the feed a room change produces.
+        await p.click('.adm-tab[data-view="rooms"]');
+        await p.waitForFunction(() => /ROOM01/.test(document.getElementById('adm-room-list').textContent)
+            && document.querySelectorAll('#adm-room-detail .adm-seatcard').length === 4, null, { timeout: 5000 });
+        await p.evaluate(() => {
+            const r0 = JSON.parse(JSON.stringify(globalThis.__ADM_STORE__.db.gameRooms.ROOM01));
+            // Ayşe slaps and takes the pile (a 5 on a 5); the host drops out.
+            const r1 = JSON.parse(JSON.stringify(r0));
+            r1.players[1].cards.push({ rank: 5, suit: 'hearts' }, { rank: 5, suit: 'spades' });
+            r1.players[0].cards = [{ rank: 9, suit: 'hearts' }];
+            r1.pile = []; r1.lastWinReason = 'slap'; r1.players[0].status = 'disconnected';
+            // ...the host's seat goes to a bot, and the game ends with Ayşe the winner.
+            const r2 = JSON.parse(JSON.stringify(r1));
+            r2.players[0].uid = 'bot_9'; r2.gameOver = true; r2.winnerIndex = 1;
+            const one = (room) => ({ ROOM01: room });
+            globalThis.__admPushRooms(one(r0));
+            // (the first push after load only re-primes; now the real changes)
+            const s1 = { ROOM01: { ...r0, pile: [...r0.pile, { rank: 5, suit: 'spades' }], players: r0.players.map((pl, i) => i === 0 ? { ...pl, cards: [{ rank: 9, suit: 'hearts' }] } : pl) } };
+            globalThis.__admPushRooms(s1);
+            globalThis.__admPushRooms(one(r1));
+            globalThis.__admPushRooms(one(r2));
+        });
+        await p.click('#adm-rooms-finished');
+        await p.waitForFunction(() => /Oyun bitti — kazanan Ayşe/.test(document.getElementById('adm-room-detail').textContent), null, { timeout: 5000 });
+        const feed = await p.evaluate(() => ({
+            text: document.getElementById('adm-room-detail').textContent,
+            imgs: document.querySelectorAll('#adm-room-detail img').length,
+            xss: window.__xss
+        }));
+        for (const want of ['yığını aldı (şaplak', 'bağlantısı koptu', 'koltuğunu bota devretti', 'Oyun bitti — kazanan Ayşe']) {
+            if (!feed.text.includes(want)) throw new Error(`the room feed does not say "${want}": ` + feed.text.slice(0, 400));
+        }
+        if (feed.imgs || feed.xss) throw new Error('a player name in a live room was rendered as HTML');
+        if (shots) await p.screenshot({ path: `${shots}/admin-live-room.png`, fullPage: true });
+        await p.click('.adm-tab[data-view="overview"]');
+        const globalFeed = await p.textContent('#adm-global-feed');
+        if (!/ROOM01/.test(globalFeed) || !/kazanan Ayşe/.test(globalFeed)) throw new Error('the overview feed does not carry the room\'s events: ' + globalFeed.slice(0, 300));
+        if (shots) await p.screenshot({ path: `${shots}/admin-overview.png`, fullPage: true });
+        await p.click('.adm-tab[data-view="rooms"]');
+        await p.evaluate(() => { document.querySelector('#view-rooms details.adm-card').open = true; });
+        const deck = [];
+        for (const s of ['spades', 'hearts', 'clubs', 'diamonds']) for (let r = 2; r <= 14; r++) deck.push({ rank: r, suit: s });
+        const room = { hostId: 'h1', playerIds: { h1: true }, activePlayerId: 1, lastPlayTime: now, gameOver: false,
+            players: [{ uid: 'h1', name: 'H', cards: deck.slice(0, 13) }, { uid: 'bot_1', name: 'B', cards: [] },
+                      { uid: 'bot_2', name: 'C', cards: deck.slice(13, 30) }, { uid: 'bot_3', name: 'D', cards: deck.slice(30, 51) }] };
+        await p.fill('#adm-room-json', JSON.stringify(room));
+        await p.click('#adm-room-analyze');
+        const verdict = await p.textContent('#adm-room-result');
+        if (!/card-count/.test(verdict) || !/turn-empty/.test(verdict)) throw new Error('the room analysis missed a lost card or a stuck turn: ' + verdict.slice(0, 300));
+        if (shots) await p.screenshot({ path: `${shots}/admin-room.png`, fullPage: true });
+
+        await p.click('.adm-tab[data-view="players"]');
+        await p.fill('#adm-search', 'Ayşe');
+        await p.press('#adm-search', 'Enter');
+        await p.waitForFunction(() => /🪙 100/.test(document.getElementById('adm-player').textContent), null, { timeout: 5000 });
+        await p.fill('#adm-grant-amount', '50');
+        await p.fill('#adm-grant-note', 'smoke test');
+        await p.click('#adm-player .adm-grant .adm-btn--primary');
+        await p.click('#adm-confirm button[value="ok"]');
+        await p.waitForFunction(() => /🪙 150/.test(document.getElementById('adm-player').textContent), null, { timeout: 5000 });
+        if (shots) await p.screenshot({ path: `${shots}/admin-player.png`, fullPage: true });
+        const after = await p.evaluate(() => {
+            const fs = globalThis.__ADM_STORE__.fs;
+            const g = Object.entries(fs).filter(([k, v]) => k.startsWith('coin_grants/') && v.note === 'smoke test').map(([, v]) => v);
+            return { coins: fs['wallets/p2'].coins, grants: g, lastGrantId: fs['wallets/p2'].lastGrantId };
+        });
+        const g = after.grants[0];
+        if (after.coins !== 150 || !g || g.by !== 'boss' || g.amount !== 50 || g.before !== 100 || g.after !== 150 || !after.lastGrantId)
+            throw new Error('the grant and its audit record disagree: ' + JSON.stringify(after));
+
+        await p.click('.adm-tab[data-view="audit"]');
+        const audit = await p.textContent('#adm-audit');
+        if (!/smoke test/.test(audit) || !/=HYPERLINK/.test(audit)) throw new Error('the audit log does not list both grants');
+        if (errs.length) throw new Error('page errors: ' + errs.join(' | '));
+        console.log('         admin only; hostile name drawn as text; "x/../admins" never reached a path; 3 table checks; room analysis; +50 audited');
+    } finally { await ctx2.close(); }
+});
+
+await step('the admin page refuses a signed-in player who is not an admin', async () => {
+    const ctx3 = await browser.newContext();
+    await ctx3.route('**://www.gstatic.com/firebasejs/**', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: STUB }));
+    await ctx3.route('**://fonts.googleapis.com/**', r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+    await ctx3.route('**://fonts.gstatic.com/**', r => r.abort());
+    await ctx3.addInitScript(() => { globalThis.__ERS_SMOKE_USER__ = { uid: 'player1', email: 'p@x.io' }; });
+    const p = await ctx3.newPage();
+    try {
+        await p.goto(`${base}/admin.html`);
+        await p.waitForFunction(() => /yönetici değil/.test(document.getElementById('adm-login-error').textContent), null, { timeout: 8000 });
+        const appHidden = await p.evaluate(() => document.getElementById('adm-app').hidden);
+        if (!appHidden) throw new Error('the panel opened for a non-admin');
+        console.log('         a non-admin sees the sign-in card and a refusal, never the panel');
+    } finally { await ctx3.close(); }
 });
 
 // Firebase is stubbed, so its own failures are expected noise. Anything else

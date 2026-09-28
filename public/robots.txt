@@ -9,6 +9,8 @@
 # Nothing here is hidden. The game is a single page; there is nothing to exclude.
 User-agent: *
 Allow: /
+# v3.22.1 - the operator's admin page. Not secret (the rules protect it); just not for search.
+Disallow: /admin
 
 # v3.16.0 — the site is no longer one page. Twelve generated content pages
 # live under /en/, /tr/, /de/ and /ru/; the sitemap lists all of them with

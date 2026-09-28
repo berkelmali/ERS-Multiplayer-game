@@ -32,6 +32,26 @@ export const ShopUI = {
         document.getElementById('btn-shop-back')?.addEventListener('click', () => this.close());
 
         EventBus.on('coinsUpdated', () => this.updateCoinBalance());
+        // v3.22.0 — the wallet is the server's: signing in or out, or the
+        // first snapshot arriving, changes what the shop may offer.
+        EventBus.on('walletChanged', () => {
+            if (document.getElementById('shop-panel')?.classList.contains('active')) this.render();
+        });
+        document.getElementById('btn-shop-signin')?.addEventListener('click', () => {
+            document.getElementById('user-profile-btn')?.click();
+        });
+    },
+
+    /** A guest earns and buys nothing (v3.22.0); the shop says so and offers sign-in. */
+    _renderWalletState() {
+        const state = CardSkins.walletState();
+        const box = document.getElementById('shop-signin');
+        if (box) box.hidden = state === 'ready';
+        const msg = document.getElementById('shop-signin-text');
+        if (msg) msg.textContent = Localization.get(state === 'loading' ? 'shopWalletLoading' : 'shopSignInToEarn');
+        const btn = document.getElementById('btn-shop-signin');
+        if (btn) btn.hidden = state !== 'guest';
+        return state;
     },
 
     open() {
@@ -201,12 +221,14 @@ export const ShopUI = {
 
     render() {
         this.updateCoinBalance();
+        const walletState = this._renderWalletState();
         const grid = document.getElementById('shop-grid');
         if (!grid) return;
         grid.innerHTML = '';
 
         const owned = CardSkins.getOwnedSkins();
-        const equipped = Settings.config.equippedCardSkin;
+        // What is DRAWN, not what the setting says: an unowned choice shows classic.
+        const equipped = CardSkins.effectiveSkin(Settings.config.equippedCardSkin);
 
         CARD_SKINS.forEach((skin, idx) => {
             const isOwned = owned.includes(skin.id);
@@ -289,6 +311,14 @@ export const ShopUI = {
                 action.textContent = Localization.get('shopEquip') || 'Equip';
                 action.classList.add('primary');
                 action.addEventListener('click', () => this.equip(skin.id));
+            } else if (walletState !== 'ready') {
+                // v3.22.0 — a guest (or a wallet still loading) buys nothing:
+                // the price, locked, and a tap that leads to sign-in.
+                action.textContent = `🔒 🪙 ${skin.cost}`;
+                action.classList.add('shop-locked');
+                action.addEventListener('click', () => {
+                    if (walletState === 'guest') document.getElementById('user-profile-btn')?.click();
+                });
             } else {
                 // ERS-24: out of reach, the button says how far — "🪙 640 / 1000".
                 const have = CardSkins.getCoins();
@@ -336,8 +366,20 @@ export const ShopUI = {
         return cardEl;
     },
 
-    purchase(skinId, itemEl) {
-        const result = CardSkins.purchase(skinId);
+    async purchase(skinId, itemEl) {
+        // v3.22.0 — a purchase is a server transaction now. One at a time: a
+        // double tap must not send a second request while the first is out.
+        if (this._buying) return;
+        this._buying = true;
+        const btn = itemEl && itemEl.querySelector('.shop-item-btn');
+        if (btn) btn.disabled = true;
+        let result;
+        try {
+            result = await CardSkins.purchase(skinId);
+        } finally {
+            this._buying = false;
+            if (btn) btn.disabled = false;
+        }
         if (result.ok) {
             if (itemEl) {
                 itemEl.classList.add('shop-item-purchased');
@@ -360,6 +402,11 @@ export const ShopUI = {
                     .replace('{n}', result.needed);
                 this.showAlert(msg);
                 import('./audioManager.js').then((m) => m.AudioManager.playSFX('invalidSlap'));
+            } else if (result.reason === 'signin_required') {
+                this.showAlert(Localization.get('shopSignInToEarn'));
+            } else if (result.reason !== 'already_owned') {
+                // The server refused or could not be reached: nothing was spent.
+                this.showAlert(Localization.get('shopSaveFailed'));
             }
             this.render();
         }
@@ -411,6 +458,7 @@ export const ShopUI = {
     },
 
     equip(skinId, silent = false) {
+        if (!CardSkins.isOwned(skinId)) return;   // §6.29's open note, closed: equip checks ownership
         Settings.config.equippedCardSkin = skinId;
         Settings.save();
         if (!silent) {

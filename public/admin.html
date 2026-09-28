@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- The operator's tool (v3.22.1, redesigned v3.22.2). Not for search
+         engines, not in the sitemap, disallowed in robots.txt. Nothing here is
+         protected by being hidden: every read and write it makes is refused by
+         firestore.rules / database.rules.json unless the signed-in account is
+         an admin (Firestore admins/{uid}, and for live rooms RTDB admins/{uid}). -->
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
+    <title>ERS Yönetim</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
+    <meta name="theme-color" content="#0d1117">
+    <link rel="stylesheet" href="style.css?v=3.22.2">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+
+<body class="admin-page">
+    <a class="adm-skip" href="#adm-main">İçeriğe atla</a>
+
+    <!-- ── SIGN-IN ─────────────────────────────────────────────────────── -->
+    <main id="adm-login" class="adm-login" hidden>
+        <!-- method="post": without it a submit before admin.js loads is a GET, and the
+             password lands in the URL (found by the OWASP ZAP baseline, v3.22.3).
+             The button also stays disabled until the script has taken the form. -->
+        <form id="adm-login-form" class="adm-login-card" method="post" novalidate>
+            <h1 class="adm-brand adm-brand--big"><span class="adm-ankh" aria-hidden="true">☥</span> ERS Yönetim</h1>
+            <p class="adm-muted">Yalnızca yönetici hesapları. Her jeton gönderimi silinemez bir denetim kaydı bırakır.</p>
+            <label for="adm-user">Kullanıcı adı veya e-posta</label>
+            <input id="adm-user" name="username" type="text" autocomplete="username" spellcheck="false" autocapitalize="off" required>
+            <label for="adm-pass">Şifre</label>
+            <input id="adm-pass" name="password" type="password" autocomplete="current-password" required>
+            <div id="adm-login-error" class="adm-error" role="alert" aria-live="polite"></div>
+            <button id="adm-login-btn" type="submit" class="adm-btn adm-btn--primary adm-wide" disabled>Giriş yap</button>
+            <a class="adm-link" href="/">← Oyuna dön</a>
+        </form>
+    </main>
+
+    <!-- ── THE PANEL ───────────────────────────────────────────────────── -->
+    <div id="adm-app" class="adm-app" hidden>
+        <header class="adm-top">
+            <h1 class="adm-brand"><span class="adm-ankh" aria-hidden="true">☥</span> ERS Yönetim</h1>
+            <div class="adm-top-right">
+                <span id="adm-conn" class="adm-chip" role="status" aria-live="polite">bağlanıyor…</span>
+                <span id="adm-clock" class="adm-chip" title="Sunucu saatiyle bu cihaz arasındaki fark"></span>
+                <span id="adm-who" class="adm-chip"></span>
+                <button id="adm-signout" type="button" class="adm-btn adm-btn--ghost">Çıkış</button>
+            </div>
+        </header>
+
+        <div id="adm-banner" class="adm-banner" role="status" aria-live="polite" hidden></div>
+
+        <nav class="adm-nav" aria-label="Bölümler">
+            <button type="button" data-view="overview" class="adm-tab is-active" aria-current="page">📊 Genel bakış</button>
+            <button type="button" data-view="rooms" class="adm-tab">🔴 Canlı odalar <span id="adm-rooms-count" class="adm-count"></span></button>
+            <button type="button" data-view="tables" class="adm-tab">🃏 Masalar <span id="adm-tables-count" class="adm-count"></span></button>
+            <button type="button" data-view="players" class="adm-tab">🪙 Oyuncular &amp; jeton</button>
+            <button type="button" data-view="audit" class="adm-tab">📜 Denetim kaydı</button>
+        </nav>
+
+        <main id="adm-main" class="adm-main" tabindex="-1">
+            <!-- Overview: is anything broken right now? -->
+            <section id="view-overview" class="adm-view" aria-labelledby="h-overview">
+                <h2 id="h-overview" class="adm-sr">Genel bakış</h2>
+                <div id="adm-stats" class="adm-stats" aria-busy="true"></div>
+                <div class="adm-grid2">
+                    <section class="adm-card" aria-labelledby="h-problems">
+                        <h3 id="h-problems">Dikkat isteyenler</h3>
+                        <div id="adm-problems" class="adm-list"></div>
+                    </section>
+                    <section class="adm-card" aria-labelledby="h-feed">
+                        <div class="adm-card-head">
+                            <h3 id="h-feed">Canlı olay akışı</h3>
+                            <span id="adm-feed-fresh" class="adm-muted"></span>
+                        </div>
+                        <div class="adm-toolbar">
+                            <label class="adm-check"><input id="adm-feed-cards" type="checkbox"> Kart hamlelerini göster</label>
+                            <button id="adm-feed-pause" type="button" class="adm-btn adm-btn--ghost" aria-pressed="false">Duraklat</button>
+                        </div>
+                        <ol id="adm-global-feed" class="adm-feed" aria-live="off"></ol>
+                    </section>
+                </div>
+                <section class="adm-card" aria-labelledby="h-grants">
+                    <h3 id="h-grants">Son jeton gönderimleri</h3>
+                    <div id="adm-recent-grants" class="adm-list"></div>
+                </section>
+            </section>
+
+            <!-- Live rooms: list + detail with the room's own feed -->
+            <section id="view-rooms" class="adm-view" aria-labelledby="h-rooms" hidden>
+                <h2 id="h-rooms" class="adm-sr">Canlı odalar</h2>
+                <div class="adm-split">
+                    <aside class="adm-card adm-roomlist-card" aria-label="Odalar">
+                        <div class="adm-toolbar">
+                            <label class="adm-check"><input id="adm-rooms-problems" type="checkbox"> Yalnız sorunlu</label>
+                            <label class="adm-check"><input id="adm-rooms-finished" type="checkbox"> Bitenleri göster</label>
+                        </div>
+                        <div id="adm-room-list" class="adm-roomlist" role="listbox" aria-label="Oda listesi"></div>
+                    </aside>
+                    <section id="adm-room-detail" class="adm-card adm-room-detail" aria-live="off"></section>
+                </div>
+                <details class="adm-card">
+                    <summary>Dışa aktarılmış bir odayı analiz et (JSON)</summary>
+                    <p class="adm-muted">Firebase Console → Realtime Database → <code>gameRooms/ODA</code> → ⋮ → Export JSON. İçeriği yapıştır.</p>
+                    <textarea id="adm-room-json" class="adm-textarea" rows="7" spellcheck="false" aria-label="Oda JSON'u"></textarea>
+                    <div class="adm-toolbar"><button id="adm-room-analyze" type="button" class="adm-btn adm-btn--primary">Analiz et</button></div>
+                    <div id="adm-room-result"></div>
+                </details>
+            </section>
+
+            <!-- Lobby tables -->
+            <section id="view-tables" class="adm-view" aria-labelledby="h-tables" hidden>
+                <h2 id="h-tables" class="adm-sr">Masalar</h2>
+                <div class="adm-toolbar">
+                    <label class="adm-check"><input id="adm-only-problems" type="checkbox"> Yalnız sorunlu</label>
+                    <label class="adm-check"><input id="adm-hide-finished" type="checkbox" checked> 24 saatten eskileri gizle</label>
+                    <span id="adm-tables-meta" class="adm-muted"></span>
+                    <button id="adm-tables-refresh" type="button" class="adm-btn adm-btn--ghost">Presence'ı yenile</button>
+                </div>
+                <div id="adm-tables" class="adm-list" aria-busy="true"></div>
+            </section>
+
+            <!-- Players & coins -->
+            <section id="view-players" class="adm-view" aria-labelledby="h-players" hidden>
+                <h2 id="h-players" class="adm-sr">Oyuncular ve jeton</h2>
+                <div class="adm-card">
+                    <form id="adm-search-form" class="adm-toolbar" role="search" novalidate>
+                        <label for="adm-search" class="adm-sr">Oyuncu ara</label>
+                        <input id="adm-search" type="search" class="adm-input" placeholder="Oyuncu adı (tam) veya hesap kimliği" autocomplete="off" spellcheck="false">
+                        <button type="submit" class="adm-btn adm-btn--primary">Bul</button>
+                    </form>
+                    <div id="adm-search-results" class="adm-results"></div>
+                </div>
+                <div id="adm-player" class="adm-card" hidden></div>
+            </section>
+
+            <!-- Audit -->
+            <section id="view-audit" class="adm-view" aria-labelledby="h-audit" hidden>
+                <h2 id="h-audit" class="adm-sr">Denetim kaydı</h2>
+                <div class="adm-toolbar">
+                    <label for="adm-audit-filter" class="adm-sr">Filtre</label>
+                    <input id="adm-audit-filter" type="search" class="adm-input" placeholder="Filtre: oyuncu, yönetici, sebep…" autocomplete="off">
+                    <button id="adm-audit-csv" type="button" class="adm-btn adm-btn--ghost">CSV indir</button>
+                </div>
+                <div id="adm-audit" class="adm-card adm-scroll" aria-busy="true"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Every coin movement is confirmed here, in words. -->
+    <dialog id="adm-confirm" class="adm-dialog" aria-labelledby="adm-confirm-title">
+        <form method="dialog">
+            <h3 id="adm-confirm-title">Onayla</h3>
+            <p id="adm-confirm-text"></p>
+            <div class="adm-toolbar adm-right">
+                <button value="cancel" class="adm-btn adm-btn--ghost">Vazgeç</button>
+                <button value="ok" class="adm-btn adm-btn--primary">Onayla</button>
+            </div>
+        </form>
+    </dialog>
+
+    <div id="adm-toast" class="adm-toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="js/admin.js?v=3.22.2"></script>
+</body>
+
+</html>

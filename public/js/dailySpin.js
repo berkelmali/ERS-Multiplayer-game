@@ -25,6 +25,13 @@
 //      languages — including the segment labels drawn onto the canvas. The
 //      file imported `Localization` and never called it. It does now, and
 //      `check-locales` covers all 22 keys.
+//
+//   4. (v3.22.0) THE DAY'S SPIN IS THE SERVER'S.
+//      "Used today" was localStorage['ers_last_spin_date'] — removing one key
+//      gave another spin, and the prize went into a balance the browser owned.
+//      Now the wallet's `spinDay` decides, firestore.rules lets a player claim
+//      once per UTC day by request.time and at most SPIN_MAX, and a guest has
+//      no wallet to spin into: the wheel asks them to sign in.
 
 import { AudioManager } from './audioManager.js';
 import { Localization } from './localization.js?v=3';
@@ -33,7 +40,6 @@ import EventBus from './eventbus.js';
 import { todayKey } from './dailyScore.js';
 import { Settings } from './settings.js';
 
-const LAST_SPIN_KEY = 'ers_last_spin_date';
 /** The tier reached today, kept so closing the modal cannot revoke it. */
 const TIER_KEY = 'ers_spin_tier';
 
@@ -301,6 +307,13 @@ export const DailySpin = {
 
         this.renderCoinBadge(CardSkins.getCoins());
         EventBus.on('coinsUpdated', (total) => this.renderCoinBadge(total));
+        // Signing in or out, or the wallet arriving, changes whether a spin is due.
+        EventBus.on('walletChanged', () => {
+            this.updateAvailabilityBadge();
+            // Only from a resting state — never over a result the player is reading.
+            if (this.modal.classList.contains('active') && !this.isSpinning
+                && (this.actionState === 'ready' || this.actionState === 'claimed' || !this.actionState)) this.open();
+        });
 
         this.updateAvailabilityBadge();
     },
@@ -316,29 +329,26 @@ export const DailySpin = {
     },
 
     /**
-     * UTC, via the same `todayKey()` the Daily Challenge uses.
+     * UTC — the same day the Daily Challenge uses, and (v3.22.0) the day the
+     * rules count on the server's clock: the ledger compares the wallet's
+     * `spinDay` with the UTC day of NetQuality.serverNow(). (Asked through
+     * CardSkins so this module stays loadable in node, without Firebase.)
      *
-     * This was `new Date().toDateString()` — LOCAL midnight — and the game
-     * already had a different answer six files away, with a comment saying
-     * why and a test named "todayKey does not drift with local time".
+     * This was once `new Date().toDateString()` — LOCAL midnight — and the
+     * game already had a different answer six files away, with a comment
+     * saying why and a test named "todayKey does not drift with local time".
      * Measured at 2026-09-09T22:30Z in Europe/Istanbul: the wheel had
      * flipped to the 10th while the Daily Challenge was still on the 9th.
      * Two features called "daily" in one game, resetting three hours apart.
      */
     canSpinToday() {
-        try {
-            return localStorage.getItem(LAST_SPIN_KEY) !== todayKey();
-        } catch (e) {
-            return true;
-        }
+        return CardSkins.spinAvailable();
     },
 
+    /** The ladder is a single turn's climb, so it ends with the turn. */
     consumeSpin() {
-        try {
-            localStorage.setItem(LAST_SPIN_KEY, todayKey());
-            // The ladder is a single turn's climb, so it ends with the turn.
-            localStorage.removeItem(TIER_KEY);
-        } catch (e) { /* private mode: the spin simply is not remembered */ }
+        try { localStorage.removeItem(TIER_KEY); }
+        catch (e) { /* private mode: nothing was stored */ }
     },
 
     /* ── The unlocked tier survives closing the modal ───────────────────────
@@ -690,6 +700,16 @@ export const DailySpin = {
         this.modal.classList.add('active');
         this.modal.style.display = 'flex';
 
+        // v3.22.0 — no wallet, no spin: a guest is asked to sign in, a wallet
+        // still on its way says so. Neither may turn the wheel.
+        const walletState = CardSkins.walletState();
+        if (walletState !== 'ready') {
+            this.stopCountdown();
+            this.setStatus(Localization.get(walletState === 'guest' ? 'spinSignIn' : 'shopWalletLoading'), '#9ca3af');
+            this.setButtonState('claimed');
+            return;
+        }
+
         if (this.canSpinToday()) {
             this.currentTier = this.restoreTier();
             this.currentRotation = 0;
@@ -859,12 +879,11 @@ export const DailySpin = {
 
         // ONE clock. The prize is decided above and PAID when the wheel stops,
         // on the animation's own resolution — see "HOW AN ANCIENT WHEEL TURNS".
-        return this.turnWheel(from, this.currentRotation, segmentCount).then(() => {
-            this.isSpinning = false;
-
+        return this.turnWheel(from, this.currentRotation, segmentCount).then(async () => {
             // A tier-up does NOT consume the day's spin — that is the whole
             // point of the ladder: you climb on the same turn.
             if (winningSegment.type === 'tier-up') {
+                this.isSpinning = false;
                 this.playSfx('win');
                 const next = this.tiers[Math.min(this.currentTier + 1, 2)];
                 this.setStatus(
@@ -874,7 +893,22 @@ export const DailySpin = {
                 return;
             }
 
+            // THE claim — an empty segment too, since it uses the day. The
+            // server's `spinDay` is what says "done"; the wheel stays locked
+            // (isSpinning) until it answers. CardSkins' snapshot then emits
+            // `coinsUpdated`, which every balance on screen listens for.
+            const paid = winningSegment.type === 'empty' ? 0 : winningSegment.coins;
+            const claim = await CardSkins.claimSpin(paid);
+            this.isSpinning = false;
             this.consumeSpin();
+
+            if (!claim || !claim.ok) {
+                // Already spun on another device, or the server could not be reached.
+                this.setStatus(Localization.get(claim && claim.reason === 'already_spun' ? 'spinClaimed' : 'shopSaveFailed'), '#9ca3af');
+                this.setButtonState('claimed');
+                this.updateAvailabilityBadge();
+                return;
+            }
 
             if (winningSegment.type === 'empty') {
                 this.setStatus('💨 ' + Localization.get('spinEmpty'), '#ef4444');
@@ -883,11 +917,6 @@ export const DailySpin = {
                 return;
             }
 
-            // THE award. CardSkins persists it and emits `coinsUpdated`, which
-            // is what every balance on screen — the shop's and the banner's —
-            // is already listening for. Writing the key directly here is what
-            // made the two disagree in the version this was ported from.
-            CardSkins.addCoins(winningSegment.coins);
             this.playSfx('win');
 
             this.setStatus(

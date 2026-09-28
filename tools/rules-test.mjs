@@ -39,7 +39,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { LOBBY_PIECES, composeLobbyWrite, GAMEROOM_PIECES, composeGameRoomWrite, CLIENT_VERSIONS_RULES } from './lobby-rule.mjs';
+import { LOBBY_PIECES, composeLobbyWrite, GAMEROOM_PIECES, composeGameRoomWrite, CLIENT_VERSIONS_RULES, ADMIN_ROOMS_READ, ADMINS_RULES } from './lobby-rule.mjs';
 import { ROOM_PROTOCOL } from '../public/js/slapOutcome.js';
 
 const HOST = process.env.FIREBASE_DATABASE_EMULATOR_HOST || '127.0.0.1:9000';
@@ -560,6 +560,77 @@ for (const { label, build } of ROOM_MUTANTS) {
 }
 await loadRules(rulesFile);
 ok(`no game-room mutant escaped (${ROOM_MUTANTS.length})`, roomEscaped === 0, `${roomEscaped} escaped`);
+
+
+// 6. v3.22.2 — ADMIN READ OF GAME ROOMS (approved by the owner).
+//    The admin page watches every live room. READ ONLY, gameRooms ONLY. An
+//    admin is `admins/{uid} === true`, set in the console; no client may write
+//    that flag. Scenarios first, then mutants, same as above.
+async function tryRead(path, uid) {
+    const r = await fetch(url(path, uid === null ? undefined : tokenFor(uid)));
+    return r.status;
+}
+const BOSS = 'uid_boss';
+function rulesWithAdmin(roomsRead, adminsRules = ADMINS_RULES) {
+    const clone = JSON.parse(JSON.stringify(rulesFile));
+    if (roomsRead === null) delete clone.rules.gameRooms['.read'];
+    else clone.rules.gameRooms['.read'] = roomsRead;
+    clone.rules.admins = adminsRules;
+    return clone;
+}
+async function runAdminScenarios() {
+    const r = [];
+    const record = async (label, want, fn) => r.push([label, await fn(), want]);
+    await asOwner('gameRooms/ROOM01', room(null));
+    await asOwner(`admins/${BOSS}`, true);
+    await asOwner('admins/uid_fake', 'yes');
+    await record('an admin lists every game room', true, async () => allowed(await tryRead('gameRooms', BOSS)));
+    await record('an admin reads one room', true, async () => allowed(await tryRead('gameRooms/ROOM01', BOSS)));
+    await record('a signed-in player cannot list the rooms', false, async () => allowed(await tryRead('gameRooms', OUT)));
+    await record('a seated player still reads their own room', true, async () => allowed(await tryRead('gameRooms/ROOM01', SEAT)));
+    await record('an outsider still cannot read a room', false, async () => allowed(await tryRead('gameRooms/ROOM01', OUT)));
+    await record('nobody signed out lists the rooms', false, async () => allowed(await tryRead('gameRooms', null)));
+    await record('an admin flag must be exactly true ("yes" is not an admin)', false, async () => allowed(await tryRead('gameRooms', 'uid_fake')));
+    await record('the admin read is READ only: an admin cannot write a room', false, async () =>
+        allowed(await tryWrite('gameRooms/ROOM01/gameOver', true, BOSS)));
+    await record('...nor delete one', false, async () => allowed(await tryWrite('gameRooms/ROOM01', null, BOSS)));
+    await record('nobody makes themselves an admin', false, async () => allowed(await tryWrite(`admins/${OUT}`, true, OUT)));
+    await record('an admin cannot edit the admin list either', false, async () => allowed(await tryWrite('admins/uid_new', true, BOSS)));
+    await record('an admin reads their own flag', true, async () => allowed(await tryRead(`admins/${BOSS}`, BOSS)));
+    await record('...but not who else is an admin', false, async () => allowed(await tryRead(`admins/${BOSS}`, OUT)));
+    await asOwner('gameRooms/ROOM01', null);
+    await asOwner('admins', null);
+    return r;
+}
+ok('database.rules.json: the admin room read is the composed one',
+    rulesFile.rules.gameRooms['.read'] === ADMIN_ROOMS_READ, 'the file and lobby-rule.mjs have drifted');
+ok('database.rules.json: the admins rules are the composed ones',
+    JSON.stringify(rulesFile.rules.admins) === JSON.stringify(ADMINS_RULES));
+ok('database.rules.json: no other top-level node grants an admin anything',
+    Object.entries(rulesFile.rules).filter(([k]) => k !== 'gameRooms' && k !== 'admins')
+        .every(([, v]) => !JSON.stringify(v).includes("child('admins')")));
+{
+    for (const [label, was, want] of await runAdminScenarios()) {
+        ok(label, was === want, `was ${was ? 'ALLOWED' : 'REFUSED'}, wanted ${want ? 'ALLOWED' : 'REFUSED'}`);
+    }
+}
+const ADMIN_MUTANTS = [
+    { label: 'any signed-in user may list the rooms', build: () => rulesWithAdmin('auth != null') },
+    { label: 'any admin flag counts, not just true', build: () => rulesWithAdmin("auth != null && root.child('admins').child(auth.uid).exists()") },
+    { label: 'players may write their own admin flag', build: () => rulesWithAdmin(ADMIN_ROOMS_READ, { $uid: { '.read': 'auth != null && auth.uid === $uid', '.write': 'auth != null && auth.uid === $uid' } }) },
+    { label: 'the admin flags are world-readable', build: () => rulesWithAdmin(ADMIN_ROOMS_READ, { $uid: { '.read': 'auth != null', '.write': false } }) },
+    { label: 'the admin read is removed (the page goes blind)', build: () => rulesWithAdmin(null) }
+];
+console.log('\n--- admin mutants ---');
+let adminEscaped = 0;
+for (const { label, build } of ADMIN_MUTANTS) {
+    await loadRules(build());
+    const broke = (await runAdminScenarios()).filter(([, was, want]) => was !== want);
+    if (broke.length) { console.log(`CAUGHT     ${label}`); console.log(`           first miss: ${broke[0][0]}`); }
+    else { adminEscaped++; console.log(`ESCAPED    ${label}`); }
+}
+await loadRules(rulesFile);
+ok(`no admin mutant escaped (${ADMIN_MUTANTS.length})`, adminEscaped === 0, `${adminEscaped} escaped`);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) {

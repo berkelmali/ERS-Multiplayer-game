@@ -117,8 +117,170 @@ const table = (over = {}) => ({
     gameState: { status: 'waiting', playerCount: 2 }, ...over
 });
 
+// Wallets (v3.22.0). `today` is the UTC day number the rules compute.
+const TODAY = Math.floor(Date.now() / 86400000);
+const wallet = (over = {}) => ({ coins: 100, owned: ['classic'], earnDay: TODAY, earnedToday: 0, spinDay: TODAY - 1, updatedAt: LONG_AGO(), ...over });
+const wUpd = (who, uid, data) => commit(who, [{ path: `wallets/${uid}`, data: { ...data, updatedAt: SERVER_TIME }, mask: [...Object.keys(data), 'updatedAt'] }]);
+const newWallet = (over = {}) => ({ coins: 0, owned: ['classic'], earnDay: -1, earnedToday: 0, spinDay: -1, updatedAt: SERVER_TIME, ...over });
+/** An admin grant as the client commits it: the audit record and the wallet, atomically. */
+const grant = (who, to, before, amount, id = 'G1', over = {}, givenBefore = 0) => commit(who, [
+    { path: `coin_grants/${id}`, data: { to, by: who, amount, before, after: before + amount, note: 'test', at: SERVER_TIME, ...over } },
+    { path: `wallets/${to}`, data: { coins: before + amount, lastGrantId: id, updatedAt: SERVER_TIME }, mask: ['coins', 'lastGrantId', 'updatedAt'] },
+    // v3.22.1 (council O1): the admin's daily counter moves in the same commit.
+    { path: `admin_daily/${who}`, data: { day: TODAY, given: givenBefore + (amount > 0 ? amount : 0), lastGrantId: id } }
+]);
+
 /** Each scenario: [sentence, expected allowed?, async () => response]. */
 const SCENARIOS = [
+    // ── Coins: the ledger is the server's ───────────────────────────────────
+    ['a player creates an empty wallet', true, async () =>
+        commit('p1', [{ path: 'wallets/p1', data: newWallet() }])],
+    ['a player imports an old local balance worth 1000', true, async () =>
+        commit('p1', [{ path: 'wallets/p1', data: newWallet({ coins: 500, owned: ['classic', 'obsidian'] }) }])],
+    ['an import worth more than 1000 is refused', false, async () =>
+        commit('p1', [{ path: 'wallets/p1', data: newWallet({ coins: 1, owned: ['classic', 'pharaoh'] }) }])],
+    ['the Deck of the Gods (2000) cannot be imported: it alone passes the cap', false, async () =>
+        commit('p1', [{ path: 'wallets/p1', data: newWallet({ owned: ['classic', 'gods'] }) }])],
+    ['buying the Deck of the Gods costs exactly 2000', true, async () => {
+        await seed('wallets/p1', wallet({ coins: 2000 })); return wUpd('p1', 'p1', { coins: 0, owned: ['classic', 'gods'] }); }],
+    ['a 999999-coin import is refused', false, async () =>
+        commit('p1', [{ path: 'wallets/p1', data: newWallet({ coins: 999999 }) }])],
+    ['an import may not bring a skin that is not in the catalogue', false, async () =>
+        commit('p1', [{ path: 'wallets/p1', data: newWallet({ owned: ['classic', 'dragon'] }) }])],
+    ['an import may not pre-claim today\'s spin or earnings', false, async () =>
+        commit('p1', [{ path: 'wallets/p1', data: newWallet({ spinDay: TODAY + 5 }) }])],
+    ['nobody creates a wallet for someone else', false, async () =>
+        commit('evil', [{ path: 'wallets/p1', data: newWallet() }])],
+    ['a wallet is private', false, async () => {
+        await seed('wallets/p1', wallet()); return get('evil', 'wallets/p1'); }],
+    ['a player reads their own wallet', true, async () => {
+        await seed('wallets/p1', wallet()); return get('p1', 'wallets/p1'); }],
+    ['THE CONSOLE ATTACK: setting the balance to 1000000 is refused', false, async () => {
+        await seed('wallets/p1', wallet()); return wUpd('p1', 'p1', { coins: 1000000 }); }],
+    ['a win pays 40', true, async () => {
+        await seed('wallets/p1', wallet()); return wUpd('p1', 'p1', { coins: 140, earnDay: TODAY, earnedToday: 40 }); }],
+    ['an earn above 80 in one write is refused', false, async () => {
+        await seed('wallets/p1', wallet()); return wUpd('p1', 'p1', { coins: 181, earnDay: TODAY, earnedToday: 81 }); }],
+    ['an earn that lies about the day\'s total is refused', false, async () => {
+        await seed('wallets/p1', wallet({ earnedToday: 1190 })); return wUpd('p1', 'p1', { coins: 140, earnDay: TODAY, earnedToday: 40 }); }],
+    ['an earn past the 1200 daily cap is refused', false, async () => {
+        await seed('wallets/p1', wallet({ earnedToday: 1190 })); return wUpd('p1', 'p1', { coins: 140, earnDay: TODAY, earnedToday: 1230 }); }],
+    ['earning up to exactly the daily cap is allowed', true, async () => {
+        await seed('wallets/p1', wallet({ earnedToday: 1190 })); return wUpd('p1', 'p1', { coins: 110, earnDay: TODAY, earnedToday: 1200 }); }],
+    ['a new UTC day resets the earning total', true, async () => {
+        await seed('wallets/p1', wallet({ earnDay: TODAY - 1, earnedToday: 1200 })); return wUpd('p1', 'p1', { coins: 140, earnDay: TODAY, earnedToday: 40 }); }],
+    ['an earn dated to a future day is refused', false, async () => {
+        await seed('wallets/p1', wallet({ earnedToday: 1200 })); return wUpd('p1', 'p1', { coins: 140, earnDay: TODAY + 1, earnedToday: 40 }); }],
+    ['a loss costs 15', true, async () => {
+        await seed('wallets/p1', wallet()); return wUpd('p1', 'p1', { coins: 85 }); }],
+    ['the balance cannot go below zero', false, async () => {
+        await seed('wallets/p1', wallet({ coins: 10 })); return wUpd('p1', 'p1', { coins: -5 }); }],
+    ['buying Obsidian costs exactly 500', true, async () => {
+        await seed('wallets/p1', wallet({ coins: 600 })); return wUpd('p1', 'p1', { coins: 100, owned: ['classic', 'obsidian'] }); }],
+    ['buying Obsidian for 1 coin is refused', false, async () => {
+        await seed('wallets/p1', wallet({ coins: 600 })); return wUpd('p1', 'p1', { coins: 599, owned: ['classic', 'obsidian'] }); }],
+    ['granting yourself a skin for free is refused', false, async () => {
+        await seed('wallets/p1', wallet()); return wUpd('p1', 'p1', { owned: ['classic', 'pharaoh'] }); }],
+    ['buying two skins for the price of one is refused', false, async () => {
+        await seed('wallets/p1', wallet({ coins: 600 })); return wUpd('p1', 'p1', { coins: 450, owned: ['classic', 'golden', 'pharaoh'] }); }],
+    ['buying a skin you cannot afford is refused', false, async () => {
+        await seed('wallets/p1', wallet({ coins: 100 })); return wUpd('p1', 'p1', { coins: -50, owned: ['classic', 'golden'] }); }],
+    ['today\'s spin pays up to 200', true, async () => {
+        await seed('wallets/p1', wallet()); return wUpd('p1', 'p1', { coins: 300, spinDay: TODAY }); }],
+    ['an empty spin still uses the day', true, async () => {
+        await seed('wallets/p1', wallet()); return wUpd('p1', 'p1', { spinDay: TODAY }); }],
+    ['a second spin on the same day is refused', false, async () => {
+        await seed('wallets/p1', wallet({ spinDay: TODAY })); return wUpd('p1', 'p1', { coins: 150, spinDay: TODAY }); }],
+    ['a spin worth more than 200 is refused', false, async () => {
+        await seed('wallets/p1', wallet()); return wUpd('p1', 'p1', { coins: 400, spinDay: TODAY }); }],
+    ['a player cannot write a fake grant id to their own wallet', false, async () => {
+        await seed('wallets/p1', wallet()); return wUpd('p1', 'p1', { coins: 5000, lastGrantId: 'X' }); }],
+    ['a wallet cannot be deleted', false, async () => {
+        await seed('wallets/p1', wallet()); return http('DELETE', `${BASE}/wallets/p1`, 'p1'); }],
+    // ── Admin grants ────────────────────────────────────────────────────────
+    ['nobody makes themselves an admin', false, async () =>
+        commit('p1', [{ path: 'admins/p1', data: { note: 'me' } }])],
+    ['a non-admin cannot grant coins, even with an audit record', false, async () => {
+        await seed('wallets/p1', wallet()); return grant('p2', 'p1', 100, 1000); }],
+    ['a player cannot grant coins to themselves', false, async () => {
+        await seed('wallets/p1', wallet()); return grant('p1', 'p1', 100, 1000); }],
+    ['an admin grants 1000 coins with an audit record', true, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        return grant('boss', 'p1', 100, 1000); }],
+    ['an admin may take coins back, never below zero', true, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        return grant('boss', 'p1', 100, -100); }],
+    ['...and a take-back below zero is refused', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        return grant('boss', 'p1', 100, -101); }],
+    ['an admin grant that does not move the admin\'s daily counter is refused', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        return commit('boss', [
+            { path: 'coin_grants/G1', data: { to: 'p1', by: 'boss', amount: 10, before: 100, after: 110, note: '', at: SERVER_TIME } },
+            { path: 'wallets/p1', data: { coins: 110, lastGrantId: 'G1', updatedAt: SERVER_TIME }, mask: ['coins', 'lastGrantId', 'updatedAt'] }]); }],
+    ['an admin may give up to 20000 a day', true, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        await seed('admin_daily/boss', { day: TODAY, given: 19000, lastGrantId: 'OLD' });
+        return grant('boss', 'p1', 100, 1000, 'G1', {}, 19000); }],
+    ['...and not one coin more (a stolen password is capped)', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        await seed('admin_daily/boss', { day: TODAY, given: 19500, lastGrantId: 'OLD' });
+        return grant('boss', 'p1', 100, 1000, 'G1', {}, 19500); }],
+    ['...yesterday\'s total does not count today', true, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        await seed('admin_daily/boss', { day: TODAY - 1, given: 20000, lastGrantId: 'OLD' });
+        return grant('boss', 'p1', 100, 1000, 'G1', {}, 0); }],
+    ['...a take-back does not use the day\'s allowance', true, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        await seed('admin_daily/boss', { day: TODAY, given: 20000, lastGrantId: 'OLD' });
+        return grant('boss', 'p1', 100, -50, 'G1', {}, 20000); }],
+    ['an admin cannot reset their own daily counter', false, async () => {
+        await seed('admins/boss', { note: 'owner' });
+        await seed('admin_daily/boss', { day: TODAY, given: 20000, lastGrantId: 'OLD' });
+        return commit('boss', [{ path: 'admin_daily/boss', data: { day: TODAY, given: 0, lastGrantId: 'NEW' } }]); }],
+    ['...nor understate a grant in it', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        await seed('admin_daily/boss', { day: TODAY, given: 19000, lastGrantId: 'OLD' });
+        return commit('boss', [
+            { path: 'coin_grants/G1', data: { to: 'p1', by: 'boss', amount: 5000, before: 100, after: 5100, note: '', at: SERVER_TIME } },
+            { path: 'wallets/p1', data: { coins: 5100, lastGrantId: 'G1', updatedAt: SERVER_TIME }, mask: ['coins', 'lastGrantId', 'updatedAt'] },
+            { path: 'admin_daily/boss', data: { day: TODAY, given: 19001, lastGrantId: 'G1' } }]); }],
+    ['an admin grant without its audit record is refused', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        return wUpd('boss', 'p1', { coins: 1100, lastGrantId: 'NOPE' }); }],
+    ['an audit record whose amount differs from the balance change is refused', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        return commit('boss', [
+            { path: 'coin_grants/G1', data: { to: 'p1', by: 'boss', amount: 10, before: 100, after: 110, note: '', at: SERVER_TIME } },
+            { path: 'wallets/p1', data: { coins: 5100, lastGrantId: 'G1', updatedAt: SERVER_TIME }, mask: ['coins', 'lastGrantId', 'updatedAt'] },
+            // The counter is written correctly, so ONLY the amount mismatch can refuse this.
+            { path: 'admin_daily/boss', data: { day: TODAY, given: 10, lastGrantId: 'G1' } }]); }],
+    ['an admin cannot hang a big change on an old, small audit record', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        await seed('coin_grants/G0', { to: 'p1', by: 'boss', amount: 5, before: 0, after: 5, note: '', at: LONG_AGO() });
+        return wUpd('boss', 'p1', { coins: 5100, lastGrantId: 'G0' }); }],
+    ['an admin cannot replay an old audit record, even for the same amount', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        await seed('coin_grants/G0', { to: 'p1', by: 'boss', amount: 5, before: 0, after: 5, note: '', at: LONG_AGO() });
+        return wUpd('boss', 'p1', { coins: 105, lastGrantId: 'G0' }); }],
+    ['an audit record cannot be written in another admin\'s name', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        return grant('boss', 'p1', 100, 1000, 'G1', { by: 'someone' }); }],
+    ['an audit record cannot be edited', false, async () => {
+        await seed('admins/boss', { note: 'owner' });
+        await seed('coin_grants/G1', { to: 'p1', by: 'boss', amount: 5, before: 0, after: 5, note: '', at: LONG_AGO() });
+        return commit('boss', [{ path: 'coin_grants/G1', data: { amount: 5000 }, mask: ['amount'] }]); }],
+    ['the audit trail is hidden from players', false, async () => {
+        await seed('coin_grants/G1', { to: 'p1', by: 'boss', amount: 5, before: 0, after: 5, note: '', at: LONG_AGO() });
+        return get('p1', 'coin_grants/G1'); }],
+    ['an admin reads any wallet', true, async () => {
+        await seed('admins/boss', { note: 'owner' }); await seed('wallets/p1', wallet());
+        return get('boss', 'wallets/p1'); }],
+    ['a player can see whether they are an admin', true, async () => {
+        await seed('admins/boss', { note: 'owner' }); return get('boss', 'admins/boss'); }],
+    ['...but not who else is', false, async () => {
+        await seed('admins/boss', { note: 'owner' }); return get('p1', 'admins/boss'); }],
+    // ── Player records ──────────────────────────────────────────────────────
     // Users: the leak
     ['a stranger cannot read another player\'s record (it may still hold an email)', false, async () => {
         await seed('users/u1', record({ email: 'a@b.c' })); return get('u2', 'users/u1'); }],
@@ -250,6 +412,36 @@ const MUTANTS = [
     ['leaderboard score no longer tied to the record', "== getAfter(/databases/$(database)/documents/users/$(userId)).data.get('totalScore', 0)", ">= 0"],
     ['non-hosts may change any table field', "&& changed().hasOnly(['players', 'playerIds', 'gameState', 'hostId', 'hostUsername'])", ""],
     ['names no longer checked', "return n is string && n.matches(", "return n is string || n.matches("],
+    // v3.22.0 — every coin bound must be load-bearing.
+    ['wallets writable at will again', "allow update: if walletShape(request.resource.data)\n        && ((isUser(userId)", "allow update: if isUser(userId) || ((isUser(userId)"],
+    ['no daily earning cap', "&& n.earnedToday <= 1200;", ";"],
+    ['no per-write earning cap', "coinDelta() > 0 && coinDelta() <= 80", "coinDelta() > 0"],
+    ['purchase price not checked', "&& coinDelta() == -walletSkinCost()[added[0]];", "&& coinDelta() <= 0;"],
+    ['spin not once a day', "&& resource.data.spinDay < today()", ""],
+    ['spin not capped', "coinDelta() >= 0 && coinDelta() <= 200", "coinDelta() >= 0"],
+    ['import not capped', "+ ownedValue(request.resource.data.owned) <= 1000", "+ ownedValue(request.resource.data.owned) >= 0"],
+    ['anyone is an admin', "return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));", "return signedIn();"],
+    ['admins writable by clients', "match /admins/{userId} {\n      allow read: if isUser(userId);\n      allow write: if false;", "match /admins/{userId} {\n      allow read: if isUser(userId);\n      allow write: if isUser(userId);"],
+    // The amount is bound twice — in the wallet rule and in the audit record's
+    // before/after — on purpose. Either alone holds, so the mutant removes both.
+    // v3.22.1: the daily counter binds the amount a THIRD way (it must add
+    // the grant up); the "bound nowhere" mutant removes the wallet-side
+    // bindings, and the counter's own arithmetic has its own mutant below.
+    ['grant amount bound nowhere', "&& grant.amount == coinDelta();", ";",
+        "&& getAfter(/databases/$(database)/documents/wallets/$(request.resource.data.to)).data.coins == request.resource.data.after", "",
+        "&& request.resource.data.after == request.resource.data.before + request.resource.data.amount", ""],
+    ['an old audit record may be replayed', "&& !exists(/databases/$(database)/documents/coin_grants/$(request.resource.data.lastGrantId))", ""],
+    ['audit records editable', "allow update, delete: if false;\n    }\n\n    // The admin's daily ceiling", "allow update, delete: if isAdmin();\n    }\n\n    // The admin's daily ceiling"],
+    ['wallets world-readable', "allow read: if isUser(userId) || isAdmin();", "allow read: if true;"],
+    // v3.22.1 — the admin's daily ceiling (council O1).
+    ['no admin daily ceiling', "&& request.resource.data.given <= 20000;", ";"],
+    ['grants need not move the daily counter',
+        "\n        // ...and the sending admin's daily counter moved with it (below).\n        && getAfter(/databases/$(database)/documents/admin_daily/$(request.auth.uid)).data.lastGrantId == grantId;", ";"],
+    ['the daily counter may be written on its own',
+        "allow create, update: if isUser(userId) && isAdmin()\n        && request.resource.data.keys().hasOnly(['day', 'given', 'lastGrantId'])",
+        "allow create, update: if isUser(userId) && isAdmin()\n        || request.resource.data.keys().hasOnly(['day', 'given', 'lastGrantId'])"],
+    ['the daily counter need not add the grant up',
+        "== ((resource != null && resource.data.day == today()) ? resource.data.given : 0)", ">= 0"],
 ];
 
 (async () => {
@@ -272,9 +464,14 @@ const MUTANTS = [
 
     // 3. Mutants: each must break at least one scenario.
     console.log('\n-- mutants --');
-    for (const [name, from, to] of MUTANTS) {
-        if (!RULES.includes(from)) { ok(`mutant "${name}" applies to the current rules`, false, 'anchor text not found'); continue; }
-        await loadRules(RULES.replace(from, to));
+    for (const [name, ...pairs] of MUTANTS) {
+        let mutated = RULES, missing = false;
+        for (let i = 0; i < pairs.length; i += 2) {
+            if (!mutated.includes(pairs[i])) { missing = true; break; }
+            mutated = mutated.replace(pairs[i], pairs[i + 1]);
+        }
+        if (missing) { ok(`mutant "${name}" applies to the current rules`, false, 'anchor text not found'); continue; }
+        await loadRules(mutated);
         const res = await runScenarios(false);
         const caught = res.filter(x => !x).length;
         ok(`mutant caught: ${name} (${caught} scenario${caught === 1 ? '' : 's'} failed)`, caught > 0, 'ESCAPED — no scenario notices this weakening');

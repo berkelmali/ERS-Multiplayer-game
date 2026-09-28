@@ -1,18 +1,21 @@
 import EventBus from './eventbus.js';
 
-// --- CARD SKINS + SHOP (v2.9.0) ---
-// A cosmetic-only progression system: play offline matches to earn Coins,
-// spend them in the Shop to unlock card skins, equip one to change how YOUR
-// played cards look. Deliberately simple and client-local (localStorage,
-// same pattern as StreakTracker/BotNemesis) — no Firestore, no Cloud
-// Function gating. That's a conscious choice, not an oversight: unlike
-// competitive stats (Elo, leaderboard) where a client-side "cheat" would hurt
-// other players, a cosmetic-only unlock is stakes-free even if someone
-// edited their own localStorage — it changes nothing for anyone else, and
-// nothing about matchmaking, scoring, or fairness. If this ever grows real
-// monetary value (real-money purchases) it would need the server-authority
-// treatment §7.4 gives game logic; as a free, offline, cosmetic-only system,
-// it doesn't.
+// --- CARD SKINS + SHOP (v2.9.0; ledger moved to the server in v3.22.0) ---
+// Play matches to earn Coins, spend them in the Shop to unlock card skins,
+// equip one to change how YOUR played cards look.
+//
+// v3.22.0 — THE BROWSER NO LONGER OWNS THE BALANCE. Until then the coins were
+// localStorage['ers_coins'] and the skins localStorage['ers_owned_skins'], on
+// the reasoning that a cosmetic unlock hurts nobody. The owner judged
+// otherwise: one console line minted any amount, for anyone. The ledger is now
+// `wallets/{uid}` in Firestore, and firestore.rules (block 6) accepts only the
+// moves walletRules.js describes. This module keeps the catalogue, the reward
+// formula and a CACHE of the wallet; every change goes through the ledger that
+// wallet.js attaches at sign-in. A guest has no ledger: guests play, but earn
+// and buy nothing — the shop and the wheel ask them to sign in.
+//
+// This module imports nothing from Firebase on purpose: the test suite loads
+// it in node, and gives it an in-memory ledger (walletRules.js) instead.
 
 // Rarity tiers used in shop UI badges
 // 'common' = free/no badge, 'epic' = mid-tier, 'rare' = premium, 'legendary' = ultra-premium,
@@ -49,12 +52,19 @@ export const CARD_SKINS = [
     { id: 'gods',        nameKey: 'skinGodsName',        cost: 2000, cssClass: 'card-skin-gods',       rarity: 'mythic',    art: 'gods' },
 ];
 
-const COINS_KEY = 'ers_coins';
-const OWNED_SKINS_KEY = 'ers_owned_skins';
+// The pre-v3.22.0 local ledger. Nothing reads it as a balance any more: it is
+// read ONCE, at a signed-in player's first wallet creation, as a capped import
+// (walletRules.planImport — the rules refuse more than IMPORT_CAP), then removed.
+const LEGACY_COINS_KEY = 'ers_coins';
+const LEGACY_OWNED_KEY = 'ers_owned_skins';
 
 export const CardSkins = {
     initialized: false,
     gameProcessed: false,
+    /** The server ledger (wallet.js) while signed in; null for a guest. */
+    _ledger: null,
+    /** The last wallet the ledger reported: { coins, owned, earnDay, earnedToday, spinDay }. */
+    _wallet: null,
 
     init() {
         if (this.initialized) return;
@@ -73,17 +83,18 @@ export const CardSkins = {
                 // shape (winnerId === 0 means "you", in both modes, since
                 // firebaseSync.js already rotates multiplayer's visual index
                 // the same way offline mode's is inherently 0-based). Coins stay
-                // purely cosmetic/client-local regardless of mode — see the
-                // module comment above for why that's safe in multiplayer too.
+                // cosmetic whatever the mode.
                 if (GameManager.activeMode !== 'bots' && GameManager.activeMode !== 'multiplayer') return;
                 const reward = this.computeReward(winnerId);
-                this.addCoins(reward);
                 // victoryScreen.js listens for this (registered at its own init,
                 // well before this fires) to display the coin change — it does
                 // NOT recompute the formula itself, to avoid re-creating the
                 // exact "same data in two places" problem §6.29 already fixed
-                // once for skin FX data.
-                EventBus.emit('coinsAwarded', { winnerId, amount: reward });
+                // once for skin FX data. The amount is what the ledger WILL
+                // apply (a full day, a zero balance), decided synchronously so
+                // the screen never waits on the network; a guest gets `guest`.
+                EventBus.emit('coinsAwarded', { winnerId, ...this._preview(reward) });
+                this.addCoins(reward);
             });
         });
     },
@@ -115,65 +126,146 @@ export const CardSkins = {
         if (this.gameProcessed) return 0;
         this.gameProcessed = true;
         const penalty = this.computeReward(1); // Same value a real loss uses.
+        // -2 = quit, distinguishable from a real loss/draw if anything downstream ever cares.
+        EventBus.emit('coinsAwarded', { winnerId: -2, ...this._preview(penalty) });
         this.addCoins(penalty);
-        EventBus.emit('coinsAwarded', { winnerId: -2, amount: penalty }); // -2 = quit, distinguishable from a real loss/draw if anything downstream ever cares.
         return penalty;
     },
 
-    getCoins() {
-        try {
-            return parseInt(localStorage.getItem(COINS_KEY) || '0', 10) || 0;
-        } catch (e) {
-            return 0;
-        }
+    // ── The ledger ───────────────────────────────────────────────────────────
+
+    /** wallet.js calls this at sign-in; the in-memory ledger in tests does too. */
+    attachLedger(ledger) {
+        this._ledger = ledger || null;
+        if (!ledger) this.setWallet(null);
     },
 
+    /** At sign-out: back to a guest, who owns nothing and earns nothing. */
+    detachLedger() {
+        this._ledger = null;
+        this.setWallet(null);
+    },
+
+    /** The ledger reports every wallet change here (a Firestore snapshot). */
+    setWallet(w) {
+        this._wallet = w ? { ...w, owned: Array.isArray(w.owned) ? [...w.owned] : ['classic'] } : null;
+        EventBus.emit('coinsUpdated', this.getCoins());
+        EventBus.emit('walletChanged', this.walletState());
+    },
+
+    /** 'guest' (no account), 'loading' (signed in, wallet not read yet) or 'ready'. */
+    walletState() {
+        if (!this._ledger) return 'guest';
+        return this._wallet ? 'ready' : 'loading';
+    },
+
+    getWallet() {
+        return this._wallet ? { ...this._wallet, owned: [...this._wallet.owned] } : null;
+    },
+
+    getCoins() {
+        return this._wallet ? this._wallet.coins : 0;
+    },
+
+    /** What quitting the current match would really take: 0 for a guest or an empty wallet. */
+    quitCost() {
+        const p = this._preview(this.computeReward(1));
+        return typeof p.amount === 'number' ? Math.abs(p.amount) : 0;
+    },
+
+    /** What an award of `amount` will actually apply, decided without the network. */
+    _preview(amount) {
+        if (!this._ledger || !this._wallet) return { amount: null, guest: this.walletState() === 'guest' };
+        return { amount: this._ledger.preview(amount), guest: false };
+    },
+
+    /**
+     * Earn (amount > 0) or spend (amount < 0) through the ledger. Resolves
+     * with what was applied; a guest, a full day or a failed write give 0.
+     * `addCoins` is still the ONE writer every award goes through — the wheel
+     * uses claimSpin, which is a different shape in the rules.
+     */
     addCoins(amount) {
-        try {
-            const total = Math.max(0, this.getCoins() + amount);
-            localStorage.setItem(COINS_KEY, String(total));
-            EventBus.emit('coinsUpdated', total);
-            return total;
-        } catch (e) {
-            console.error('Failed to save coins:', e);
-            return this.getCoins();
-        }
+        const n = Math.trunc(Number(amount)) || 0;
+        if (!this._ledger || !this._wallet || n === 0) return Promise.resolve(0);
+        const op = n < 0 ? this._ledger.spend(-n) : this._ledger.earn(n);
+        return Promise.resolve(op).catch((e) => {
+            console.warn('[coins] not saved:', e && (e.code || e.message));
+            return 0;
+        });
+    },
+
+    /** Is today's wheel spin still unclaimed, by the server's day? False for a guest. */
+    spinAvailable() {
+        return !!(this._ledger && this._wallet && this._ledger.canSpin());
+    },
+
+    /** Today's wheel prize (0 for an empty segment). Resolves with { ok, reason?, granted? }. */
+    claimSpin(amount) {
+        if (!this._ledger || !this._wallet) return Promise.resolve({ ok: false, reason: 'signin_required' });
+        return Promise.resolve(this._ledger.claimSpin(amount)).catch((e) => {
+            console.warn('[coins] spin not saved:', e && (e.code || e.message));
+            return { ok: false, reason: 'network' };
+        });
     },
 
     getOwnedSkins() {
-        try {
-            const owned = JSON.parse(localStorage.getItem(OWNED_SKINS_KEY) || '["classic"]');
-            return Array.isArray(owned) ? owned : ['classic'];
-        } catch (e) {
-            return ['classic'];
-        }
+        return this._wallet ? [...this._wallet.owned] : ['classic'];
     },
 
     isOwned(skinId) {
         return skinId === 'classic' || this.getOwnedSkins().includes(skinId);
     },
 
-    // Attempts to unlock a skin with Coins. Returns { ok, coins } — ok is
-    // false if already owned or insufficient Coins; ui code should check ok
-    // before treating the purchase as having happened.
-    purchase(skinId) {
+    /**
+     * The skin to draw. The equipped choice is a SETTING (localStorage), so it
+     * is only honoured for a skin the wallet says is owned — otherwise editing
+     * ersSettings would be a way round the shop.
+     */
+    effectiveSkin(equipped) {
+        return equipped && this.isOwned(equipped) ? equipped : 'classic';
+    },
+
+    // Attempts to unlock a skin with Coins. Resolves { ok, coins } — ok is
+    // false if already owned, insufficient Coins, signed out or refused by the
+    // server; ui code should check ok before treating the purchase as done.
+    async purchase(skinId) {
         const skin = CARD_SKINS.find((s) => s.id === skinId);
         if (!skin) return { ok: false, reason: 'not_found', coins: this.getCoins() };
+        if (!this._ledger || !this._wallet) return { ok: false, reason: 'signin_required', coins: 0 };
         if (this.isOwned(skinId)) return { ok: false, reason: 'already_owned', coins: this.getCoins() };
 
         const coins = this.getCoins();
         if (coins < skin.cost) return { ok: false, reason: 'insufficient_funds', coins, needed: skin.cost - coins };
 
-        const owned = this.getOwnedSkins();
-        owned.push(skinId);
         try {
-            localStorage.setItem(OWNED_SKINS_KEY, JSON.stringify(owned));
-            const remaining = this.addCoins(-skin.cost);
-            return { ok: true, coins: remaining };
+            const r = await this._ledger.purchase(skinId);
+            return r && r.ok
+                ? { ok: true, coins: this.getCoins() }
+                : { ok: false, reason: (r && r.reason) || 'refused', coins: this.getCoins(), needed: r && r.needed };
         } catch (e) {
-            console.error('Failed to save skin purchase:', e);
-            return { ok: false, reason: 'storage_error', coins };
+            console.warn('[coins] purchase not saved:', e && (e.code || e.message));
+            return { ok: false, reason: 'network', coins };
         }
+    },
+
+    // ── The pre-v3.22.0 local ledger, for the one-time import ────────────────
+
+    readLegacyLocal() {
+        try {
+            const coins = parseInt(localStorage.getItem(LEGACY_COINS_KEY) || '0', 10) || 0;
+            const owned = JSON.parse(localStorage.getItem(LEGACY_OWNED_KEY) || '[]');
+            return { coins, owned: Array.isArray(owned) ? owned : [] };
+        } catch (e) {
+            return { coins: 0, owned: [] };
+        }
+    },
+
+    clearLegacyLocal() {
+        try {
+            localStorage.removeItem(LEGACY_COINS_KEY);
+            localStorage.removeItem(LEGACY_OWNED_KEY);
+        } catch (e) { /* private mode: nothing was stored */ }
     },
 
     getSkinClass(skinId) {

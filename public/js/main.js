@@ -23,6 +23,8 @@ import { DuatMode } from './duat.js';
 import { TombMode } from './tomb.js';
 import { BotNemesis } from './botNemesis.js';
 import { CardSkins } from './cardSkins.js';
+import { Wallet } from './wallet.js';
+import { AdminPanel } from './adminPanel.js';
 import { DailySpin } from './dailySpin.js';
 import { ShopUI } from './shopUI.js';
 // --- v3.0.0 ---
@@ -70,6 +72,10 @@ document.addEventListener('DOMContentLoaded', () => {
     TombMode.init();
     BotNemesis.init();
     CardSkins.init();
+    // v3.21.0 — the coin ledger is the server's. Before AuthSystem's first
+    // (always asynchronous) event, so the signed-in player's wallet opens.
+    Wallet.init();
+    AdminPanel.init();
     DailySpin.init();
     ShopUI.init();
 
@@ -154,11 +160,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let confirmMessage = null;
         if (isActiveMatch) {
-            const penalty = Math.abs(CardSkins.computeReward(1));
-            const coinWarning = (Localization.get('confirmQuitCoinWarning') || 'Quitting now will cost you {n} coins.').replace('{n}', penalty);
+            // What quitting would REALLY cost: nothing for a guest (no wallet)
+            // or an empty wallet — the warning used to quote 15 to both.
+            const penalty = CardSkins.quitCost();
+            const coinWarning = penalty > 0
+                ? (Localization.get('confirmQuitCoinWarning') || 'Quitting now will cost you {n} coins.').replace('{n}', penalty)
+                : '';
             confirmMessage = GameManager.activeMode === 'multiplayer'
-                ? `${coinWarning} ${Localization.get('confirmLeaveSubtext') || ''}`
-                : coinWarning;
+                ? `${coinWarning} ${Localization.get('confirmLeaveSubtext') || ''}`.trim()
+                : (coinWarning || Localization.get('confirmQuitNoCoins'));
         }
 
         UIManager.showConfirmModal(() => {
