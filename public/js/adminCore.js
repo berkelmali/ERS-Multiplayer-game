@@ -371,8 +371,10 @@ export function onlineRows(online, { tables = new Map(), rooms = new Map(), name
     for (const [uid, conns] of Object.entries(online || {})) {
         if (!safeId(uid) || !conns || typeof conns !== 'object') continue;
         // A tab is { at, t, s } (v3.22.4) or a bare number (a v3.22.3 tab still open).
-        const tabs = Object.values(conns).map(v => (typeof v === 'number' ? { at: v, t: v, s: null }
-            : v && typeof v === 'object' && typeof v.at === 'number' ? { at: v.at, t: typeof v.t === 'number' ? v.t : v.at, s: ACTIVITY_LABEL[v.s] ? v.s : null } : null)).filter(Boolean);
+        const tabs = Object.values(conns).map(v => (typeof v === 'number' ? { at: v, t: v, s: null, g: null }
+            : v && typeof v === 'object' && typeof v.at === 'number'
+                ? { at: v.at, t: typeof v.t === 'number' ? v.t : v.at, s: ACTIVITY_LABEL[v.s] ? v.s : null, g: v.g && typeof v.g === 'object' ? v.g : null }
+                : null)).filter(Boolean);
         if (!tabs.length) continue;
         const latest = tabs.reduce((a, b) => (b.t > a.t ? b : a));
         let table = null, room = null, seatName = null;
@@ -384,9 +386,75 @@ export function onlineRows(online, { tables = new Map(), rooms = new Map(), name
         }
         if (!room) for (const [id, r] of rooms) if (!r.gameOver && r.playerIds && r.playerIds[uid]) { room = id; break; }
         rows.push({ uid, name: names.get(uid) || seatName || null, tabs: tabs.length, since: Math.min(...tabs.map(x => x.at)),
-            activity: latest.s, activityAt: latest.t, table, room });
+            activity: latest.s, activityAt: latest.t, match: latest.g, table, room });
     }
     return rows.sort((a, b) => b.since - a.since);
+}
+
+/**
+ * v3.22.5 — the three groups the online list is split into. Multiplayer is
+ * anything with a table or a room (a waiting room counts: the player is in the
+ * multiplayer flow), or a tab that says it is in a match. Solo is a bot match,
+ * the Daily Challenge or Legends: they run in the browser and leave NO table or
+ * room behind, which is why they never appear under Masalar / Canlı odalar.
+ */
+export const ONLINE_CATEGORIES = Object.freeze([
+    ['multiplayer', '🔴 Multiplayer', 'masada, bekleme odasında ya da maçta'],
+    ['solo', '🤖 Tek oyunculu', 'bot maçı, günlük meydan okuma, efsaneler — sunucuda masa/oda açmaz'],
+    ['menu', '🏠 Menüde', 'oyunda değil (ya da eski sürüm sekmesi)']
+]);
+export function onlineCategory(row) {
+    if (!row) return 'menu';
+    if (row.table || row.room || row.activity === 'match') return 'multiplayer';
+    if (row.activity === 'bots' || row.activity === 'daily' || row.activity === 'legends') return 'solo';
+    return 'menu';
+}
+
+/**
+ * `.info/serverTimeOffset` is server time MINUS this device's time. It is not
+ * a delay: nothing waits on it, and serverNow() already corrects for it. The
+ * chip says which way the device clock is off, so it is never read as lag.
+ */
+export function clockNote(offsetMs) {
+    const o = Math.round(Number(offsetMs) || 0);
+    if (Math.abs(o) < 500) return { text: '🕒 saat uyumlu', kind: 'is-good' };
+    const sec = (Math.abs(o) / 1000).toFixed(1).replace('.', ',');
+    return { text: `🕒 cihaz saati ${sec} sn ${o < 0 ? 'ileri' : 'geri'}`, kind: Math.abs(o) > 5000 ? 'is-bad' : '' };
+}
+
+/** Round trip of one tiny server read — the delay the admin actually feels. */
+export function latencyNote(ms) {
+    if (ms === null || ms === undefined || !Number.isFinite(ms)) return { text: '📶 gecikme —', kind: '' };
+    const v = Math.round(ms);
+    return { text: `📶 gecikme ${v} ms`, kind: v < 150 ? 'is-good' : v < 400 ? '' : 'is-bad' };
+}
+
+/**
+ * v3.22.5 — health checks for a solo match summary (online/{uid}/{conn}/g).
+ * The admin cannot see the cards, only counts, so these are the breakages a
+ * count can show: a card gone missing, a match that stopped moving, a page
+ * that is throwing errors. Legends deal ghost cards and a god, so the 52 check
+ * is skipped there.
+ */
+export const SOLO_STALL_MS = 45 * 1000;   // the slowest turn timer is 20 s; bots move well within it
+export function soloDiagnostics(g, activity, now = Date.now()) {
+    const out = [];
+    if (!g || typeof g !== 'object') return out;
+    const hands = asList(g.h).map(n => Number(n) || 0);
+    const total = hands.reduce((a, n) => a + n, 0) + (Number(g.p) || 0) + (Number(g.b) || 0);
+    if (activity !== 'legends' && total !== 52) out.push(finding('error', 'card-count', `Kart sayısı ${total} — 52 olmalı. Bir kart kayboldu ya da çoğaldı.`));
+    if (g.o !== true && typeof g.u === 'number' && now - g.u > SOLO_STALL_MS) out.push(finding('warn', 'stalled', `${formatAge(now - g.u)} boyunca maçta hiçbir şey değişmedi — oyun donmuş olabilir (ya da sekme arka planda).`));
+    if (Number(g.e) > 0) out.push(finding('warn', 'page-errors', `Bu maç sırasında sekmede ${g.e} hata oluştu.`));
+    const turn = Number(g.a);
+    if (g.o !== true && turn >= 0 && turn <= 3 && hands[turn] === 0 && total > 0) out.push(finding('warn', 'turn-empty', `Sıra kartı olmayan koltukta (#${turn}).`));
+    if (g.o === true) out.push(finding('info', 'over', 'Maç bitti; oyuncu sonuç ekranında.'));
+    return sortFindings(out);
+}
+
+/** One line an admin can read at a glance: hands, pile, turn, moves. */
+export function soloSummary(g) {
+    if (!g || typeof g !== 'object') return '';
+    return `kartlar ${asList(g.h).map(n => Number(n) || 0).join('·')} · yığın ${Number(g.p) || 0} · yanık ${Number(g.b) || 0} · sıra #${Number(g.a)} · ${Number(g.n) || 0} hamle`;
 }
 
 /** Lobby mirrors (RTDB lobbyRooms) with no Firestore table behind them. */

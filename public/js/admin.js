@@ -37,7 +37,8 @@ import { EARN_DAILY_CAP, ADMIN_GRANT_MAX, ADMIN_DAILY_CAP, dayNumber } from './w
 import {
     adminEmailFor, asList, toMillis, formatAge, cardLabel, presenceState,
     tableDiagnostics, roomDiagnostics, roomEvents, summarize, toCsv, safeId,
-    roomIsDead, tableClosePlan, CLOSE_REASON, onlineRows, orphanLobbies, lobbyDeletable, ACTIVITY_LABEL
+    roomIsDead, tableClosePlan, CLOSE_REASON, onlineRows, orphanLobbies, lobbyDeletable, ACTIVITY_LABEL,
+    ONLINE_CATEGORIES, onlineCategory, clockNote, latencyNote, soloDiagnostics, soloSummary
 } from './adminCore.js';
 import { isBotSeat, realCount } from './slapOutcome.js';
 import { ghostCount } from './ghostCards.js';
@@ -129,6 +130,7 @@ const S = {
     online: null, onlineAt: null, onlineErr: null,   // online/{uid}/{conn} (v3.22.3)
     lobbies: null, lobbiesErr: null,                  // lobbyRooms, fetched on demand
     closing: new Set(),                               // table/room ids with a delete in flight
+    rtt: null,                                        // ms, one small read's round trip (v3.22.5)
     roomFeed: new Map(),      // roomId → events, newest last
     feed: [],                 // every room, newest last
     paused: false,
@@ -237,7 +239,8 @@ function stopAll() {
     S.roomFeed.clear(); S.feed = [];
     S.tablesErr = S.grantsErr = S.roomsErr = S.onlineErr = S.lobbiesErr = null;
     S.tablesAt = S.grantsAt = S.roomsAt = S.onlineAt = null;
-    S.online = null; S.lobbies = null; S.closing.clear();
+    S.online = null; S.lobbies = null; S.closing.clear(); S.rtt = null;
+    clearInterval(S.pingTimer); S.pingTimer = null;
 }
 
 function startAll() {
@@ -273,6 +276,19 @@ function startAll() {
         scheduleRender();
     }, (e) => { S.online = null; S.onlineErr = (e && (e.code || e.message)) || 'denied'; scheduleRender(); }));
     refreshLobbies();
+    measureLatency();
+    S.pingTimer = setInterval(measureLatency, 15000);
+}
+
+/** One read of this admin's own flag, timed. get() goes to the server when connected. */
+async function measureLatency() {
+    if (!S.user || S.connected === false) return;
+    const uid = safeId(S.user.uid);
+    if (!uid) return;
+    const t0 = performance.now();
+    try { await get(ref(rtdb, `admins/${uid}`)); S.rtt = performance.now() - t0; }
+    catch (e) { S.rtt = null; }
+    renderChrome();
 }
 
 /** lobbyRooms is read on demand (tables tab, after a close), not streamed. */
@@ -352,8 +368,14 @@ function render() {
 
 /** Header chips, the tab counts, and the partial/offline banner. */
 function renderChrome() {
-    const o = Math.round(S.offset);
-    $('adm-clock').textContent = `⏱ saat farkı ${o >= 0 ? '+' : ''}${o} ms`;
+    // v3.22.5: the clock skew is not a delay — say which way the device is off,
+    // and show the real round trip next to it.
+    const cn = clockNote(S.offset);
+    $('adm-clock').textContent = cn.text;
+    $('adm-clock').className = `adm-chip ${cn.kind}`;
+    const ln = latencyNote(S.rtt);
+    $('adm-ping').textContent = ln.text;
+    $('adm-ping').className = `adm-chip ${ln.kind}`;
     const offline = S.connected === false || (typeof navigator !== 'undefined' && navigator.onLine === false);
     const conn = $('adm-conn');
     conn.textContent = S.connected === null ? '… bağlanıyor' : offline ? '○ bağlantı yok' : '● canlı';
@@ -394,7 +416,8 @@ function renderOverview() {
     const today = dayNumber(serverNow());
     const sumDay = (d) => S.grants.filter(g => dayNumber(toMillis(g.at) || 0) === d).reduce((a, g) => a + (g.amount > 0 ? g.amount : 0), 0);
     const sent = sumDay(today), sentYesterday = sumDay(today - 1);
-    const problems = problemTables.length + problemRooms.length;
+    const problemSolo = soloProblems();
+    const problems = problemTables.length + problemRooms.length + problemSolo.length;
 
     // Every number carries its comparison (anti-pattern: a metric with no context).
     const tile = (label, value, sub, kind = '') => h('div', { class: `adm-stat ${kind}` }, h('span', {}, label), h('strong', {}, value), h('small', {}, sub));
@@ -402,7 +425,7 @@ function renderOverview() {
     stats.removeAttribute('aria-busy');
     stats.append(
         tile('Canlı oda', S.rooms ? String(liveRooms.length) : '—', S.rooms ? `${humansIn} insan · ${botsIn} bot oynuyor` : 'izleme kapalı', S.rooms ? '' : 'is-muted'),
-        tile('Dikkat isteyen', String(problems), problems ? `${problemRooms.length} oda · ${problemTables.length} masa` : 'hepsi sağlıklı', problems ? 'is-warn' : 'is-ok'),
+        tile('Dikkat isteyen', String(problems), problems ? `${problemRooms.length} oda · ${problemTables.length} masa · ${problemSolo.length} bot maçı` : 'hepsi sağlıklı', problems ? 'is-warn' : 'is-ok'),
         tile('Masalar', String(playing.length), `${waiting.length} bekleyen · ${S.tables.size} toplam`),
         tile('Bugün gönderilen', `🪙 ${sent}`, `dün: 🪙 ${sentYesterday}`)
     );
@@ -413,6 +436,10 @@ function renderOverview() {
     problemRooms.slice(0, 6).forEach(({ id, f }) => probs.append(
         h('button', { type: 'button', class: 'adm-row', onclick: () => openRoom(id) },
             h('span', { class: 'adm-row-title' }, '🔴 Oda ', h('span', { class: 'adm-mono' }, id), ' ', pill(summarize(f).worst, summarize(f).text)),
+            h('span', { class: 'adm-muted' }, f[0].text))));
+    problemSolo.slice(0, 6).forEach(({ r, f }) => probs.append(
+        h('button', { type: 'button', class: 'adm-row', onclick: () => go('online') },
+            h('span', { class: 'adm-row-title' }, '🤖 ', h('strong', {}, r.name || shortId(r.uid)), ' ', ACTIVITY_LABEL[r.activity] || '', ' ', pill(summarize(f).worst, summarize(f).text)),
             h('span', { class: 'adm-muted' }, f[0].text))));
     problemTables.slice(0, 6).forEach(({ t, f }) => probs.append(
         h('button', { type: 'button', class: 'adm-row', onclick: () => go('tables') },
@@ -774,8 +801,37 @@ async function deleteLobby(id) {
 }
 
 // ── online (v3.22.3) ───────────────────────────────────────────────────────
-bindCheck('adm-online-intable', 'onlineInTable', false, () => renderOnline());
 $('adm-online-filter').addEventListener('input', () => renderOnline());
+let onlineCat = ['all', ...ONLINE_CATEGORIES.map(c => c[0])].includes(prefs.onlineCat) ? prefs.onlineCat : 'all';
+
+const soloFindings = (r, now) => soloDiagnostics(r.match, r.activity, now);
+/** Solo matches that need attention, for the overview (v3.22.5). */
+function soloProblems() {
+    if (!S.online) return [];
+    const now = serverNow();
+    return onlineRows(S.online, { names: S.names }).filter(r => r.match)
+        .map(r => ({ r, f: soloFindings(r, now) })).filter(x => x.f.some(f => f.level !== 'info'));
+}
+
+function onlineTable(rows, now) {
+    return h('table', { class: 'adm-tbl' },
+        h('thead', {}, h('tr', {}, ['Oyuncu', 'Kimlik', 'Sekme', 'Bağlı', 'Ne yapıyor', 'Nerede', ''].map(x => h('th', { scope: 'col' }, x)))),
+        h('tbody', {}, rows.map(r => h('tr', {},
+            h('td', {}, h('strong', {}, r.name || '—')),
+            h('td', {}, h('button', { type: 'button', class: 'adm-linkbtn adm-mono', onclick: () => copy(r.uid), title: 'kimliği kopyala' }, `${r.uid} ⧉`)),
+            h('td', { class: 'adm-num' }, String(r.tabs)),
+            h('td', {}, formatAge(Math.max(0, now - r.since))),
+            h('td', {}, r.activity ? ACTIVITY_LABEL[r.activity] : h('span', { class: 'adm-muted', title: 'v3.22.3 sekmesi — yenilenince görünür' }, 'bilinmiyor'),
+                r.activity ? h('small', { class: 'adm-muted' }, ` · ${formatAge(Math.max(0, now - r.activityAt))}`) : null,
+                // v3.22.5: a solo match, as counts, with its health checks.
+                r.match ? h('div', { class: 'adm-solo' }, h('span', { class: 'adm-mono adm-muted' }, soloSummary(r.match)),
+                    soloFindings(r, now).filter(f => f.level !== 'info').map(f => h('div', {}, pill(f.level), ' ', f.text, h('code', {}, ` ${f.code}`)))) : null),
+            h('td', {}, h('span', { class: 'adm-online-where' },
+                r.table ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => go('tables') }, `🃏 ${r.table}`) : null,
+                r.room && S.rooms && S.rooms.has(r.room) ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => openRoom(r.room) }, '🔴 odayı izle') : null,
+                !r.table && !r.room ? h('span', { class: 'adm-muted', title: onlineCategory(r) === 'solo' ? 'Tek oyunculu modlar tarayıcıda çalışır; sunucuda masa ya da oda açmaz.' : '' }, onlineCategory(r) === 'solo' ? 'tarayıcıda (masa yok)' : '—') : null)),
+            h('td', {}, h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => { go('players'); selectPlayer({ uid: r.uid, username: r.name || '' }); } }, 'Profil / jeton'))))));
+}
 function renderOnline() {
     const box = clear($('adm-online'));
     if (S.onlineErr) {
@@ -786,28 +842,28 @@ function renderOnline() {
     box.removeAttribute('aria-busy');
     const all = onlineRows(S.online, { tables: S.tables, rooms: S.rooms || new Map(), names: S.names });
     const f = $('adm-online-filter').value.trim().toLowerCase();
-    let rows = all;
-    if ($('adm-online-intable').checked) rows = rows.filter(r => r.table || r.room || (r.activity && r.activity !== 'menu'));
-    if (f) rows = rows.filter(r => [r.name, r.uid].some(x => String(x || '').toLowerCase().includes(f)));
-    const playing = all.filter(r => r.activity && r.activity !== 'menu').length;
-    $('adm-online-meta').textContent = `${rows.length} / ${all.length} hesap · ${playing} oyunda · ${all.filter(r => r.table || r.room).length} masada · canlı`;
-    if (!rows.length) { box.append(emptyState(all.length ? 'Filtreye uyan yok' : 'Şu an kimse bağlı değil', all.length ? 'Filtreyi değiştir.' : 'Giriş yapmış bir oyuncu sekmeyi açtığında burada belirir.')); return; }
+    const found = f ? all.filter(r => [r.name, r.uid].some(x => String(x || '').toLowerCase().includes(f))) : all;
+    const groups = ONLINE_CATEGORIES.map(([id, title, sub]) => ({ id, title, sub, rows: found.filter(r => onlineCategory(r) === id) }));
+
+    // The category switch, with live counts (a per-viewer preference).
+    const seg = clear($('adm-online-cats'));
+    [['all', 'Tümü', found.length], ...groups.map(g => [g.id, g.title, g.rows.length])].forEach(([id, label, n]) =>
+        seg.append(h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', 'aria-pressed': String(onlineCat === id),
+            onclick: () => { onlineCat = id; savePref('onlineCat', id); renderOnline(); } }, `${label} (${n})`)));
+    $('adm-online-meta').textContent = `${all.length} hesap bağlı · canlı`;
+
+    if (!all.length) { box.append(h('div', { class: 'adm-card' }, emptyState('Şu an kimse bağlı değil', 'Giriş yapmış bir oyuncu sekmeyi açtığında burada belirir.'))); return; }
     const now = serverNow();
-    box.append(h('table', { class: 'adm-tbl' },
-        h('caption', { class: 'adm-sr' }, 'Bağlı hesaplar, en yeni önce'),
-        h('thead', {}, h('tr', {}, ['Oyuncu', 'Kimlik', 'Sekme', 'Bağlı', 'Ne yapıyor', 'Nerede', ''].map(x => h('th', { scope: 'col' }, x)))),
-        h('tbody', {}, rows.map(r => h('tr', {},
-            h('td', {}, h('strong', {}, r.name || '—')),
-            h('td', {}, h('button', { type: 'button', class: 'adm-linkbtn adm-mono', onclick: () => copy(r.uid), title: 'kimliği kopyala' }, `${r.uid} ⧉`)),
-            h('td', { class: 'adm-num' }, String(r.tabs)),
-            h('td', {}, formatAge(Math.max(0, now - r.since))),
-            h('td', {}, r.activity ? ACTIVITY_LABEL[r.activity] : h('span', { class: 'adm-muted', title: 'v3.22.3 sekmesi — yenilenince görünür' }, 'bilinmiyor'),
-                r.activity ? h('small', { class: 'adm-muted' }, ` · ${formatAge(Math.max(0, now - r.activityAt))}`) : null),
-            h('td', {}, h('span', { class: 'adm-online-where' },
-                r.table ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => go('tables') }, `🃏 ${r.table}`) : null,
-                r.room && S.rooms && S.rooms.has(r.room) ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => openRoom(r.room) }, '🔴 odayı izle') : null,
-                !r.table && !r.room ? h('span', { class: 'adm-muted' }, '—') : null)),
-            h('td', {}, h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => { go('players'); selectPlayer({ uid: r.uid, username: r.name || '' }); } }, 'Profil / jeton')))))));
+    const shown = onlineCat === 'all' ? groups : groups.filter(g => g.id === onlineCat);
+    let any = false;
+    for (const g of shown) {
+        if (!g.rows.length && onlineCat === 'all') continue;
+        any = true;
+        box.append(h('section', { class: 'adm-card adm-online-group', 'aria-label': g.title },
+            h('header', {}, h('h3', {}, `${g.title} · ${g.rows.length}`), h('span', { class: 'adm-muted' }, g.sub)),
+            g.rows.length ? onlineTable(g.rows, now) : emptyState('Bu grupta kimse yok', f ? 'Filtreyi değiştir.' : 'Şu an bu türde oynayan yok.')));
+    }
+    if (!any) box.append(h('div', { class: 'adm-card' }, emptyState('Filtreye uyan yok', 'Filtreyi değiştir.')));
 }
 
 function pickPlayerFromTable(t) {

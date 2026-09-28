@@ -2766,7 +2766,10 @@ export const remove = async (r) => {
         },
         db: { 'presence/h1': 'offline', 'presence/p2': 'online', 'presence/p3': 'online', 'presence/p4': 'online',
               // v3.22.3: two tabs for Ayşe, one for p5; a lobby mirror with no table behind it.
-              online: { p2: { '-Aaaaaaaaaaaaaaaaaaa': now - 120000, '-Bbbbbbbbbbbbbbbbbbb': now - 60000 }, p5: { '-Ccccccccccccccccccc': { at: now - 30000, t: now - 10000, s: 'bots' } } },
+              online: { p2: { '-Aaaaaaaaaaaaaaaaaaa': now - 120000, '-Bbbbbbbbbbbbbbbbbbb': now - 60000 }, p5: { '-Ccccccccccccccccccc': { at: now - 30000, t: now - 10000, s: 'menu' } },
+                        // p6 is in a bot match that has lost a card (13+12+14+12 = 51).
+                        p6: { '-Ddddddddddddddddddd': { at: now - 50000, t: now - 20000, s: 'bots',
+                              g: { h: { 0: 13, 1: 12, 2: 14, 3: 12 }, p: 0, b: 0, a: 1, n: 33, o: false, e: 2, u: now - 3000 } } } },
               lobbyRooms: { AAA111: { tableId: 'AAA111', hostId: 'h1', gameState: { status: 'playing', roomId: 'ROOM01' } },
                             ORPH01: { tableId: 'ORPH01', hostId: 'gone', hostUsername: 'Gone', gameState: { status: 'waiting' } } },
               'lobbyRooms/AAA111': { tableId: 'AAA111', hostId: 'h1', gameState: { status: 'playing', roomId: 'ROOM01' } },
@@ -2796,6 +2799,8 @@ export const remove = async (r) => {
         const who = await p.textContent('#adm-who');
         if (!/berk/.test(who)) throw new Error('the panel did not greet the admin: ' + who);
         await p.waitForFunction(() => /AAA111/.test(document.getElementById('adm-problems').textContent), null, { timeout: 5000 });
+        // v3.22.5: a broken bot match is a problem too, though it has no table or room.
+        await p.waitForFunction(() => /bot maçında/.test(document.getElementById('adm-problems').textContent), null, { timeout: 5000 });
 
         await p.click('.adm-tab[data-view="tables"]');
         await p.waitForFunction(() => document.querySelectorAll('#adm-tables .adm-table').length === 4, null, { timeout: 5000 });
@@ -2865,10 +2870,20 @@ export const remove = async (r) => {
 
         // v3.22.3 (council ERS-30): who is online, and closing what is dead.
         await p.click('.adm-tab[data-view="online"]');
-        await p.waitForFunction(() => document.querySelectorAll('#adm-online tbody tr').length === 2, null, { timeout: 5000 });
-        const online = await p.evaluate(() => ({ text: document.getElementById('adm-online').textContent, count: document.getElementById('adm-online-count').textContent }));
-        if (online.count !== '2' || !/Ayşe/.test(online.text) || !/p2/.test(online.text) || !/AAA111/.test(online.text) || !/p5/.test(online.text) || !/bot maçında/.test(online.text))
-            throw new Error('the online list does not show who is connected and where: ' + online.text.slice(0, 300));
+        await p.waitForFunction(() => document.querySelectorAll('#adm-online tbody tr').length === 3, null, { timeout: 5000 });
+        const online = await p.evaluate(() => {
+            const group = (t) => [...document.querySelectorAll('#adm-online .adm-online-group')].find(s => s.getAttribute('aria-label').includes(t));
+            return { text: document.getElementById('adm-online').textContent, count: document.getElementById('adm-online-count').textContent,
+                     mp: (group('Multiplayer') || {}).textContent || '', solo: (group('Tek oyunculu') || {}).textContent || '',
+                     clock: document.getElementById('adm-clock').textContent, ping: document.getElementById('adm-ping').textContent };
+        });
+        // Ayşe (seated at AAA111) and P5 (hosting DDD444) are multiplayer; p6 in a bot match has no table and is solo.
+        if (online.count !== '3' || !/Ayşe/.test(online.mp) || !/AAA111/.test(online.mp) || !/p5/.test(online.mp)
+            || !/p6/.test(online.solo) || !/bot maçında/.test(online.solo) || !/tarayıcıda \(masa yok\)/.test(online.solo) || /p6/.test(online.mp)
+            || !/kartlar 13·12·14·12/.test(online.solo) || !/card-count/.test(online.solo) || !/page-errors/.test(online.solo))
+            throw new Error('the online list does not group players by kind of play: ' + online.text.slice(0, 400));
+        if (!/saat uyumlu|cihaz saati/.test(online.clock) || /saat farkı/.test(online.clock) || !/gecikme/.test(online.ping))
+            throw new Error('the clock chip still reads like a delay: ' + online.clock + ' / ' + online.ping);
         if (shots) await p.screenshot({ path: `${shots}/admin-online.png`, fullPage: true });
 
         await p.click('.adm-tab[data-view="tables"]');

@@ -1842,6 +1842,19 @@ echo       ekran degisince, hamle basina asla. Kural bu bes kelime disini ve
 echo       fazladan alani reddeder ^(konsey ERS-31^).
 echo       3192 test, RTDB 93 kontrol + 4 yeni mutant.
 echo.
+echo  --- v3.22.5 -- BOT MACLARI DA GORUNUR, SAAT CIPI GECIKME DEGIL ---
+echo  232) "saat farki -2339 ms" gecikme DEGILDI: cihaz saati sunucudan 2,3 sn
+echo       ileri. Oyun bunu zaten duzeltiyor. Cip artik "cihaz saati 2,3 sn
+echo       ileri" diyor; yaninda GERCEK gecikme ^(sunucuya gidip gelme^) var.
+echo  233) Menude Multiplayer basligi: Canli odalar + Masalar. Cevrimici
+echo       listesi uce ayrildi: Multiplayer / Tek oyunculu / Menude.
+echo  234) Bot, gunluk ve efsaneler maclari tarayicida calisir, masa/oda
+echo       acmaz. Artik 5 sn'de bir, yalniz degisince, SAYILAR yazilir:
+echo       el boyutlari, yigin, yanik, sira, hamle, bitti mi, sayfa hatasi.
+echo       Kart ASLA. Yonetici kaybolan karti ^(toplam 52 degil^), donmus
+echo       maci ^(45 sn degisiklik yok^) ve sayfa hatasini gorur ^(ERS-32^).
+echo       3222 test, RTDB 105 kontrol + 5 yeni mutant.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -2059,5 +2072,10 @@ echo  --- v3.22.4 -- deploy-db-rules.bat ve BU DOSYA ARKA ARKAYA ---
 echo   - Isaret bicimi degisti; arada eski sekmeler listede gorunmez.
 echo   - /admin, Cevrimici: bir sekmede bot maci baslat, "bot macinda" cikmali.
 echo   - Yonetici hesabiyla OYNAMA: ham oda verisi herkesin elini gosterir.
+echo.
+echo  --- v3.22.5 -- YINE ONCE deploy-db-rules.bat, HEMEN ARDINDAN BU ---
+echo   - Oyuncu hesabiyla bir bot maci ac. /admin, Cevrimici, Tek oyunculu:
+echo     "kartlar 13.13.13.13, yigin, sira" satiri 5 sn icinde gorunmeli.
+echo   - Saat cipi "saat uyumlu" ya da "cihaz saati N sn ileri/geri" demeli.
 echo.
 pause

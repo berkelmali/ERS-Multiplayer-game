@@ -7460,6 +7460,15 @@ body.admin-page {
 .admin-page .adm-btn--danger:hover { background: var(--color-surface-2); }
 .admin-page .adm-note { margin: var(--space-2) 0; font-size: 0.85rem; max-width: 80ch; }
 .admin-page .adm-online-where { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+/* v3.22.5 — the two multiplayer tabs read as one group; the online list is split by kind of play */
+.admin-page .adm-nav-group { align-self: center; margin-left: var(--space-2); padding-left: var(--space-3); border-left: 1px solid var(--color-border-strong); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); white-space: nowrap; }
+.admin-page .adm-nav-sep { align-self: stretch; width: 1px; margin: var(--space-1) var(--space-2); background: var(--color-border-strong); }
+.admin-page .adm-seg { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
+.admin-page .adm-seg .adm-btn[aria-pressed="true"] { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
+.admin-page .adm-online-group { margin-bottom: var(--space-4); }
+.admin-page .adm-online-group > header { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.admin-page .adm-online-group > header h3 { margin: 0; font-size: 1rem; }
+.admin-page .adm-solo { margin-top: var(--space-1); font-size: 0.82rem; display: grid; gap: 2px; }
 .admin-page .adm-wide { width: 100%; margin-top: var(--space-3); min-height: 44px; }
 
 /* inputs */

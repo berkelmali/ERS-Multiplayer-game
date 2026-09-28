@@ -96,6 +96,23 @@ document.addEventListener('DOMContentLoaded', () => {
         : GameManager.activeMode === 'bots' ? 'bots' : 'menu';
     EventBus.on('gameStarted', () => OnlinePresence.setActivity(currentActivity()));
     EventBus.on('gameStateChanged', (st) => OnlinePresence.setActivity(st === 'menu' ? 'menu' : currentActivity()));
+    // v3.22.5 — a bot / Daily / Legends match leaves no table or room, so the
+    // admin sees it only through this summary. COUNTS, never a card.
+    const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Number.isFinite(v) ? Math.trunc(v) : lo));
+    OnlinePresence.setMatchProvider(() => {
+        if (!GameState.gameStarted && !GameState.gameOver) return null;
+        const seats = GameState.players || [];
+        return {
+            h: [0, 1, 2, 3].map(i => clampInt((seats[i] || []).length, 0, 60)),
+            p: clampInt((GameState.pile || []).length, 0, 60),
+            b: clampInt((GameState.burnPile || []).length, 0, 60),
+            a: clampInt(GameState.activePlayerId, -1, 3),
+            n: clampInt(GameState.playCount || 0, 0, 1000000),
+            o: GameState.gameOver === true
+        };
+    });
+    window.addEventListener('error', () => OnlinePresence.noteError());
+    window.addEventListener('unhandledrejection', () => OnlinePresence.noteError());
     SlapForensics.init();
     DailyChallenge.init();
     // Exposed for the same reason as window.GameState: the smoke test and the

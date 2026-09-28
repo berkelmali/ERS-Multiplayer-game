@@ -14,7 +14,7 @@
     <title>ERS Yönetim</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
     <meta name="theme-color" content="#0d1117">
-    <link rel="stylesheet" href="style.css?v=3.22.4">
+    <link rel="stylesheet" href="style.css?v=3.22.5">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
 
@@ -45,7 +45,8 @@
             <h1 class="adm-brand"><span class="adm-ankh" aria-hidden="true">☥</span> ERS Yönetim</h1>
             <div class="adm-top-right">
                 <span id="adm-conn" class="adm-chip" role="status" aria-live="polite">bağlanıyor…</span>
-                <span id="adm-clock" class="adm-chip" title="Sunucu saatiyle bu cihaz arasındaki fark"></span>
+                <span id="adm-ping" class="adm-chip" title="Sunucuya gidip gelen tek bir küçük okumanın süresi — hissettiğin gerçek gecikme. 15 sn'de bir ölçülür."></span>
+                <span id="adm-clock" class="adm-chip" title="Bu cihazın saati ile sunucunun saati arasındaki fark. GECİKME DEĞİL: oyun ve bu sayfa bunu zaten düzeltiyor. Sıfırlamak için Windows: Ayarlar → Saat ve dil → Tarih ve saat → Şimdi eşitle."></span>
                 <span id="adm-who" class="adm-chip"></span>
                 <button id="adm-signout" type="button" class="adm-btn adm-btn--ghost">Çıkış</button>
             </div>
@@ -55,8 +56,10 @@
 
         <nav class="adm-nav" aria-label="Bölümler">
             <button type="button" data-view="overview" class="adm-tab is-active" aria-current="page">📊 Genel bakış</button>
+            <span class="adm-nav-group" aria-hidden="true">Multiplayer</span>
             <button type="button" data-view="rooms" class="adm-tab">🔴 Canlı odalar <span id="adm-rooms-count" class="adm-count"></span></button>
             <button type="button" data-view="tables" class="adm-tab">🃏 Masalar <span id="adm-tables-count" class="adm-count"></span></button>
+            <span class="adm-nav-sep" aria-hidden="true"></span>
             <button type="button" data-view="online" class="adm-tab">👥 Çevrimiçi <span id="adm-online-count" class="adm-count"></span></button>
             <button type="button" data-view="players" class="adm-tab">🪙 Oyuncular &amp; jeton</button>
             <button type="button" data-view="audit" class="adm-tab">📜 Denetim kaydı</button>
@@ -139,10 +142,10 @@
                 <div class="adm-toolbar">
                     <label for="adm-online-filter" class="adm-sr">Filtre</label>
                     <input id="adm-online-filter" type="search" class="adm-input" placeholder="Filtre: ad veya kimlik" autocomplete="off" spellcheck="false">
-                    <label class="adm-check"><input id="adm-online-intable" type="checkbox"> Yalnız oyundakiler</label>
+                    <div id="adm-online-cats" class="adm-seg" role="group" aria-label="Kategori"></div>
                     <span id="adm-online-meta" class="adm-muted"></span>
                 </div>
-                <div id="adm-online" class="adm-card adm-scroll" aria-busy="true"></div>
+                <div id="adm-online" aria-busy="true"></div>
                 <p class="adm-muted adm-note">Giriş yapmış ve sekmesi açık hesaplar (v3.22.3 ve sonrası). Misafirler ve eski sürümü açık kalmış sekmeler görünmez. Sekme kapanınca kayıt sunucu tarafından silinir.</p>
             </section>
 
@@ -187,7 +190,7 @@
 
     <div id="adm-toast" class="adm-toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="js/admin.js?v=3.22.4"></script>
+    <script type="module" src="js/admin.js?v=3.22.5"></script>
 </body>
 
 </html>

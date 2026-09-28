@@ -58,6 +58,39 @@
           "s": {
             ".validate": "newData.isString() && newData.val().matches(/^(menu|bots|daily|legends|match)$/)"
           },
+          "g": {
+            ".validate": "newData.hasChildren(['h', 'p', 'b', 'a', 'n', 'o', 'e', 'u'])",
+            "h": {
+              ".validate": "newData.hasChildren(['0', '1', '2', '3'])",
+              "$seat": {
+                ".validate": "$seat.matches(/^[0-3]$/) && newData.isNumber() && newData.val() >= 0 && newData.val() <= 60 && newData.val() % 1 === 0"
+              }
+            },
+            "p": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 60 && newData.val() % 1 === 0"
+            },
+            "b": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 60 && newData.val() % 1 === 0"
+            },
+            "a": {
+              ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 3 && newData.val() % 1 === 0"
+            },
+            "n": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000 && newData.val() % 1 === 0"
+            },
+            "o": {
+              ".validate": "newData.isBoolean()"
+            },
+            "e": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99 && newData.val() % 1 === 0"
+            },
+            "u": {
+              ".validate": "newData.isNumber() && newData.val() <= now"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
           "$other": {
             ".validate": false
           }

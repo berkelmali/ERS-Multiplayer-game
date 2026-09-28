@@ -163,6 +163,29 @@ export function composeGameRoomWriteFull() {
  */
 export const ONLINE_ACTIVITIES = Object.freeze(['menu', 'bots', 'daily', 'legends', 'match']);
 const serverTimeField = { '.validate': 'newData.isNumber() && newData.val() <= now' };
+const intIn = (lo, hi) => ({ '.validate': `newData.isNumber() && newData.val() >= ${lo} && newData.val() <= ${hi} && newData.val() % 1 === 0` });
+/**
+ * g — a bot / Daily / Legends match, summarised (v3.22.5). Those matches run
+ * in the browser and leave no table or room, so this is the only way an admin
+ * sees one break. Counts only — never a card: h seat hand sizes, p pile,
+ * b burn pile, a whose turn, n moves so far, o over, e page errors, u server
+ * time of the last change. Written when it changes, at most every 5 s.
+ */
+export const SOLO_MATCH_RULES = Object.freeze({
+    '.validate': "newData.hasChildren(['h', 'p', 'b', 'a', 'n', 'o', 'e', 'u'])",
+    h: {
+        '.validate': "newData.hasChildren(['0', '1', '2', '3'])",
+        $seat: { '.validate': "$seat.matches(/^[0-3]$/) && newData.isNumber() && newData.val() >= 0 && newData.val() <= 60 && newData.val() % 1 === 0" }
+    },
+    p: intIn(0, 60),
+    b: intIn(0, 60),
+    a: intIn(-1, 3),
+    n: intIn(0, 1000000),
+    o: { '.validate': 'newData.isBoolean()' },
+    e: intIn(0, 99),
+    u: serverTimeField,
+    $other: { '.validate': false }
+});
 export const ONLINE_RULES = Object.freeze({
     '.read': ADMIN_ROOMS_READ,
     $uid: {
@@ -172,6 +195,7 @@ export const ONLINE_RULES = Object.freeze({
             at: serverTimeField,
             t: serverTimeField,
             s: { '.validate': `newData.isString() && newData.val().matches(/^(${ONLINE_ACTIVITIES.join('|')})$/)` },
+            g: SOLO_MATCH_RULES,
             $other: { '.validate': false }
         }
     }

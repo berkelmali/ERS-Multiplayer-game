@@ -21,6 +21,19 @@ if exist ".git\index.lock" (
     exit /b 1
 )
 
+REM v3.22.5: commit edilmemis degisiklik varsa commit.bat unutulmustur.
+set "ERS_DIRTY="
+for /f "delims=" %%L in ('git status --porcelain') do set "ERS_DIRTY=1"
+if defined ERS_DIRTY (
+    echo.
+    echo !!! Commit edilmemis degisiklik var:
+    git status --short
+    echo.
+    echo     Once commit.bat calistir, sonra bu dosyayi. Hicbir sey gonderilmedi.
+    pause
+    exit /b 1
+)
+
 echo.
 echo === GitHub'daki son durum aliniyor ===
 git fetch origin
@@ -39,6 +52,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
+for /f %%N in ('git rev-list --count origin/main..HEAD') do set "ERS_AHEAD=%%N"
+if "%ERS_AHEAD%"=="0" (
+    echo.
+    echo Gonderilecek yeni commit yok -- GitHub zaten guncel.
+    pause
+    exit /b 0
+)
+
 echo.
 echo === Gonderilecek commit'ler ===
 git log --oneline origin/main..HEAD
@@ -49,6 +70,36 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+
+REM v3.22.5: gecmis yalnizca Berk Elmali'nin; imza satiri ve yabanci yazar yok.
+git log origin/main..HEAD --format=%%B > "%TEMP%\ers_push_msgs.txt"
+findstr /i /c:"Co-Authored-By" /c:"noreply@anthropic.com" /c:"Generated with" /c:"claude.com" "%TEMP%\ers_push_msgs.txt" >nul
+if not errorlevel 1 (
+    echo.
+    echo !!! DUR: gidecek bir commit mesajinda imza satiri var:
+    findstr /i /c:"Co-Authored-By" /c:"noreply@anthropic.com" /c:"Generated with" /c:"claude.com" "%TEMP%\ers_push_msgs.txt"
+    del "%TEMP%\ers_push_msgs.txt" >nul 2>&1
+    echo     Hicbir sey gonderilmedi. Bana getir.
+    pause
+    exit /b 1
+)
+del "%TEMP%\ers_push_msgs.txt" >nul 2>&1
+REM Exact comparison per commit. (findstr /x cannot be used here: git ends
+REM lines with LF only, and findstr's whole-line match needs CR -- it refused
+REM a correct commit on the first run.)
+set "ERS_BAD_AUTHOR="
+for /f "delims=" %%A in ('git log origin/main..HEAD "--format=%%ae"') do (
+    if /i not "%%A"=="berk9elmali9@gmail.com" set "ERS_BAD_AUTHOR=%%A"
+)
+if defined ERS_BAD_AUTHOR (
+    echo.
+    echo !!! DUR: yazari Berk Elmali olmayan commit var ^(%ERS_BAD_AUTHOR%^):
+    git log origin/main..HEAD --format="%%h %%an <%%ae> %%s"
+    echo     Hicbir sey gonderilmedi.
+    pause
+    exit /b 1
+)
+echo   Imza satiri yok, yazar Berk Elmali -- tamam.
 
 echo.
 echo ============================================================

@@ -711,6 +711,21 @@ async function runCleanupScenarios() {
     await record('a marker carries all three fields', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { at: SV, s: 'menu' }, OUT)));
     await record('a marker cannot smuggle an extra field', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}`, { at: SV, t: SV, s: 'menu', name: 'x' }, OUT)));
     await record('a marker key has the shape of a connection id', false, async () => allowed(await tryWrite(`online/${OUT}/short`, { at: SV, t: SV, s: 'menu' }, OUT)));
+    // v3.22.5 — the solo match summary g (counts only)
+    const G = (over = {}) => ({ h: { 0: 13, 1: 12, 2: 14, 3: 13 }, p: 0, b: 0, a: 2, n: 40, o: false, e: 0, u: SV, ...over });
+    await tryWrite(`online/${OUT}/${CONN}`, { at: SV, t: SV, s: 'bots' }, OUT);
+    await record('a bot match summary is accepted', true, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, G(), OUT)));
+    await record('...and removed when the match ends', true, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, null, OUT)));
+    await record('a summary cannot carry a card (or anything else)', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, G({ cards: [{ rank: 5 }] }), OUT)));
+    await record('a hand size is bounded', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, G({ h: { 0: 999, 1: 0, 2: 0, 3: 0 } }), OUT)));
+    await record('there are exactly four seats', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, G({ h: { 0: 13, 1: 13, 2: 13, 3: 13, 4: 1 } }), OUT)));
+    await record('a hand size is a whole number', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, G({ p: 1.5 }), OUT)));
+    await record('the turn is a seat or -1', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, G({ a: 7 }), OUT)));
+    await record('"over" is a boolean', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, G({ o: 'yes' }), OUT)));
+    await record('the error count is bounded', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, G({ e: 5000 }), OUT)));
+    await record('a summary is not dated in the future', false, async () => allowed(await tryWrite(`online/${OUT}/${CONN}/g`, G({ u: Date.now() + 3600e3 }), OUT)));
+    await record('a summary has every field', false, async () => { const g = G(); delete g.n; return allowed(await tryWrite(`online/${OUT}/${CONN}/g`, g, OUT)); });
+    await record('nobody writes a summary into another player marker', false, async () => allowed(await tryWrite(`online/${SEAT}/${CONN}/g`, G(), OUT)));
     await record('every activity word the client sends is accepted', true, async () => {
         for (const s of ONLINE_ACTIVITIES) if (!allowed(await tryWrite(`online/${OUT}/${CONN2}`, { at: SV, t: SV, s }, OUT))) return false;
         return true;
@@ -748,6 +763,11 @@ const CLEANUP_MUTANTS = [
     { label: 'its last change may be dated in the future', build: () => rulesWithCleanup({ online: onlineWith({ t: { '.validate': 'newData.isNumber()' } }) }) },
     { label: 'the activity may be any text', build: () => rulesWithCleanup({ online: onlineWith({ s: { '.validate': 'newData.isString()' } }) }) },
     { label: 'a marker may carry extra fields', build: () => rulesWithCleanup({ online: onlineWith({ $other: { '.validate': true } }) }) },
+    { label: 'a summary may carry anything', build: () => rulesWithCleanup({ online: onlineWith({ g: { ...ONLINE_RULES.$uid.$conn.g, $other: { '.validate': true } } }) }) },
+    { label: 'hand sizes are unbounded', build: () => rulesWithCleanup({ online: onlineWith({ g: { ...ONLINE_RULES.$uid.$conn.g, h: { ...ONLINE_RULES.$uid.$conn.g.h, $seat: { '.validate': 'newData.isNumber()' } } } }) }) },
+    { label: 'a summary may lack fields', build: () => rulesWithCleanup({ online: onlineWith({ g: { ...ONLINE_RULES.$uid.$conn.g, '.validate': 'true' } }) }) },
+    { label: 'the summary time may be in the future', build: () => rulesWithCleanup({ online: onlineWith({ g: { ...ONLINE_RULES.$uid.$conn.g, u: { '.validate': 'newData.isNumber()' } } }) }) },
+    { label: 'the turn is unbounded', build: () => rulesWithCleanup({ online: onlineWith({ g: { ...ONLINE_RULES.$uid.$conn.g, a: { '.validate': 'newData.isNumber()' } } }) }) },
     { label: 'a marker may lack fields (or be a bare number)', build: () => rulesWithCleanup({ online: onlineWith({ '.validate': 'true' }) }) }
 ];
 console.log('\n--- cleanup / online mutants ---');

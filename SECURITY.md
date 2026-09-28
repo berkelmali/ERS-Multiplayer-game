@@ -74,7 +74,13 @@ the report is credited if you want it to be.
   activity last changed, and one word from a closed list (menu, bots, daily,
   legends, match), written on a screen change only. The server removes it on
   disconnect. Only the owner writes it, the rules refuse any other word or
-  field, and only admins can list it. It is deliberately separate from
+  field, and only admins can list it.
+  During a bot, Daily or Legends match (v3.22.5) the marker also carries `g`:
+  hand sizes, pile and burn size, whose turn, move count, over, and a count of
+  page errors — integers and a boolean with fixed bounds, never a card. At most
+  one write per 5 s, only when it changed; removed when the match ends. These
+  matches run in the browser, so a player can write any summary they like —
+  it is a diagnostic an admin reads, not a record anything trusts. It is deliberately separate from
   `presence/{uid}`, which decides whether a seated player is dropped.
 - Every rule change is run against the Firestore emulator, with deliberately
   broken copies that must be caught, before `deploy-rules.bat` sends it
