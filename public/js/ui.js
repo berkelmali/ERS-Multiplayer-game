@@ -3,7 +3,8 @@ import { GameState, getRankName, getSuitSymbol, SHIELD_DURATION_MS } from './gam
 import { Localization } from './localization.js?v=3';
 import { Settings } from './settings.js';
 import { GameManager } from './gameManager.js';
-import { CardSkins } from './cardSkins.js';
+import { CardSkins, CARD_SKINS } from './cardSkins.js';
+import { SeatSkins, cleanSkinId } from './seatSkins.js';
 import { renderRulesBadge } from './rulesBadge.js';
 import { LOADING_WATCHDOG_MS } from './errorCodes.js';
 import { MatchContext } from './matchContext.js';
@@ -20,6 +21,8 @@ export const UIManager = {
      * A real card is unique by rank and suit; a ghost is never yours.
      */
     _yours: new Set(),
+    /** pile key → the seat that laid it, for the cards of OTHER seats (v3.23.1). */
+    _theirs: new Map(),
 
     /** Incremented by clearBotTells(); see applyBotTells() for what it guards. */
     _tellGeneration: 0,
@@ -82,6 +85,7 @@ export const UIManager = {
         EventBus.off('gameStarted');
         EventBus.on('gameStarted', () => {
             this._yours.clear();
+            this._theirs.clear();
             this.previousStatuses = {};
             this.shieldExpireTimestamps = [0, 0, 0, 0];
 
@@ -872,6 +876,7 @@ export const UIManager = {
         if (!pile.length) {
             this.pileEl.innerHTML = '';
             this._yours.clear();
+            this._theirs.clear();
             return;
         }
         const onTable = Array.from(this.pileEl.children).filter(el => !el.dataset.burned);
@@ -883,6 +888,7 @@ export const UIManager = {
             const rot = (card.suit.length + card.rank * 7) % 30 - 15; // deterministic rotation
             div.style.transform = `rotate(${rot}deg) scale(1)`;
             if (this._yours.has(this.pileKey(card))) this.dressYourCard(div, card);
+            else if (this._theirs.has(this.pileKey(card))) this.dressSeatCard(div, card, this._theirs.get(this.pileKey(card)));
             this.pileEl.appendChild(div);
         });
     },
@@ -903,11 +909,29 @@ export const UIManager = {
         if (art) decorateArtCard(div, card, art);
     },
 
+    /**
+     * v3.23.1 — a card another seat laid, in the skin that seat wears in the
+     * room. Static on purpose: the class and an art deck's figures, none of the
+     * live effects (those stay on your own cards). The value is only ever
+     * mapped through the catalogue's closed list (seatSkins.js).
+     */
+    dressSeatCard(div, card, seat) {
+        const skinId = cleanSkinId(SeatSkins.get(seat), CARD_SKINS.map(k => k.id));
+        if (!skinId) return;
+        const skinClass = CardSkins.getSkinClass(skinId);
+        if (!skinClass) return;
+        div.classList.add(skinClass);
+        const art = CardSkins.getSkinArt(skinId);
+        if (art) decorateArtCard(div, card, art);
+    },
+
     renderPileCard(card, playerId) {
         const div = this.createCardElement(card);
         // Remember what you laid, so a redraw can dress it again (ERS-27).
         if (playerId === 0 && !isGhost(card)) this._yours.add(this.pileKey(card));
         else this._yours.delete(this.pileKey(card));
+        if (playerId > 0 && !isGhost(card)) this._theirs.set(this.pileKey(card), playerId);
+        else this._theirs.delete(this.pileKey(card));
 
         // --- Card Skins (v2.9.0, see cardSkins.js / CLAUDE.md §6.28) ---
         // Applied only to cards YOU played (playerId 0) — this is a local
@@ -920,6 +944,7 @@ export const UIManager = {
         // Online, the room's redraw keeps this element (syncPileElements) —
         // until v3.21.2 it replaced it in the same tick (council ERS-27).
         if (playerId === 0) this.dressYourCard(div, card);
+        else this.dressSeatCard(div, card, playerId);
 
         const rot = (Math.random() - 0.5) * 28; // slight random rotation for naturalness
         div.style.transform = `rotate(${rot}deg)`;

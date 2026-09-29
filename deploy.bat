@@ -1865,6 +1865,14 @@ echo       icin rules deploy'u gerekmiyor. Sim: Bastet %%100 -^> %%39, Set %%88 
 echo       %%2 ^(III bir duvar^). Gercek oyuncu verisi yok; zor gelirse tablo
 echo       ascension.js'te tek yerde. Konsey ERS-33, 3249 test.
 echo.
+echo  --- v3.23.1 -- GORUNEN KAPLAMA ---
+echo  236) Coklu masada taktigin kaplama artik rakiplerine de gorunur: odadaki
+echo       koltuguna tek alan yazilir ^(players/i/cardSkin, katalogdan id^),
+echo       okuyan taraf yalniz katalogun listesinden gecirir. Rakibin kaplamasi
+echo       STATIK ^(canli efekt yok^). KURAL DOSYASI DEGISMEDI, rules deploy'u
+echo       GEREKMIYOR. Sinir: sahiplik odada dogrulanamaz, yamali bir istemci
+echo       listeden herhangi bir kaplamayi yazabilir ^(kozmetik^). 3270 test.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir

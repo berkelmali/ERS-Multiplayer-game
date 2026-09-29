@@ -43,3 +43,15 @@ Set 88.3/62.7/29.8/1.7, Ra 66.9/54.7/46.2/19.5.
   person's). A manual play is part of the gate and has not been done here.
 - No telemetry: nobody knows how many players have beaten all six gods.
 - The judges are separate contexts of one model.
+
+## Addendum — F3 built as v3.23.1 (visible skin)
+
+Built after the operator's yes, accepting the unverifiable-ownership risk.
+Reading the rules changed the plan: `gameRooms/$roomId/.write` already lets any
+seated player write inside the room (the same reason `activeEmoji` works), so
+**no rules change and no deploy** — the council had assumed a diff. Ownership
+is still unverifiable (wallet in Firestore, room in RTDB): a patched client can
+write any catalogue id. The reader therefore never trusts the value as markup;
+it maps it through the catalogue's closed list, and draws class and art only.
+Opponents' skins are static (no live particle effects) — stricter than the
+council's "only each seat's top card animates". Pinned by section 94.

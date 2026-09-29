@@ -15,6 +15,9 @@ import { applySlapWin, applySlapBurn, awardChallenge, dropHollowHand, getNextPla
 import { applyGodSlapWin, applyGodBurn } from "./pantheonRoom.js";
 import * as FairSlap from "./fairSlap.js";
 import { registerProtocol } from "./roomProtocol.js";
+import { SeatSkins, SKIN_FIELD, wantedSkin, skinPushPlan } from "./seatSkins.js";
+import { CardSkins, CARD_SKINS } from "./cardSkins.js";
+import { Settings } from "./settings.js";
 
 const db = getFirestore(app);
 
@@ -71,6 +74,7 @@ export const FirebaseSync = {
             .catch(() => { /* signed-out spectator: clock still works, no RTT probe */ });
         this.lastActivePlayerId = null; // Reset tracker for the new game session
         this.lastEmojiT = {}; // Reset emoji trackers for the new game session
+        this._skinAt = 0;
         this.lastShieldShatterTime = 0;
         this.lastPlayerStreaks = [0, 0, 0, 0];
         if (this.dbShieldDecayTimers) {
@@ -156,6 +160,9 @@ export const FirebaseSync = {
     },
 
     syncToLocal(data) {
+        // v3.23.1 — before any card is drawn below: who at this table wears which skin.
+        SeatSkins.set(data.players, this.localPlayerIndex, CARD_SKINS.map(k => k.id));
+        this.syncOwnSkin(data);
         // Delta calculation for UI events (Action Log / Sounds)
         if (this.lastPlayerCardCounts.length > 0) {
             // Sync shield shatters
@@ -467,6 +474,7 @@ export const FirebaseSync = {
         // a table that had Tens switched off would keep it off in the next
         // offline match.
         HouseRules.clearRoom();
+        SeatSkins.clear();
         if (this.unsubRoom) {
             this.unsubRoom();
             this.unsubRoom = null;
@@ -547,6 +555,28 @@ export const FirebaseSync = {
         if (!this.roomId) return;
         const roomRef = dbRef(rtdb, `gameRooms/${this.roomId}`);
         await rtdbUpdate(roomRef, updates);
+    },
+
+    /**
+     * Writes the skin you own and equipped to your seat, so the table can draw
+     * your cards in it (seatSkins.js says what this does and does not prove).
+     * Checked on every snapshot, written only when the room disagrees, and never
+     * more than once per few seconds.
+     */
+    syncOwnSkin(data) {
+        try {
+            const me = data.players && data.players[this.localPlayerIndex];
+            const uid = AuthSystem.currentUser && AuthSystem.currentUser.uid;
+            if (!me || !uid || me.uid !== uid || !this.roomId) return;
+            const want = wantedSkin(CardSkins.effectiveSkin(Settings.config.equippedCardSkin), CARD_SKINS.map(k => k.id));
+            const now = Date.now();
+            const plan = skinPushPlan({ mine: me[SKIN_FIELD], want, lastAt: this._skinAt || 0, now });
+            if (!plan) return;
+            this._skinAt = now;
+            const pRef = dbRef(rtdb, `gameRooms/${this.roomId}/players/${this.localPlayerIndex}`);
+            rtdbUpdate(pRef, { [SKIN_FIELD]: plan === 'set' ? want : null })
+                .catch((e) => console.warn('[skin] not shared:', e && (e.code || e.message)));
+        } catch (e) { /* cosmetic: never let it touch the match */ }
     },
 
     async pushEmoji(emojiString) {

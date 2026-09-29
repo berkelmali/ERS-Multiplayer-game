@@ -171,6 +171,17 @@ kaçan ya da yanlış = 0). Pencere dolduğunda oran bir işarete çevrilir.
   tanrılarda hâlâ kolay, III bir duvar; hızlı kahraman simülasyonda neredeyse
   etkilenmiyor (simüle edilen refleks gerçek bir insandan keskin). Gerçek
   oyuncu verisi yok (telemetri yok) — bantlar bir yargı, ölçüm değil.
+- **Görünen Kaplama (v3.23.1, konsey ERS-33):** çok oyunculu masada taktığın
+  kaplama artık diğer oyunculara da görünür. Odadaki koltuğuna tek alan yazılır
+  (`players/{i}/cardSkin`, katalogdan bir id; yalnız cüzdanın SAHİP olduğu
+  kaplama, `CardSkins.effectiveSkin`). Okuyan taraf değeri yalnızca katalogun
+  kapalı listesinden geçirir (`seatSkins.cleanSkinId`) — geçmeyen hiçbir şey
+  çizilmez. Rakibin kaplaması STATİK: sınıf ve sanat destesinin figürleri; canlı
+  parçacık efektleri yalnız kendi kartlarında. **Kural değişikliği YOK** —
+  odadaki oyuncu zaten oda içine yazabiliyor (activeEmoji gibi). **Bilinen
+  sınır:** sahiplik odada doğrulanamaz (cüzdan Firestore'da, oda RTDB'de);
+  yamalı bir istemci listeden herhangi bir id yazabilir. Alan kozmetik; kötüye
+  kullanım artarsa tek satırla kaldırılır ya da `.validate` eklenir.
 
 ### 3.5 Duat Yolculuğu (v3.18.0)
 
@@ -230,6 +241,7 @@ kaçan ya da yanlış = 0). Pencere dolduğunda oran bir işarete çevrilir.
 
 | Sürüm | Değişiklik |
 |---|---|
+| 1.3.1 (v3.23.1) | Görünen Kaplama: çok oyunculu masada kaplaman herkese görünür (§3.4), kural değişikliği yok, sahiplik odada doğrulanamaz (konsey ERS-33). |
 | 1.3 (v3.23.0) | Tanrı Yükselişi I–III (§3.4), yalnız solo, ödül altın çerçeve; tablo `ascension.js`'te, bantlar `sim-pantheon --levels` ile ölçüldü (konsey ERS-33). |
 | 1 (v3.17.0) | İlk sürüm. Sütunlar mevcut kanıttan çıkarıldı. Çarkta Gümüş/Altın Boş dilimi kaldırıldı (§3.2). |
 | 1.2.1 (v3.18.0) | Konsey ERS-18'in beş düzeltmesi (kartla kazanılan tanrı da düşer; "rahip" yerine "diğer iki oyuncu"; Mezar'a kurallar ekranı; bölüm başlıkları ortak panel stili, altın yalnızca dünya nesnelerinde; Duat girişi comeback sayılmaz). ERS-19: sekme YOK — Efsaneler'de önce Yolculuklar, sonra Tanrıların Masası (COUNCIL-v3.18.0-tabs.md). |
