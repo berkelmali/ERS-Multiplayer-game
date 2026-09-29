@@ -2655,6 +2655,171 @@ await step('online, your skin survives the room\'s redraw — and nothing replay
     console.log('         laid, synced, synced again, appended from the room, cleared: your card is the same element, still dressed');
 });
 
+// ── v3.23.0 / v3.23.1 (council ERS-33/34): the two features, in a real browser ──
+// The suite pins the table and the wiring; only a browser shows that the hall
+// draws the pills, that a level changes the seat the god sits in, that a fall
+// records the LEVEL, and that another seat's card wears the seat's skin.
+await step('Ascension: the hall offers a level after the last, the duel is sized by it, a fall records the level', async () => {
+    await page.evaluate(async () => {
+        const { PantheonMode } = await import('./js/pantheon.js');
+        PantheonMode.store = { defeated: { bastet: 1 }, ascended: {} };
+    });
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    await page.evaluate(async () => { (await import('./js/pantheon.js')).PantheonMode.renderHall(); });
+    const hall = await page.evaluate(() => {
+        const pills = [...document.querySelectorAll('[data-god="bastet"][data-level]')];
+        const card = document.querySelector('[data-god="bastet"]').closest('.god-card');
+        return { levels: pills.map(p => p.getAttribute('data-level') + (p.disabled ? 'x' : '')),
+                 note: (card.querySelector('.god-ascend-note') || {}).textContent || '',
+                 pillHeight: Math.round(pills[0].getBoundingClientRect().height),
+                 locked: [...document.querySelectorAll('.god-card')].slice(2).every(c => !c.querySelector('[data-level]')) };
+    });
+    if (hall.levels.join() !== '1,2x,3x') throw new Error('the hall should open I only: ' + JSON.stringify(hall));
+    if (!/Ascension I: \+25% life/.test(hall.note)) throw new Error('the hall does not say in words what level I does: ' + JSON.stringify(hall));
+    if (hall.pillHeight < 40) throw new Error('a pill is under a finger wide: ' + hall.pillHeight + 'px');
+    if (!hall.locked) throw new Error('an unbeaten god offers Ascension');
+    await page.click('[data-god="bastet"][data-level="1"]');
+    await page.waitForSelector('#game-container.active', { timeout: 8000 });
+    const r = await page.evaluate(async () => {
+        const { PantheonMode } = await import('./js/pantheon.js');
+        const { AIController } = await import('./js/ai.js');
+        const { BotConfig } = await import('./js/botConfig.js');
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+        const GS = window.GameState;
+        await sleep(400);
+        const out = {
+            level: PantheonMode.level, maxHp: PantheonMode.maxHp,
+            hpText: document.getElementById('boss-hp').textContent.trim(),
+            tag: document.getElementById('boss-extra').textContent,
+            delay: AIController.seatConfig[2].playDelay, easyDelay: BotConfig.easy.playDelay
+        };
+        PantheonMode.hp = 4;
+        await sleep(650);
+        GS.pile = [{ rank: 7, suit: 'clubs' }, { rank: 7, suit: 'hearts' }]; GS.burnPile = [];
+        GS.slap(0);
+        await sleep(150);
+        out.ascended = PantheonMode.store.ascended.bastet;
+        return out;
+    });
+    await page.waitForSelector('#victory-screen.active', { timeout: 8000 });
+    await page.click('#btn-victory-menu');
+    await page.waitForSelector('#main-menu.active', { timeout: 8000 });
+    const after = await page.evaluate(async () => {
+        await new Promise(res => setTimeout(res, 300));
+        const { PantheonMode } = await import('./js/pantheon.js');
+        return { level: PantheonMode.level, defeated: !!PantheonMode.store.defeated.bastet };
+    });
+    // …and the hall now shows the level cleared, the rim, and II open.
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    const hall2 = await page.evaluate(() => {
+        const card = document.querySelector('[data-god="bastet"]').closest('.god-card');
+        return { pills: [...card.querySelectorAll('[data-level]')].map(p => p.textContent.trim() + (p.disabled ? 'x' : '')), rim: card.classList.contains('gilded-1'),
+                 rimPainted: getComputedStyle(card).boxShadow !== 'none', note: (card.querySelector('.god-ascend-note') || {}).textContent || '' };
+    });
+    await page.click('#btn-legends-back');
+    await page.waitForSelector('#main-menu.active', { timeout: 5000 });
+    if (r.level !== 1 || r.maxHp !== 100 || (r.hpText !== '4 / 100' && r.hpText !== '100 / 100')) throw new Error('Ascension I should give Bastet 100 life: ' + JSON.stringify(r));
+    if (!/Ascension I/.test(r.tag)) throw new Error('the HUD does not name the level: ' + JSON.stringify(r));
+    if (!(r.delay < r.easyDelay)) throw new Error('the god is no quicker than its tier: ' + JSON.stringify(r));
+    if (r.ascended !== 1) throw new Error('the fall did not record Ascension I: ' + JSON.stringify(r));
+    if (after.level !== 0) throw new Error('leaving did not reset the level: ' + JSON.stringify(after));
+    if (hall2.pills.join() !== 'I ✓,II,IIIx' || !hall2.rim || !hall2.rimPainted) throw new Error('the hall after the fall: ' + JSON.stringify(hall2));
+    if (!/Ascension II: \+50% life/.test(hall2.note)) throw new Error('the note does not move on to level II: ' + JSON.stringify(hall2));
+    console.log(`         hall opens I only and says what it does; Bastet ${r.maxHp} life, quicker (${Math.round(r.delay)} < ${r.easyDelay} ms), fell -> level 1 kept, gilded rim, II now open`);
+});
+
+await step('visible skins: another seat\'s card wears that seat\'s skin, and only a catalogue skin', async () => {
+    const r = await page.evaluate(async () => {
+        const { UIManager } = await import('./js/ui.js');
+        const { SeatSkins } = await import('./js/seatSkins.js');
+        const { CARD_SKINS } = await import('./js/cardSkins.js');
+        const { Settings } = await import('./js/settings.js');
+        const GS = window.GameState;
+        const ids = CARD_SKINS.map(k => k.id);
+        const saved = { skin: Settings.config.equippedCardSkin, pile: GS.pile };
+        const el = document.getElementById('pile-cards');
+        const out = {};
+        try {
+            Settings.config.equippedCardSkin = 'classic';
+            UIManager.syncPileElements([]);
+            SeatSkins.set([{}, { cardSkin: 'gods' }, { cardSkin: '<img src=x onerror=1>' }, { cardSkin: 'neon' }], 0, ids);
+            const a = { rank: 5, suit: 'hearts' }, b = { rank: 6, suit: 'clubs' }, c = { rank: 8, suit: 'spades' }, d = { rank: 9, suit: 'diamonds' };
+            GS.pile = [a];       UIManager.renderPileCard(a, 1);
+            GS.pile = [a, b];    UIManager.renderPileCard(b, 2);
+            GS.pile = [a, b, c]; UIManager.renderPileCard(c, 3);
+            GS.pile = [a, b, c, d]; UIManager.renderPileCard(d, 0);
+            const cls = () => [...el.children].map(n => [...n.classList].filter(x => x.startsWith('card-skin-')).join('+'));
+            out.laid = cls();
+            const first = el.children[0];
+            UIManager.handleGameSynced({ players: [] });
+            out.sameNode = el.children[0] === first;
+            out.afterSync = cls();
+            out.artFigures = el.children[0].classList.contains('pd-deck');
+            out.hostileClass = [...el.children].some(n => n.className.includes('onerror') || n.className.includes('<'));
+            // a card that arrived with no cardPlayed: nobody is remembered as its owner
+            const e = { rank: 2, suit: 'clubs' };
+            GS.pile = [a, b, c, d, e];
+            UIManager.handleGameSynced({ players: [] });
+            out.unknownOwner = cls()[4];
+            // leaving the room empties the table
+            SeatSkins.clear();
+            const f = { rank: 3, suit: 'clubs' };
+            GS.pile = [a, b, c, d, e, f]; UIManager.renderPileCard(f, 1);
+            out.afterLeave = cls()[5];
+        } finally {
+            Settings.config.equippedCardSkin = saved.skin;
+            SeatSkins.clear();
+            GS.pile = saved.pile || [];
+            UIManager.syncPileElements([]);
+        }
+        return out;
+    });
+    if (r.laid.join('|') !== 'card-skin-gods||card-skin-neon|') throw new Error('another seat\'s card should wear its seat\'s skin (gods, none for a hostile value, neon, and yours classic): ' + JSON.stringify(r));
+    if (!r.sameNode || r.afterSync.join('|') !== r.laid.join('|')) throw new Error('the redraw undressed a card: ' + JSON.stringify(r));
+    if (!r.artFigures) throw new Error('an art deck lost its figures on another seat\'s card: ' + JSON.stringify(r));
+    if (r.hostileClass) throw new Error('a hostile room value reached the markup: ' + JSON.stringify(r));
+    if (r.unknownOwner !== '') throw new Error('a card with no known owner was dressed: ' + JSON.stringify(r));
+    if (r.afterLeave !== '') throw new Error('skins outlived the room: ' + JSON.stringify(r));
+    console.log('         seat 1 gods (with its figures), seat 2 hostile value drawn as nothing, seat 3 neon, yours classic; survives the redraw; gone with the room');
+});
+
+await step('visible skins: your own seat shares only the skin the wallet owns, and never throws', async () => {
+    const r = await page.evaluate(async () => {
+        const { FirebaseSync } = await import('./js/firebaseSync.js');
+        const { AuthSystem } = await import('./js/auth.js');
+        const { Settings } = await import('./js/settings.js');
+        const { CardSkins } = await import('./js/cardSkins.js');
+        const { createMemoryLedger } = await import('./js/walletRules.js');
+        const saved = { skin: Settings.config.equippedCardSkin, roomId: FirebaseSync.roomId, idx: FirebaseSync.localPlayerIndex, at: FirebaseSync._skinAt };
+        const userDesc = Object.getOwnPropertyDescriptor(AuthSystem, 'currentUser');
+        const out = {};
+        try {
+            createMemoryLedger(CardSkins, { coins: 0, owned: ['classic', 'neon'] });
+            FirebaseSync.roomId = 'ROOM'; FirebaseSync.localPlayerIndex = 0;
+            Object.defineProperty(AuthSystem, 'currentUser', { value: { uid: 'u1' }, configurable: true, writable: true });
+            const room = (skin) => ({ players: [{ uid: 'u1', cardSkin: skin }, { uid: 'u2' }, { uid: 'u3' }, { uid: 'bot_3' }] });
+            Settings.config.equippedCardSkin = 'gods';                 // equipped but NOT owned
+            FirebaseSync._skinAt = 0; FirebaseSync.syncOwnSkin(room(undefined)); out.notOwned = FirebaseSync._skinAt;
+            Settings.config.equippedCardSkin = 'neon';                 // owned
+            FirebaseSync._skinAt = 0; FirebaseSync.syncOwnSkin(room(undefined)); out.owned = FirebaseSync._skinAt > 0;
+            FirebaseSync._skinAt = 0; FirebaseSync.syncOwnSkin(room('neon')); out.agrees = FirebaseSync._skinAt;
+            FirebaseSync._skinAt = 0; FirebaseSync.syncOwnSkin({ players: [{ uid: 'someone-else' }, {}, {}, {}] }); out.notMySeat = FirebaseSync._skinAt;
+            FirebaseSync._skinAt = 0; FirebaseSync.syncOwnSkin({}); out.noPlayers = FirebaseSync._skinAt;
+        } finally {
+            Settings.config.equippedCardSkin = saved.skin; CardSkins.detachLedger();
+            FirebaseSync.roomId = saved.roomId; FirebaseSync.localPlayerIndex = saved.idx; FirebaseSync._skinAt = saved.at;
+            if (userDesc) Object.defineProperty(AuthSystem, 'currentUser', userDesc);
+        }
+        return out;
+    });
+    if (r.notOwned !== 0) throw new Error('an equipped skin the wallet does not own was shared: ' + JSON.stringify(r));
+    if (!r.owned) throw new Error('an owned, equipped skin was not shared: ' + JSON.stringify(r));
+    if (r.agrees !== 0 || r.notMySeat !== 0 || r.noPlayers !== 0) throw new Error('a write was attempted when it should not be: ' + JSON.stringify(r));
+    console.log('         owned -> shared; equipped-but-not-owned, already-agreeing, someone else\'s seat, no players -> nothing written');
+});
+
 // ── v3.22.1: the admin page ────────────────────────────────────────────────
 // A context of its own, with a Firebase double that is an in-memory store —
 // scoped to this step, so firebase-stub.mjs stays inert for everything else.

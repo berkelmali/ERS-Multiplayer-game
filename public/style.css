@@ -6589,7 +6589,7 @@ html { overflow-x: clip; }
 .god-ascend-cap { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.65; }
 .ascend-pill {
     min-width: 40px;
-    min-height: 32px;
+    min-height: 40px;
     padding: 0.25rem 0.6rem;
     border-radius: 999px;
     border: 1px solid rgba(212, 175, 55, 0.5);
@@ -6599,6 +6599,7 @@ html { overflow-x: clip; }
     font-size: 0.8rem;
     cursor: pointer;
 }
+.god-ascend-note { flex-basis: 100%; margin: 0; font-size: 0.78rem; line-height: 1.35; opacity: 0.8; }
 .ascend-pill:hover:not(:disabled) { background: rgba(212, 175, 55, 0.16); }
 .ascend-pill:focus-visible { outline: 2px solid #f0d98a; outline-offset: 2px; }
 .ascend-pill:disabled { opacity: 0.4; cursor: not-allowed; }

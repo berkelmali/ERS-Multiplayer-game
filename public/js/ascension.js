@@ -20,7 +20,8 @@
  * a slap is, and the god is never faster than Ra at noon. Solo (bots) only —
  * the multiplayer table carries none of this, so pantheonRoom.js is untouched.
  *
- * Reward: a gilded rim on the god's card and its amulet. No coins (DESIGN G3).
+ * Reward: a gilded rim on the god's card and its amulet. No coins of its own
+ * (DESIGN G3): a win pays what any bot match pays, capped per day by the server.
  */
 
 export const MAX_LEVEL = 3;

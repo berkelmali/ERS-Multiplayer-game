@@ -15,7 +15,7 @@ import { applySlapWin, applySlapBurn, awardChallenge, dropHollowHand, getNextPla
 import { applyGodSlapWin, applyGodBurn } from "./pantheonRoom.js";
 import * as FairSlap from "./fairSlap.js";
 import { registerProtocol } from "./roomProtocol.js";
-import { SeatSkins, SKIN_FIELD, wantedSkin, skinPushPlan } from "./seatSkins.js";
+import { SeatSkins, SKIN_FIELD, SHARE_SKINS, wantedSkin, skinPushPlan } from "./seatSkins.js";
 import { CardSkins, CARD_SKINS } from "./cardSkins.js";
 import { Settings } from "./settings.js";
 
@@ -565,6 +565,7 @@ export const FirebaseSync = {
      */
     syncOwnSkin(data) {
         try {
+            if (!SHARE_SKINS) return;
             const me = data.players && data.players[this.localPlayerIndex];
             const uid = AuthSystem.currentUser && AuthSystem.currentUser.uid;
             if (!me || !uid || me.uid !== uid || !this.roomId) return;

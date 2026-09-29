@@ -1860,7 +1860,7 @@ echo  235) Yenilmis bir tanrinin kartinda Yukselis I-III dugmeleri cikar.
 echo       Her seviye tanriyi hem uzun yasatir hem hizlandirir ^(can x1,25 /
 echo       x1,5 / x1,75; III'te Ra'nin ogle hizi -- ondan hizlisi yok^). Bir
 echo       sonraki seviye icin bir oncekini gecmek gerekir. Odul altin cerceve,
-echo       coin YOK. Cok oyunculu masa ve kural dosyalari DEGISMEDI: bu surum
+echo       kendine ait coin YOK ^(galibiyet siradan bot maci gibi 40 coin oder^). Cok oyunculu masa ve kural dosyalari DEGISMEDI: bu surum
 echo       icin rules deploy'u gerekmiyor. Sim: Bastet %%100 -^> %%39, Set %%88 -^>
 echo       %%2 ^(III bir duvar^). Gercek oyuncu verisi yok; zor gelirse tablo
 echo       ascension.js'te tek yerde. Konsey ERS-33, 3249 test.
@@ -2095,5 +2095,17 @@ echo  --- v3.22.5 -- YINE ONCE deploy-db-rules.bat, HEMEN ARDINDAN BU ---
 echo   - Oyuncu hesabiyla bir bot maci ac. /admin, Cevrimici, Tek oyunculu:
 echo     "kartlar 13.13.13.13, yigin, sira" satiri 5 sn icinde gorunmeli.
 echo   - Saat cipi "saat uyumlu" ya da "cihaz saati N sn ileri/geri" demeli.
+echo.
+echo  --- v3.23.0 + v3.23.1 + v3.23.2 -- DEPLOY SONRASI ^(konsey ERS-34^) ---
+echo   - Iki cihaz ya da iki tarayici, iki hesap: DUZ bir coklu masa ac. Birinde
+echo     magazadan aldigin bir kaplamayi tak. Digerinin ekraninda o oyuncunun
+echo     attigi kartlar o kaplamayla gorunmeli; normal oyun akisi bozulmamali.
+echo     Kural dosyasi degismedi ve alan yazimi emulatorde denenemedi: oda
+echo     kurali OKUYARAK karar verildi, gozlemle degil. Bu yuzden bu kontrol sart.
+echo   - Kaplama gorunmuyorsa: public\js\seatSkins.js icinde SHARE_SKINS = true
+echo     satirini false yap, deploy.bat. Tek satir; hicbir sey yazilmaz, cizilmez.
+echo     Yukselis bundan bagimsizdir.
+echo   - Tanrilar Masasi: yenilmis bir tanrida I dugmesi acik ve altinda ne
+echo     yaptigi yazili; bir seviye gecince cerceve altin, sonraki seviye acik.
 echo.
 pause

@@ -165,8 +165,9 @@ kaçan ya da yanlış = 0). Pencere dolduğunda oran bir işarete çevrilir.
   hız, tanrının katmanından Şampiyon'a 0,4 / 0,75 / 1 oranında karışır; III'te
   Blitz mizacı — tam olarak öğle vaktindeki Ra, ondan hızlısı oyunda yok.
   Şaplağın ne olduğu ve hasarı hiçbir seviyede değişmez. **Yalnız solo:** oda
-  protokolü ve `pantheonRoom.js` dokunulmadı. Ödül altın çerçeve — coin yok
-  (G3). Ölçüm (n=1500, ortalama kahraman, kazanma %, seviye 0/1/2/3): Bastet
+  protokolü ve `pantheonRoom.js` dokunulmadı. Ödül altın çerçeve — kendine ait
+  coin yok (G3); galibiyet sıradan bir bot maçı gibi 40 coin öder, günlük tavanı
+  sunucu koyar. Ölçüm (n=1500, ortalama kahraman, kazanma %, seviye 0/1/2/3): Bastet
   100/100/99,7/39, Set 88/63/30/2, Ra 67/55/46/20. Sınırlar: I–II erken
   tanrılarda hâlâ kolay, III bir duvar; hızlı kahraman simülasyonda neredeyse
   etkilenmiyor (simüle edilen refleks gerçek bir insandan keskin). Gerçek

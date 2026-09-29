@@ -19,6 +19,14 @@
  *    write inside the room, exactly as activeEmoji does.
  */
 
+/**
+ * The kill switch (council ERS-34). Set to false and redeploy: nothing is
+ * written to the room and nothing is drawn from it; every client is back to
+ * seeing only its own skin. The one-line answer if the write is ever refused
+ * or misbehaves live.
+ */
+export const SHARE_SKINS = true;
+
 /** The field written under `gameRooms/{room}/players/{seat}`. */
 export const SKIN_FIELD = 'cardSkin';
 
@@ -62,7 +70,7 @@ export function skinPushPlan({ mine, want, lastAt = 0, now, gapMs = 4000 }) {
 /** The table's skins, read by ui.js when a card is laid. Offline it stays empty. */
 export const SeatSkins = {
     seats: [null, null, null, null],
-    set(players, localIndex, ids) { this.seats = seatSkinsFromRoom(players, localIndex, ids); },
+    set(players, localIndex, ids) { this.seats = SHARE_SKINS ? seatSkinsFromRoom(players, localIndex, ids) : [null, null, null, null]; },
     clear() { this.seats = [null, null, null, null]; },
     get(visualSeat) { return this.seats[visualSeat] || null; }
 };

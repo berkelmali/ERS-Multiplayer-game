@@ -259,6 +259,16 @@ export const PantheonMode = {
             pill.setAttribute('aria-label', `${L('ascendLabel', 'Ascension')} ${ROMAN[n]}: ${twist}`);
             row.appendChild(pill);
         }
+        // A tooltip does not exist on a phone: say in words what the NEXT level
+        // does (the last one, once all three are cleared). council ERS-34.
+        const next = Math.min(MAX_LEVEL, cleared + 1);
+        const A = ascensionFor(next);
+        const note = document.createElement('p');
+        note.className = 'god-ascend-note';
+        note.textContent = `${L('ascendLabel', 'Ascension')} ${ROMAN[next]}: ` + L('ascendTwist', '+{hp}% life, faster hands{blitz}')
+            .replace('{hp}', Math.round((A.hpMult - 1) * 100))
+            .replace('{blitz}', A.blitz ? L('ascendBlitz', ' — Blitz, like Ra at noon') : '');
+        row.appendChild(note);
         return row;
     },
 
