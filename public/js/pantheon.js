@@ -38,6 +38,7 @@ import { MatchContext } from './matchContext.js';
 import { Localization } from './localization.js?v=3';
 import { godSvg } from './godArt.js';
 import { ghostClones, addGhosts } from './ghostCards.js';
+import { ascensionFor, ascendedHp, blendConfig, canAscend, clearedLevel, MAX_LEVEL } from './ascension.js';
 
 export const BOSS_SEAT = 2;
 export const HERO_SEAT = 0;
@@ -84,11 +85,14 @@ export function godRules(id) {
 }
 
 /** The god's seat config: a tier, shaped by a personality (Ra at noon: Blitz). */
-export function godConfig(id, { noon = false } = {}) {
+export function godConfig(id, { noon = false, level = 0 } = {}) {
     const g = god(id);
     if (!g) return null;
-    const base = BotConfig[g.tier];
-    const pKey = noon ? 1 : g.personality;
+    const A = ascensionFor(level);
+    const base = blendConfig(BotConfig[g.tier], BotConfig.challenger, A.pace);
+    // Blitz is the pace Ra takes at noon; Ascension III gives it to every god
+    // from the first card (ascension.js) — never faster than that.
+    const pKey = (noon || A.blitz) ? 1 : g.personality;
     const cfg = applyPersonality(pKey ? BotPersonalities[pKey] : null, base);
     // Thoth's power IS his discipline: the numbers say so, not a flavour line.
     if (g.power === 'reckoning') return { ...cfg, accuracy: 1, falseSlap: 0 };
@@ -117,9 +121,10 @@ export const PantheonMode = {
     maxHp: 0,
     heals: 0,
     noon: false,
+    level: 0,
     lastRule: [null, null, null, null],
     damage: [0, 0, 0, 0],
-    store: { defeated: {} },
+    store: { defeated: {}, ascended: {} },
     _initialized: false,
 
     init() {
@@ -138,7 +143,7 @@ export const PantheonMode = {
         if (this.grid) {
             this.grid.addEventListener('click', (e) => {
                 const btn = e.target.closest('[data-god]');
-                if (btn && !btn.disabled) this.challenge(btn.getAttribute('data-god'));
+                if (btn && !btn.disabled) this.challenge(btn.getAttribute('data-god'), Number(btn.getAttribute('data-level')) || 0);
             });
         }
 
@@ -179,7 +184,8 @@ export const PantheonMode = {
             const card = document.createElement('article');
             const beaten = !!this.store.defeated[g.id];
             const open = isUnlocked(g.id, this.store.defeated);
-            card.className = 'god-card' + (beaten ? ' beaten' : '') + (open ? '' : ' locked');
+            const cleared = clearedLevel(this.store.ascended[g.id]);
+            card.className = 'god-card' + (beaten ? ' beaten' : '') + (open ? '' : ' locked') + (cleared ? ` gilded gilded-${cleared}` : '');
             const portrait = document.createElement('div');
             portrait.className = 'god-portrait';
             portrait.innerHTML = godSvg(g.id);
@@ -210,6 +216,7 @@ export const PantheonMode = {
                 btn.textContent = beaten ? L('pantheonRematch', 'Challenge again') : L('pantheonChallenge', 'Challenge');
             }
             body.append(h, ep, pw, meta, btn);
+            if (beaten) body.appendChild(this._ascensionRow(g, cleared));
             if (beaten) {
                 const amulet = document.createElement('span');
                 amulet.className = 'god-amulet';
@@ -222,20 +229,55 @@ export const PantheonMode = {
         });
     },
 
+    /** Ascension I–III under a beaten god: solo only, one row of pills. */
+    _ascensionRow(g, cleared) {
+        const L = (k, f) => Localization.get(k) || f;
+        const row = document.createElement('div');
+        row.className = 'god-ascend';
+        row.setAttribute('role', 'group');
+        row.setAttribute('aria-label', L('ascendLabel', 'Ascension'));
+        const cap = document.createElement('span');
+        cap.className = 'god-ascend-cap';
+        cap.textContent = L('ascendLabel', 'Ascension');
+        row.appendChild(cap);
+        const ROMAN = ['', 'I', 'II', 'III'];
+        for (let n = 1; n <= MAX_LEVEL; n++) {
+            const pill = document.createElement('button');
+            pill.type = 'button';
+            pill.setAttribute('data-god', g.id);
+            pill.setAttribute('data-level', String(n));
+            const A = ascensionFor(n);
+            const done = cleared >= n;
+            const ok = canAscend(n, this.store.defeated[g.id], this.store.ascended[g.id]);
+            pill.className = 'ascend-pill' + (done ? ' done' : '');
+            pill.disabled = !ok && !done;
+            pill.textContent = ROMAN[n] + (done ? ' ✓' : '');
+            const twist = L('ascendTwist', '+{hp}% life, faster hands{blitz}')
+                .replace('{hp}', Math.round((A.hpMult - 1) * 100))
+                .replace('{blitz}', A.blitz ? L('ascendBlitz', ' — Blitz, like Ra at noon') : '');
+            pill.title = twist;
+            pill.setAttribute('aria-label', `${L('ascendLabel', 'Ascension')} ${ROMAN[n]}: ${twist}`);
+            row.appendChild(pill);
+        }
+        return row;
+    },
+
     // ── the duel ───────────────────────────────────────────────────────────
-    async challenge(godId) {
+    async challenge(godId, level = 0) {
         const g = god(godId);
         if (!g || !isUnlocked(godId, this.store.defeated)) return;
+        if (level !== 0 && !canAscend(level, this.store.defeated[godId], this.store.ascended[godId])) return;
         const [{ AIController }, { GameManager }, { UIManager }] = await Promise.all([
             import('./ai.js'), import('./gameManager.js'), import('./ui.js')
         ]);
         this.armed = true;
         this.godId = godId;
+        this.level = level;
         this.noon = false;
         this._savedRules = { ...HouseRules.local };
         HouseRules.setLocal(godRules(godId), { force: true });
         HouseRules.lock('pantheon');
-        AIController.seatConfig[BOSS_SEAT] = godConfig(godId);
+        AIController.seatConfig[BOSS_SEAT] = godConfig(godId, { level });
         this._ai = AIController;
         this._applySeatName();
 
@@ -256,11 +298,11 @@ export const PantheonMode = {
 
     resetFight() {
         const g = god(this.godId);
-        this.maxHp = g.hp;
-        this.hp = g.hp;
+        this.maxHp = ascendedHp(g.hp, this.level);
+        this.hp = this.maxHp;
         this.heals = 0;
         this.noon = false;
-        if (this._ai) this._ai.seatConfig[BOSS_SEAT] = godConfig(this.godId);
+        if (this._ai) this._ai.seatConfig[BOSS_SEAT] = godConfig(this.godId, { level: this.level });
         this.lastRule = [null, null, null, null];
         this.damage = [0, 0, 0, 0];
         this.ghostsGiven = 0;
@@ -304,7 +346,7 @@ export const PantheonMode = {
         this._float(`−${dmg}`, 'hit');
         if (g.power === 'noon' && !this.noon && this.hp > 0 && this.hp <= this.maxHp / 2) {
             this.noon = true;
-            if (this._ai) this._ai.seatConfig[BOSS_SEAT] = godConfig(this.godId, { noon: true });
+            if (this._ai) this._ai.seatConfig[BOSS_SEAT] = godConfig(this.godId, { noon: true, level: this.level });
             this._heal(Math.round(1.5 * ONE_SLAP));
             this._say(Localization.get('pantheonNoon') || 'Noon! Ra blazes and quickens.');
         }
@@ -378,7 +420,12 @@ export const PantheonMode = {
     },
 
     _recordFall() {
-        this.store.defeated[this.godId] = Date.now();
+        if (this.level > 0) {
+            if (!this.store.ascended) this.store.ascended = {};
+            this.store.ascended[this.godId] = Math.max(clearedLevel(this.store.ascended[this.godId]), this.level);
+        } else {
+            this.store.defeated[this.godId] = Date.now();
+        }
         this._save();
         const name = Localization.get(`god_${this.godId}_name`) || this.godId;
         this._say((Localization.get('pantheonFallen') || '{god} has fallen!').replace('{god}', name));
@@ -451,6 +498,7 @@ export const PantheonMode = {
         }
         if (!this.armed) return;
         this.armed = false;
+        this.level = 0;
         if (this._ai) delete this._ai.seatConfig[BOSS_SEAT];
         if (this._gm) this._gm.rematchOptions = null;
         MatchContext.seatNames = null;
@@ -482,9 +530,10 @@ export const PantheonMode = {
         const extra = document.getElementById('boss-extra');
         if (extra) {
             const g = god(this.godId);
-            extra.textContent = g.power === 'nineLives'
+            const tag = this.level > 0 ? `${(Localization.get('ascendLabel') || 'Ascension')} ${['', 'I', 'II', 'III'][this.level]} · ` : '';
+            extra.textContent = tag + (g.power === 'nineLives'
                 ? (Localization.get('pantheonLivesLeft') || '🐾 {n} lives left').replace('{n}', NINE_LIVES - this.heals)
-                : (g.power === 'noon' && this.noon ? '☀ ' + (Localization.get('pantheonNoonTag') || 'Noon') : '');
+                : (g.power === 'noon' && this.noon ? '☀ ' + (Localization.get('pantheonNoonTag') || 'Noon') : ''));
         }
     },
 
@@ -511,7 +560,10 @@ export const PantheonMode = {
     _load() {
         try {
             const raw = localStorage.getItem(STORE_KEY);
-            if (raw) this.store = { defeated: {}, ...JSON.parse(raw) };
+            if (raw) {
+                const got = JSON.parse(raw);
+                this.store = { ...got, defeated: got.defeated || {}, ascended: (got.ascended && typeof got.ascended === 'object') ? got.ascended : {} };
+            }
         } catch { /* private window: the hall starts fresh */ }
     },
 

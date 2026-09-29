@@ -37,7 +37,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.22.5">
+    <link rel="stylesheet" href="style.css?v=3.23.0">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
@@ -263,7 +263,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.22.5
+        <div id="game-version">Berk Elmalı · v3.23.0
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -423,6 +423,7 @@
             <h3 class="legend-title" data-i18n="pantheonTitle">Table of the Gods</h3>
             <p class="legend-desc" data-i18n="pantheonDesc">A god takes the top seat. It has life: every valid slap from your side of the table wounds it — yours in full, your two priests' by half. Bring it to zero and you win, whoever holds the cards.</p>
             <p class="legend-desc" data-i18n="pantheonGhostDesc">👻 Every blow it survives, a god keeps ghost cards — echoes of the cards you slapped, laid on top of its deck. They play like real cards; whoever wins a pile keeps only the real ones.</p>
+            <p class="legend-desc" data-i18n="ascendDesc">✦ Beat a god, then face it again: Ascension I–III give it more life and quicker hands (III plays like Ra at noon). Solo only. The prize is a gilded rim — no coins.</p>
             <div id="pantheon-grid" class="pantheon-grid"></div>
         </section>
         <button id="btn-legends-back" class="btn secondary" data-i18n="back">Back</button>
@@ -910,6 +911,10 @@
                 <div class="rules-section">
                     <h3 data-i18n="rGhostRulesTitle">👻 Ghost Cards</h3>
                     <p data-i18n="rGhostRulesDesc">At the Table of the Gods, a slap by your side that wounds a god without felling it leaves the god ghost copies of the slapped cards, laid on top of its deck — thirteen at most. A ghost plays like a real card: it counts for every pattern, and a ghost face card opens a challenge. But a ghost belongs to no one: whoever wins a pile keeps only the real cards, and the ghosts vanish. A hand of nothing but ghosts counts as empty.</p>
+                </div>
+                <div class="rules-section">
+                    <h3 data-i18n="rAscendRulesTitle">✦ Ascension</h3>
+                    <p data-i18n="rAscendRulesDesc">Once you have beaten a god, its card offers Ascension I, II and III. Each level gives the god more life (25, 50, 75 percent) and quicker hands; level III plays as fast as Ra at noon, and nothing in the game is faster. A slap is worth the same at every level. Each level opens after the one before it. Ascension is for play against bots only; the reward is a gilded rim, not coins.</p>
                 </div>
                 <div class="rules-section" style="border-left: 3px solid #a78bfa; background: rgba(167, 139, 250, 0.05); padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 20px;">
                     <h3 data-i18n="rPersonalityTitle">🎭 Bot Personalities</h3>
@@ -1424,7 +1429,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.22.5"></script>
+    <script type="module" src="js/main.js?v=3.23.0"></script>
 </body>
 
 </html>

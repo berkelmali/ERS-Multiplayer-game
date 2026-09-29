@@ -1855,6 +1855,16 @@ echo       Kart ASLA. Yonetici kaybolan karti ^(toplam 52 degil^), donmus
 echo       maci ^(45 sn degisiklik yok^) ve sayfa hatasini gorur ^(ERS-32^).
 echo       3222 test, RTDB 105 kontrol + 5 yeni mutant.
 echo.
+echo  --- v3.23.0 -- TANRI YUKSELISI ^(YALNIZ SOLO^) ---
+echo  235) Yenilmis bir tanrinin kartinda Yukselis I-III dugmeleri cikar.
+echo       Her seviye tanriyi hem uzun yasatir hem hizlandirir ^(can x1,25 /
+echo       x1,5 / x1,75; III'te Ra'nin ogle hizi -- ondan hizlisi yok^). Bir
+echo       sonraki seviye icin bir oncekini gecmek gerekir. Odul altin cerceve,
+echo       coin YOK. Cok oyunculu masa ve kural dosyalari DEGISMEDI: bu surum
+echo       icin rules deploy'u gerekmiyor. Sim: Bastet %%100 -^> %%39, Set %%88 -^>
+echo       %%2 ^(III bir duvar^). Gercek oyuncu verisi yok; zor gelirse tablo
+echo       ascension.js'te tek yerde. Konsey ERS-33, 3249 test.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir

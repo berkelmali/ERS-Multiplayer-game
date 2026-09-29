@@ -23,6 +23,7 @@
 import { pathToFileURL } from 'node:url';
 import { matchSlap } from '../public/js/slapRules.js';
 import { ghostClones, addGhosts, vaporize, realCount, GHOST_PER_SLAP, GHOST_HELD_MAX } from '../public/js/ghostCards.js';
+import { ascensionFor, ascendedHp } from '../public/js/ascension.js';
 
 globalThis.localStorage ??= { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 globalThis.document ??= { getElementById: () => null, querySelector: () => null, addEventListener: () => {}, body: { classList: { add() {}, remove() {} } } };
@@ -77,14 +78,22 @@ function clonesFor(v, pile, indices) {
     return real.slice(0, v.perSlap);
 }
 
-/** One duel. Returns { heroWon, by, cards, ghostsAdded, ghostsVanished, hpLeft, piles }. */
-export function duel(godId, hero, variant, seed, priestTier = 'medium', probe = null) {
+/**
+ * One duel. Returns { heroWon, by, cards, ghostsAdded, ghostsVanished, hpLeft, piles }.
+ * `level` is the Ascension (ascension.js, v3.23.0); 0 is the plain duel and
+ * draws exactly the numbers it always did — the twists consume no random rolls.
+ */
+export function duel(godId, hero, variant, seed, priestTier = 'medium', probe = null, level = 0) {
+    // A number is a shipped level (ascension.js); an object is a tuning probe
+    // (--probe): any of hpMult, pace, blitz laid over the plain duel.
+    const A = ascensionFor(level);
     const R = rng(seed);
     const U = (a, b) => a + R() * (b - a);
     const g = GODS.find(x => x.id === godId);
     const rules = godRules(godId);
     const priest = (seat) => applyPersonality(BotPersonalities[seat], BotConfig[priestTier]);
-    const cfg = { 1: priest(1), 3: priest(3), 2: godConfig(godId) };
+    const godCfg = (noon) => godConfig(godId, { noon, level });
+    const cfg = { 1: priest(1), 3: priest(3), 2: godCfg(false) };
 
     const deck = [];
     for (const s of SUITS) for (let r = 2; r <= 14; r++) deck.push({ rank: r, suit: s });
@@ -94,7 +103,8 @@ export function duel(godId, hero, variant, seed, priestTier = 'medium', probe = 
     let ch = null; // { attacker, defender, left }
     let active = Math.floor(R() * 4);
     const streak = [0, 0, 0, 0];
-    let hp = g.hp, heals = 0, noon = false;
+    const maxHp = Math.round(g.hp * (A.hpMult || 1));   // == ascendedHp(g.hp, level) for a shipped level
+    let hp = maxHp, heals = 0, noon = false;
     const st = { cards: 0, ghostsAdded: 0, ghostsVanished: 0, piles: 0, godChallengeWins: 0, echoSlaps: 0, sideSlaps: 0, ghostsPlayed: 0, perSlapCapHits: 0, heldCapHits: 0 };
 
     // A hand of ghosts only is empty (council ERS-20, condition 2).
@@ -113,7 +123,7 @@ export function duel(godId, hero, variant, seed, priestTier = 'medium', probe = 
         let kept = taken;
         if (variant) {
             const v = vaporize(taken); kept = v.kept; st.ghostsVanished += v.vanished;
-            if (variant.returnHeal && v.vanished) hp = Math.min(g.hp, hp + variant.returnHeal * v.vanished);
+            if (variant.returnHeal && v.vanished) hp = Math.min(maxHp, hp + variant.returnHeal * v.vanished);
         }
         hands[winner].push(...kept);
         for (let i = 0; i < 4; i++) hollow(i);
@@ -124,8 +134,8 @@ export function duel(godId, hero, variant, seed, priestTier = 'medium', probe = 
         if (winner === BOSS_SEAT) {
             if (reason === 'challenge') st.godChallengeWins++;
             if (reason !== 'slap') return;
-            if (g.power === 'nineLives' && heals < NINE_LIVES) { heals++; hp = Math.min(g.hp, hp + ONE); }
-            else if (g.power === 'love' && match && match.id === 'marriage') hp = Math.min(g.hp, hp + 2 * ONE);
+            if (g.power === 'nineLives' && heals < NINE_LIVES) { heals++; hp = Math.min(maxHp, hp + ONE); }
+            else if (g.power === 'love' && match && match.id === 'marriage') hp = Math.min(maxHp, hp + 2 * ONE);
             else if (g.power === 'sandstorm') {
                 let from = -1;
                 for (const s of [0, 1, 3]) if (from === -1 || hands[s].length > hands[from].length) from = s;
@@ -140,9 +150,9 @@ export function duel(godId, hero, variant, seed, priestTier = 'medium', probe = 
         if (echoed) { st.echoSlaps++; if (variant && variant.echo !== undefined) dmg = Math.round(dmg * variant.echo); }
         st.sideSlaps++;
         hp = Math.max(0, hp - dmg);
-        if (g.power === 'noon' && !noon && hp > 0 && hp <= g.hp / 2) {
-            noon = true; cfg[2] = godConfig(godId, { noon: true });
-            hp = Math.min(g.hp, hp + Math.round(1.5 * ONE));
+        if (g.power === 'noon' && !noon && hp > 0 && hp <= maxHp / 2) {
+            noon = true; cfg[2] = godCfg(true);
+            hp = Math.min(maxHp, hp + Math.round(1.5 * ONE));
         }
         if (variant && hp > 0) {
             const clones = clonesFor(variant, slapped, match.indices);
@@ -217,17 +227,17 @@ export function duel(godId, hero, variant, seed, priestTier = 'medium', probe = 
     return { heroWon: false, by: 'stall', hpLeft: hp, ...st };
 }
 
-export function run({ n = 1500, gods = GODS.map(g => g.id), heroes = Object.keys(HEROES), variants = Object.keys(VARIANTS) } = {}) {
+export function run({ n = 1500, gods = GODS.map(g => g.id), heroes = Object.keys(HEROES), variants = Object.keys(VARIANTS), levels = [0] } = {}) {
     const rows = [];
-    for (const godId of gods) for (const h of heroes) for (const vk of variants) {
+    for (const godId of gods) for (const h of heroes) for (const vk of variants) for (const level of levels) {
         const acc = { win: 0, life: 0, cards: 0, ghostsAdded: 0, ghostsVanished: 0, len: 0, stall: 0, godCh: 0, echo: 0, side: 0, gp: 0, capS: 0, capH: 0 };
         for (let i = 0; i < n; i++) {
-            const r = duel(godId, HEROES[h], VARIANTS[vk], 0x5EED0000 + i * 7919);
+            const r = duel(godId, HEROES[h], VARIANTS[vk], 0x5EED0000 + i * 7919, 'medium', null, level);
             if (r.heroWon) { acc.win++; if (r.by === 'life') acc.life++; else acc.cards++; }
             if (r.by === 'stall') acc.stall++;
             acc.ghostsAdded += r.ghostsAdded; acc.ghostsVanished += r.ghostsVanished; acc.len += r.cards; acc.godCh += r.godChallengeWins; acc.echo += r.echoSlaps; acc.side += r.sideSlaps; acc.gp += r.ghostsPlayed; acc.capS += r.perSlapCapHits; acc.capH += r.heldCapHits;
         }
-        rows.push({ god: godId, hero: h, variant: vk, n,
+        rows.push({ god: godId, hero: h, variant: vk, level, n,
             win: acc.win / n, byLife: acc.life / n, byCards: acc.cards / n,
             cardsPlayed: acc.len / n, ghostsAdded: acc.ghostsAdded / n, ghostsVanished: acc.ghostsVanished / n,
             godChallengeWins: acc.godCh / n, stall: acc.stall / n, echoShare: acc.side ? acc.echo / acc.side : 0, sideSlaps: acc.side / n, ghostsPlayed: acc.gp / n, perSlapCapHits: acc.capS / n, heldCapHits: acc.capH / n });
@@ -241,11 +251,12 @@ if ((process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
         n: Number(arg('--n', 1500)),
         gods: arg('--gods', GODS.map(g => g.id).join(',')).split(','),
         heroes: arg('--heroes', Object.keys(HEROES).join(',')).split(','),
-        variants: arg('--variants', Object.keys(VARIANTS).join(',')).split(',')
+        variants: arg('--variants', Object.keys(VARIANTS).join(',')).split(','),
+        levels: (arg('--probe', null) ? JSON.parse(arg('--probe')) : arg('--levels', '0').split(',').map(Number))
     });
     if (process.argv.includes('--json')) console.log(JSON.stringify(rows));
     else for (const r of rows) console.log(
-        `${r.god.padEnd(7)} ${r.hero.padEnd(5)} ${r.variant.padEnd(9)} win ${(100 * r.win).toFixed(1).padStart(5)}%  len ${r.cardsPlayed.toFixed(0).padStart(4)}`
+        `${r.god.padEnd(7)} ${r.hero.padEnd(5)} ${r.variant.padEnd(9)} L${typeof r.level === 'object' ? JSON.stringify(r.level) : r.level} win ${(100 * r.win).toFixed(1).padStart(5)}%  len ${r.cardsPlayed.toFixed(0).padStart(4)}`
         + `  ghosts +${r.ghostsAdded.toFixed(1).padStart(4)} played ${r.ghostsPlayed.toFixed(1).padStart(4)}`
         + `  caps 6/slap ${r.perSlapCapHits.toFixed(2)} 13/held ${r.heldCapHits.toFixed(2)}  stall ${(100 * r.stall).toFixed(1)}%`);
 }

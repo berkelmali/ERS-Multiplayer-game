@@ -158,6 +158,19 @@ kaçan ya da yanlış = 0). Pencere dolduğunda oran bir işarete çevrilir.
   veren aynı transaction içinde değişir (pantheonRoom.js) — dört istemci aynı
   sayıyı görür. İnsanın şaplağı tam, botunki yarım; tanrı düşünce onu en çok
   yaralayan insan kazanır (eşitlikte son darbe). Veritabanı kuralı değişmedi.
+- **Yükseliş (v3.23.0, konsey ERS-33):** yenilmiş bir tanrının kartında I–III.
+  Her seviye tanrıyı hem UZUN YAŞATIR hem HIZLANDIRIR — simülasyonda duelloyu
+  oynatan tek iki kaldıraç bunlardı (hayalet kart ve rahip payı denendi, <3
+  puan, atıldı). Tablo tek yerde (`ascension.js`): can ×1,25 / ×1,5 / ×1,75;
+  hız, tanrının katmanından Şampiyon'a 0,4 / 0,75 / 1 oranında karışır; III'te
+  Blitz mizacı — tam olarak öğle vaktindeki Ra, ondan hızlısı oyunda yok.
+  Şaplağın ne olduğu ve hasarı hiçbir seviyede değişmez. **Yalnız solo:** oda
+  protokolü ve `pantheonRoom.js` dokunulmadı. Ödül altın çerçeve — coin yok
+  (G3). Ölçüm (n=1500, ortalama kahraman, kazanma %, seviye 0/1/2/3): Bastet
+  100/100/99,7/39, Set 88/63/30/2, Ra 67/55/46/20. Sınırlar: I–II erken
+  tanrılarda hâlâ kolay, III bir duvar; hızlı kahraman simülasyonda neredeyse
+  etkilenmiyor (simüle edilen refleks gerçek bir insandan keskin). Gerçek
+  oyuncu verisi yok (telemetri yok) — bantlar bir yargı, ölçüm değil.
 
 ### 3.5 Duat Yolculuğu (v3.18.0)
 
@@ -217,6 +230,7 @@ kaçan ya da yanlış = 0). Pencere dolduğunda oran bir işarete çevrilir.
 
 | Sürüm | Değişiklik |
 |---|---|
+| 1.3 (v3.23.0) | Tanrı Yükselişi I–III (§3.4), yalnız solo, ödül altın çerçeve; tablo `ascension.js`'te, bantlar `sim-pantheon --levels` ile ölçüldü (konsey ERS-33). |
 | 1 (v3.17.0) | İlk sürüm. Sütunlar mevcut kanıttan çıkarıldı. Çarkta Gümüş/Altın Boş dilimi kaldırıldı (§3.2). |
 | 1.2.1 (v3.18.0) | Konsey ERS-18'in beş düzeltmesi (kartla kazanılan tanrı da düşer; "rahip" yerine "diğer iki oyuncu"; Mezar'a kurallar ekranı; bölüm başlıkları ortak panel stili, altın yalnızca dünya nesnelerinde; Duat girişi comeback sayılmaz). ERS-19: sekme YOK — Efsaneler'de önce Yolculuklar, sonra Tanrıların Masası (COUNCIL-v3.18.0-tabs.md). |
 | 1.2 (v3.18.0) | Efsaneler: Tanrıların Masası (botlarla + çok oyunculu), Duat Yolculuğu, Firavunun Mezarı (§2, §3.4–3.6). Kum Saati denendi, operatör reddetti (COUNCIL-ERS-17-hourglass-rejected.md). |

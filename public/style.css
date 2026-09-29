@@ -6585,6 +6585,28 @@ html { overflow-x: clip; }
 .god-power { margin: 2px 0 0; font-size: 0.85rem; line-height: 1.4; }
 .god-meta { margin: 0; font-size: 0.75rem; opacity: 0.6; font-variant-numeric: tabular-nums; }
 .god-body .btn { margin-top: 6px; padding: 0.5rem 0.9rem; font-size: 0.9rem; align-self: flex-start; }
+.god-ascend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.god-ascend-cap { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.65; }
+.ascend-pill {
+    min-width: 40px;
+    min-height: 32px;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid rgba(212, 175, 55, 0.5);
+    background: transparent;
+    color: #f0d98a;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+.ascend-pill:hover:not(:disabled) { background: rgba(212, 175, 55, 0.16); }
+.ascend-pill:focus-visible { outline: 2px solid #f0d98a; outline-offset: 2px; }
+.ascend-pill:disabled { opacity: 0.4; cursor: not-allowed; }
+.ascend-pill.done { background: rgba(212, 175, 55, 0.22); border-color: #e3b93c; }
+/* The prize: a gilded rim that thickens with each level cleared. */
+.god-card.gilded-1 { box-shadow: 0 0 0 1px #e3b93c; }
+.god-card.gilded-2 { box-shadow: 0 0 0 2px #e3b93c, 0 0 12px rgba(227, 185, 60, 0.35); }
+.god-card.gilded-3 { box-shadow: 0 0 0 3px #f0d98a, 0 0 18px rgba(240, 217, 138, 0.55); }
 .god-amulet {
     position: absolute;
     top: 8px;
