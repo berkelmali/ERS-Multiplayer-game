@@ -73,7 +73,7 @@ rapor, üzerinde karar verilmedikçe bir döngü değildir.
 |---|---|---|
 | Galibiyet | **+40** | Denge noktası %27; 4 kişilik masada adil pay %25 → kazanmaya çalışan herkes net pozitif |
 | Kayıp / berabere | **−15** | Bilerek kaybederek coin biriktirmeyi caydırır |
-| Maçtan çıkış | **−15** | Kaybı çıkışla atlatmayı kapatır; gerçek kayıpla **aynı** değer (tek kaynak) |
+| Maçtan çıkış | **−15**, ayrıca kalıcı kayda **yenilgi** (giriş yapmış oyuncu) ve galibiyet serisi sıfırlanır | Kaybı çıkışla atlatmayı kapatır; gerçek kayıpla **aynı** değer (tek kaynak). Sınır: sekmeyi kapatmak, yenilemek ya da çökmek hiçbir şey yazmaz (sunucu hakemi olmadan görülemez); son maçtan sonraki 10 sn içindeki çıkış kural gereği kayda giremez (v3.23.3, konsey ERS-35) |
 | Ra'nın Çarkı | beklenen değer **≈12.7 / gün** (bkz. §3.2) | Günlük küçük bir hediye; kazanmanın yerini tutmaz |
 | Desen ustalığı | işaret başına **10 / 20 / 40**, desen başına ömür boyu en fazla **70** (bkz. §3.3) | Galibiyet ödülünden türetildi; her işaret bir kez |
 | Tanrıların Masası | tanrıyı yenmek sıradan bir galibiyettir (**+40**), kaybetmek sıradan bir kayıp (**−15**); muska kozmetiktir | Ayrı bir ödül yok: düello bir maçtır |
@@ -242,6 +242,7 @@ kaçan ya da yanlış = 0). Pencere dolduğunda oran bir işarete çevrilir.
 
 | Sürüm | Değişiklik |
 |---|---|
+| 1.3.2 (v3.23.3) | Maçtan çıkış artık kalıcı kayda **yenilgi** olarak da yazılır ve galibiyet serisini bitirir (§2 ekonomi tablosu; v2.9.0 davranışı, v3.18 yeniden yazımında kaybolmuştu). Konsey ERS-35. |
 | 1.3.1 (v3.23.1) | Görünen Kaplama: çok oyunculu masada kaplaman herkese görünür (§3.4), kural değişikliği yok, sahiplik odada doğrulanamaz (konsey ERS-33). |
 | 1.3 (v3.23.0) | Tanrı Yükselişi I–III (§3.4), yalnız solo, ödül altın çerçeve; tablo `ascension.js`'te, bantlar `sim-pantheon --levels` ile ölçüldü (konsey ERS-33). |
 | 1 (v3.17.0) | İlk sürüm. Sütunlar mevcut kanıttan çıkarıldı. Çarkta Gümüş/Altın Boş dilimi kaldırıldı (§3.2). |

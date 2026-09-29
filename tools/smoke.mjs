@@ -784,6 +784,121 @@ await step('walking out of a match takes the tell with it', async () => {
     await page.waitForTimeout(900);
 });
 
+// v3.23.3 — a quit is a loss. CardSkins.applyQuitPenalty() announces it as
+// coinsAwarded { winnerId: -2 }; v2.9.0 wrote it to the permanent record and
+// ended the win streak, and a rewrite lost both listeners. Nothing here reads
+// source: it signs a fake player in, puts a spy where the record is written
+// (ScoreSystem.recorder), and walks out of real matches through the real
+// button and the real confirm modal.
+await step('quitting a match is a recorded loss and ends the streak; finished, guest and refused cases stay quiet', async () => {
+    const setup = () => page.evaluate(async () => {
+        const { ScoreSystem } = await import('/js/scoreSystem.js');
+        const { AuthSystem } = await import('/js/auth.js');
+        const { StreakTracker } = await import('/js/streakTracker.js');
+        window.__rec = { calls: [], orig: ScoreSystem.recorder, user: AuthSystem.currentUser, errs: [], origErr: console.error };
+        ScoreSystem.recorder = async (_u, o) => { window.__rec.calls.push(o); return { totalScore: 0, username: 'Smoke', gamesPlayed: 1, gamesWon: 0, bestReflex: null }; };
+        AuthSystem.currentUser = { uid: 'smoke-uid', email: 'smoke@example.test' };
+        StreakTracker.currentStreak = 3;
+    });
+    const quit = async () => {
+        await page.click('#btn-quit');
+        await page.waitForTimeout(250);
+        const text = await page.evaluate(() => document.querySelector('#confirm-modal .modal-subtext').innerText);
+        await page.click('#btn-confirm-leave');
+        await page.waitForSelector('#main-menu.active', { timeout: 5000 });
+        await page.waitForTimeout(300);
+        return text;
+    };
+    const play = async () => {
+        await page.click('#btn-play-bots');
+        await page.waitForSelector('#game-container.active', { timeout: 10000 });
+        await page.waitForTimeout(700);
+    };
+    const state = () => page.evaluate(async () => {
+        const { StreakTracker } = await import('/js/streakTracker.js');
+        return { calls: window.__rec.calls.slice(), streak: StreakTracker.currentStreak };
+    });
+
+    try {
+        await setup();
+
+        // 1. signed in, mid-match: the modal says so, and exactly one loss is written.
+        const said = await quit();
+        if (!/loss on your record/i.test(said)) throw new Error('the quit warning does not mention the record: ' + said);
+        let st = await state();
+        if (st.calls.length !== 1 || st.calls[0].won !== false)
+            throw new Error('a quit did not write exactly one loss: ' + JSON.stringify(st.calls));
+        if (st.streak !== 0) throw new Error('the win streak survived the quit: ' + st.streak);
+        // ...and a late gameOver for the same match cannot write it a second time.
+        // (gameOver paints a permanent banner, which quitGame() takes down again — as it does live.)
+        await page.evaluate(async () => {
+            (await import('/js/eventbus.js')).default.emit('gameOver', 1);
+            (await import('/js/gameManager.js')).GameManager.quitGame();
+        });
+        await page.waitForTimeout(450);
+        st = await state();
+        if (st.calls.length !== 1) throw new Error('one match was written twice: ' + JSON.stringify(st.calls));
+
+        // 2. a guest has no record: nothing is written, and the warning does not claim one.
+        await page.evaluate(async () => { (await import('/js/auth.js')).AuthSystem.currentUser = null; });
+        await play();
+        const guestSaid = await quit();
+        if (/on your record/i.test(guestSaid)) throw new Error('a guest was told about a record: ' + guestSaid);
+        st = await state();
+        if (st.calls.length !== 1) throw new Error('a guest quit wrote a record: ' + JSON.stringify(st.calls));
+
+        // 3. a match that ends normally records one win; leaving after it records nothing more.
+        await page.evaluate(async () => { (await import('/js/auth.js')).AuthSystem.currentUser = { uid: 'smoke-uid', email: 'smoke@example.test' }; });
+        await play();
+        await page.evaluate(async () => {
+            window.GameState.gameOver = true; // what game.js sets just before it announces the end
+            (await import('/js/eventbus.js')).default.emit('gameOver', 0);
+        });
+        await page.waitForTimeout(250);
+        st = await state();
+        if (st.calls.length !== 2 || st.calls[1].won !== true)
+            throw new Error('a won match did not write exactly one win: ' + JSON.stringify(st.calls));
+        await quit();
+        st = await state();
+        if (st.calls.length !== 2) throw new Error('leaving a finished match wrote again: ' + JSON.stringify(st.calls));
+
+        // 4. a refused write (the 10 s cooldown, offline) is logged and never shown.
+        await page.evaluate(async () => {
+            const { ScoreSystem } = await import('/js/scoreSystem.js');
+            ScoreSystem.recorder = async () => { window.__rec.calls.push({ refused: true }); const e = new Error('cooldown'); e.code = 'permission-denied'; throw e; };
+            window.__rec.errs = [];
+            console.error = (...a) => window.__rec.errs.push(a.join(' '));
+        });
+        await play();
+        await page.evaluate(async () => { (await import('/js/streakTracker.js')).StreakTracker.currentStreak = 2; });
+        await quit();
+        await page.waitForTimeout(150);
+        const refused = await page.evaluate(async () => ({
+            calls: window.__rec.calls.length, errs: window.__rec.errs.slice(),
+            streak: (await import('/js/streakTracker.js')).StreakTracker.currentStreak,
+            errorScreen: !!document.querySelector('.error-screen.active, #error-screen.active')
+        }));
+        if (refused.calls !== 3) throw new Error('the refused write was not attempted exactly once: ' + JSON.stringify(refused));
+        if (!refused.errs.some(t => /match not recorded/.test(t))) throw new Error('the refusal was swallowed without a trace: ' + JSON.stringify(refused.errs));
+        if (refused.errorScreen) throw new Error('a refused quit-record raised an error screen over the menu');
+        if (refused.streak !== 0) throw new Error('a refused write kept the streak alive: ' + refused.streak);
+        console.log('         quit → 1 loss, streak 0 · guest → none · win → 1 win · refused → logged, silent');
+    } finally {
+        await page.evaluate(async () => {
+            const r = window.__rec; if (!r) return;
+            (await import('/js/scoreSystem.js')).ScoreSystem.recorder = r.orig;
+            (await import('/js/auth.js')).AuthSystem.currentUser = r.user;
+            console.error = r.origErr;
+            delete window.__rec;
+        });
+    }
+
+    // Put the table back for the step that follows.
+    await page.click('#btn-play-bots');
+    await page.waitForSelector('#game-container.active', { timeout: 10000 });
+    await page.waitForTimeout(900);
+});
+
 console.log('\n— combustion shield (v3.7.1) —');
 
 await step('a renewing slap puts the countdown back on the clock', async () => {

@@ -197,9 +197,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const coinWarning = penalty > 0
                 ? (Localization.get('confirmQuitCoinWarning') || 'Quitting now will cost you {n} coins.').replace('{n}', penalty)
                 : '';
+            // v3.23.3 — a signed-in player's quit is also written to the
+            // permanent record as a loss (scoreSystem.js). A guest has no record.
+            const recordWarning = AuthSystem.currentUser
+                ? (Localization.get('confirmQuitRecord') || 'It also counts as a loss on your record.')
+                : '';
+            const cost = `${coinWarning} ${recordWarning}`.trim();
             confirmMessage = GameManager.activeMode === 'multiplayer'
-                ? `${coinWarning} ${Localization.get('confirmLeaveSubtext') || ''}`.trim()
-                : (coinWarning || Localization.get('confirmQuitNoCoins'));
+                ? `${cost} ${Localization.get('confirmLeaveSubtext') || ''}`.trim()
+                : (cost || Localization.get('confirmQuitNoCoins'));
         }
 
         UIManager.showConfirmModal(() => {

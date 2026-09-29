@@ -37,6 +37,15 @@ export const StreakTracker = {
             }
             EventBus.emit('streakUpdated', { current: this.currentStreak, best: this.sessionBest });
         });
+
+        // v3.23.3 — walking out of a match ends the streak, as in v2.9.0.
+        // CardSkins.applyQuitPenalty() emits coinsAwarded { winnerId: -2 }; the
+        // handler was lost in a rewrite and a "3 wins" streak survived a quit.
+        EventBus.on('coinsAwarded', ({ winnerId } = {}) => {
+            if (winnerId !== -2) return;
+            this.currentStreak = 0;
+            EventBus.emit('streakUpdated', { current: this.currentStreak, best: this.sessionBest });
+        });
     },
 
     // Returns display info for the victory screen, or null when there's nothing

@@ -1873,6 +1873,26 @@ echo       STATIK ^(canli efekt yok^). KURAL DOSYASI DEGISMEDI, rules deploy'u
 echo       GEREKMIYOR. Sinir: sahiplik odada dogrulanamaz, yamali bir istemci
 echo       listeden herhangi bir kaplamayi yazabilir ^(kozmetik^). 3270 test.
 echo.
+echo  --- v3.23.3 -- CIKIS ARTIK YENILGIDIR ^(konsey ERS-35^) ---
+echo  237) Giris yapmis oyuncu bir bot/coklu maci ORTASINDA terk ederse kalici
+echo       kayda bir YENILGI yazilir ve galibiyet serisi sifirlanir. v2.9.0'da
+echo       vardi, v3.18 yeniden yazimda kayboldu; artik geri geldi. Cikis
+echo       uyarisi kaydi da soyler ^(4 dil^). Misafirde kayit olmadigi icin ve
+echo       biten bir maci terk edince hicbir sey yazilmaz. Kural/veri sahasi
+echo       DEGISMEDI. 3282 test + yeni tarayici adimi ^(iki mutant yakalandi^).
+echo       SINIRLAR ^(bilerek acik^): sekmeyi kapatmak/yenilemek/cokmek hala hicbir
+echo       sey yazmaz; son kayittan 10 sn icindeki cikis kural geregi kayda
+echo       giremez; yenilgi yazimi GERCEK Firestore kuralina karsi denenmedi
+echo       ^(emulator inmedi; uretim zaten her kaybedilen macta ayni yazimi
+echo       yapiyor^). Coklu masada cikis yolu OKUNARAK dogrulandi ^(ayni dugme, ayni
+echo       -2 sinyali^), gozlemle degil: iki hesapla bir coklu masadan cik.
+echo       Yalniz zip'teki eski matchmaking.js REDDEDILDI; hizli-katil ozelligi
+echo       ayri, kanita dayali bir konseye acik. Bu fark v2.9.0'a karsi TEK bir
+echo       mercek: tum mimarinin denetimi degil.
+echo   - Deploy sonrasi: hesapla bir bot maci baslat, ortasinda cik ^(uyari
+echo     "kaydina yenilgi yazilir" demeli^). Profilde oynanan mac +1, galibiyet
+echo     ayni kalmali. Hemen ardindan 10 sn icinde ikinci cikis yazilmaz: normal.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
