@@ -1954,6 +1954,21 @@ echo  253) Reklam engelleyicili oyuncu: Google'in etiketi yuklenmezse oyun
 echo       artik bos, etiketli kutu gostermiyor ^(belge isaretlenir, istek
 echo       yapilmaz^). 3535 test ^(25 mutant yakalandi^), smoke 76 adim yesil.
 echo.
+echo  --- v3.25.0 -- PAYLASIM ONIZLEMESI ^(konsey ERS-39: once buyume^) ---
+echo  254) Konsey ERS-39 ^("nasil ilerleyelim, ne ekleyelim?"^): Savunulabilir
+echo       4-1, Guclu. Karar: once buyume ve olcum, sonra ozellik. Yeni mod,
+echo       basarimlar, PWA, hizli eslesme, sunucu hakemligi, sezonlar ERTELENDI;
+echo       trafik gorulmeden yeni reklam yeri YOK ^(#208^).
+echo  255) Link onizlemesi: ana sayfa ve 12 statik sayfaya OpenGraph ve Twitter
+echo       kart etiketleri ^(sayfanin dilinde^), 1200x630 paylasim gorseli
+echo       ^(menu gorselinden, baslik kesilmeden^), ana sayfaya canonical.
+echo       Davet linki ^(#join=KOD^) WhatsApp/Discord/X'te artik gorselli kart.
+echo       Canlida olculen: onceki surumde hicbir sayfada OG etiketi yoktu.
+echo  256) README duzeltildi: eslestirme kuyrugu yok ^(kod/davet/QR^), dil
+echo       listesinde Ispanyolca degil Rusca, bot adlari Blitz/Chaos/Viper,
+echo       Cloud Functions deploy EDILMEDI. 3612 test ^(6 yeni mutant
+echo       yakalandi^), smoke 76 adim yesil.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -2222,5 +2237,13 @@ echo   - Deploy sonrasi: menude reklam yok; Kurallar'da basligin altinda
 echo     "ADVERTISEMENTS" etiketli kutu ^(inceleme bitene kadar bos donup
 echo     gizlenmesi NORMAL^); Turkiye'den bakinca "Privacy and cookie
 echo     settings" dugmesinin gorunmemesi NORMAL ^(yalniz AEA/UK/CH^).
+echo.
+echo  --- v3.25.0 -- SIRADAKI ADIM VERIYE BAGLI ^(konsey ERS-39^) ---
+echo   - Deploy sonrasi: oyunun linkini ^(ya da bir davet linkini^) WhatsApp
+echo     veya Discord'a yapistir: basliklu, menu gorselli kart gorunmeli.
+echo     Eski onizleme onbellekte kalabilir; baska bir sohbette dene.
+echo   - 2 hafta icinde Search Console'u kur ^(sitemap.xml gonder^). v3.26.0
+echo     buna gore secilecek: Ispanyolca 5. dil mi, SSS/strateji icerigi mi.
+echo     Kurulmazsa varsayilan SSS/icerik.
 echo.
 pause

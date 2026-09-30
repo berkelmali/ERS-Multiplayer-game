@@ -13,8 +13,8 @@
 ## 🌟 Öne Çıkan Özellikler / Key Features
 
 ### 🎮 Oyun Modları / Game Modes
-* **🤖 Tek Oyunculu (Offline vs AI):** Farklı kişiliklere (`Aggressive`, `Cautious`, `Balanced`, `Troll`) ve canlı sohbet yeteneğine sahip 3 yapay zeka botuna karşı oyna.
-* **🌐 Çok Oyunculu (Online Multiplayer):** Firebase Realtime Database & Firestore kuyruk sistemi ile 2-4 gerçek oyuncuyla eşleş. Eksik slotlar otomatik olarak botlarla doldurulur.
+* **🤖 Tek Oyunculu (Offline vs AI):** Üç kişilikli bota karşı oyna — **Blitz** (hızlı, blöfçü), **Chaos** (tahmin edilemez), **Viper** (sabırlı, isabetli); kazandıkları elde emojiyle tepki verirler.
+* **🌐 Çok Oyunculu (Online Multiplayer):** Masa kur, 6 haneli kodu, davet linkini ya da QR kodunu paylaş; 2–4 gerçek oyuncu Firebase Realtime Database üzerinden oynar. Eksik koltuklar botlarla doldurulur. (Otomatik eşleştirme kuyruğu yok.)
 * **🎓 Pratik & Öğretici Modu (Tutorial Mode):** Oyuna yeni başlayanlar için adım adım Slap (el basma) ve Meydan Okuma (Challenge) kurallarını öğreten etkileşimli kılavuz.
 
 ### ✨ v3.0.0 Yenilikleri / What's New in v3.0.0
@@ -31,7 +31,7 @@
 * **🎵 Web Audio API Ses Motoru:** Gerilim yükseldikçe dinamik olarak katmanlanan arka plan müziği (Tension Drone) ve zengin SFX setleri.
 * **🛒 Kart Kostümleri & Mağaza (Shop & Cosmetics):** Maç kazandıkça biriken madeni paralarla (Coins) açılabilen özel kart desteleri ve temalar.
 * **🖼️ Paylaşılabilir Maç Kartı (Canvas Result Card):** Maç sonlarında Canvas teknolojisi ile oluşturulan, istatistikleri ve MVP anını içeren indirilebilir/paylaşılabilir görsel kart.
-* **🌍 Çok Dilli Desteği (i18n):** Türkçe 🇹🇷, İngilizce 🇬🇧, Almanca 🇩🇪 ve İspanyolca 🇪🇸 dil desteği.
+* **🌍 Çok Dilli Desteği (i18n):** İngilizce 🇬🇧, Türkçe 🇹🇷, Almanca 🇩🇪 ve Rusça 🇷🇺 dil desteği.
 * **🎨 5 Renkli Tema:** Classic, Blue, Dark, Green, Red temaları.
 
 ---
@@ -76,10 +76,10 @@ Eğer savunmadaki oyuncu hakları bitene kadar resimli kart atamazsa, meydan oku
 * **Frontend:** Vanilla JavaScript (Native ES6 Modules — `import`/`export`), HTML5, Vanilla CSS3 (Custom Properties & 3D Tilt/Transformations). Build adımı gerektirmez, dosyalar doğrudan servis edilir.
 * **Backend & Cloud Services:**
   * **Firebase Realtime Database:** Gerçek zamanlı oyun durumu senkronizasyonu ve transactional durum güncellemeleri.
-  * **Firebase Firestore:** Kullanıcı profilleri, küresel skor tablosu (Leaderboard) ve matchmaking kuyrukları.
-  * **Firebase Cloud Functions (Node.js ESM):** Sunucu tarafı yetkili işlem doğrulamaları (`attemptSlap`, `attemptPlayCard`).
+  * **Firebase Firestore:** Kullanıcı profilleri, küresel skor tablosu (Leaderboard), Günlük Meydan Okuma tablosu, cüzdanlar ve masalar.
+  * **Firebase Cloud Functions (Node.js ESM):** Sunucu tarafı hamle doğrulaması (`attemptSlap`, `attemptPlayCard`) **yazıldı ve test edildi ama deploy edilmedi** — `firebase.json`'da `functions` anahtarı yok. Çok oyunculu maçı bugün tarayıcı yönetiyor; bkz. `SECURITY.md` → *Known limits*.
   * **Firebase Hosting:** Güvenli HTTP başlıkları (CSP, HSTS) ve performans optimize edilmiş CDN dağıtımı.
-* **Testing — kapsamı dürüstçe:** `test_gameLogic.mjs` **895 birim testi** çalıştırıyor, ama bu testler projedeki 50 modülden (47 istemci + 3 Cloud Function) yalnızca **15 saf modülü** import ediyor: `functions/gameLogic.js`, `slapRules.js`, `fairSlap.js`, `rng.js`, `dailyScore.js`, `dailyScenario.js`, `botConfig.js`, `dailyFingerprint.js`, `ruleDoc.js`, `reflexDelta.js`, `botTell.js`, `matchContext.js`, `adsConfig.js`, `inviteLink.js`, `qrCode.js`. Bunlar oyunun kural ve puan matematiği — yani en kritik ve en sessizce bozulabilecek kısım. `ui.js`, `firebaseSync.js`, `dailyChallenge.js` gibi DOM/ağ modüllerinin birim testi **yok**; onlar Playwright smoke testiyle (`npm run smoke`) uçtan uca kontrol ediliyor. "895 test geçiyor" cümlesini "her şey test edilmiş" diye okumayın.
+* **Testing — kapsamı dürüstçe:** `test_gameLogic.mjs` v3.25.0 itibarıyla ~3 600 birim testi çalıştırıyor, ama yalnızca Node'un yükleyebildiği **saf modülleri** import ediyor (kural motoru, puanlama, adil slap hakemliği, ekonomi ve cüzdan kuralları, reklam yapılandırması, davet linki, moderasyon aynaları…); bunlara kaynak seviyesindeki kontroller eşlik ediyor. `ui.js`, `firebaseSync.js`, `dailyChallenge.js` gibi DOM/ağ modüllerinin birim testi **yok**; onlar Playwright smoke testiyle (`npm run smoke`) uçtan uca, Firestore/RTDB kuralları da emülatörde (`npm run test:firestore-rules`, `npm run test:rules`) sınanıyor. "Testler geçiyor" cümlesini "her şey test edilmiş" diye okumayın.
 
 ---
 
@@ -102,7 +102,7 @@ ers-web/
 │       ├── firebaseConfig.js   # Firebase servis yapılandırması
 │       ├── tableManager.js     # 3D masa fiziği ve kart yerleşimi
 │       ├── audioManager.js     # Web Audio API ses efektleri ve müzik
-│       ├── localization.js     # i18n Dil sözlüğü (TR, EN, DE, ES)
+│       ├── localization.js     # i18n Dil sözlüğü (EN, TR, DE, RU)
 │       ├── cardSkins.js        # Kart kaplamaları & ekonomi sistemi
 │       ├── shopUI.js           # Mağaza paneli
 │       ├── victoryScreen.js    # Oyun sonu ekranı & MVP istatistikleri
@@ -114,13 +114,13 @@ ers-web/
 │       ├── dailyScore.js       # v3.0.0 — Günlük seed & puan formülü (saf, testli)
 │       ├── dailyChallenge.js   # v3.0.0 — Günlük koşu, tek puanlı deneme, global tablo
 │       └── dailyScenario.js    # v3.1.0 — Günün pozisyonunu üretir (3 profil, saf)
-├── functions/                  # Firebase Cloud Functions backend
+├── functions/                  # Firebase Cloud Functions (yazıldı, deploy EDİLMEDİ)
 │   ├── index.js                # Cloud Function endpoint tanımları
 │   ├── gameLogic.js            # Saf, Firebase SDK'sız sunucu iş mantığı
 │   └── package.json            # Node.js 20 ESM paketi
 ├── tools/sync-rules.mjs        # functions/slapRules.js'i istemci kopyasından üretir
 ├── package.json                # Sadece script: `npm test`, `npm run sync:rules` (istemcide build YOK)
-├── test_gameLogic.mjs          # Birim test kümesi (895/895 PASS — 15 saf modül)
+├── test_gameLogic.mjs          # Birim test kümesi (saf modüller + kaynak kontrolleri)
 ├── firebase.json               # Firebase Hosting & Database kural yapılandırması
 ├── database.rules.json         # Realtime Database güvenlik kuralları
 ├── CLAUDE.md                   # Detaylı mimari ve geliştirici dokümantasyonu
@@ -156,7 +156,7 @@ Oyun mantığının (Slap doğrulama, sıra takibi, challenge hesaplama) doğrul
 ```bash
 node test_gameLogic.mjs
 ```
-*Tüm testlerin (895/895 PASS) başarıyla geçtiğini doğrulayın.*
+*Son satırın `N passed, 0 failed` olduğunu doğrulayın.*
 
 Tam doğrulama zinciri (testler + sözdizimi + bağlantılar + 4 dil paritesi + skor
 sınırı aynası) tek komutta:
@@ -168,19 +168,16 @@ npm run smoke     # + tarayıcıda uçtan uca
 
 ---
 
-### 3️⃣ Firebase Cloud Functions & Hosting Dağıtımı (Deployment)
-Projeyi Firebase Hosting ve Cloud Functions üzerine canlıya almak için:
+### 3️⃣ Firebase Hosting Dağıtımı (Deployment)
+Canlıya alma betiklerle yapılır; ikisi de önce kapıları çalıştırır, sabitlenmiş bir
+`firebase-tools` sürümüyle ve `--non-interactive` gönderir:
 
 ```bash
-# Firebase CLI yükleyin (yüklü değilse)
-npm install -g firebase-tools
-
-# Firebase hesabınızla giriş yapın
-firebase login
-
-# Projeyi canlıya alın
-firebase deploy
+deploy.bat          # Hosting (oyun + statik sayfalar)
+deploy-rules.bat    # Firestore / Realtime Database kuralları (değiştiyse)
 ```
+
+Cloud Functions deploy **edilmez**: `firebase.json`'da `functions` anahtarı yok.
 
 ---
 

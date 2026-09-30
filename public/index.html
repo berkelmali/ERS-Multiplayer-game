@@ -25,6 +25,27 @@
     <title>Egyptian Rat Screw</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
     <meta name="description" content="Play Egyptian Rat Screw with friends or bots. Practice your reflexes, discover slap patterns and take on the daily challenge.">
+    <!-- LINK PREVIEWS (v3.25.0, council ERS-39). An invite link (#join=CODE)
+         pasted into WhatsApp, Discord or X is fetched as "/" — the hash never
+         reaches a server — and until now it rendered as a bare URL, because
+         this document carried no Open Graph or card tags at all. Static tags
+         only, like the two markers above: no request, no script, no cookie.
+         The image is the menu artwork scaled to 1200 wide and cut from the
+         bottom only, so the painted title stays whole; a test holds its size.
+         The canonical line keeps ?daily= and other query links counted as
+         this one page. -->
+    <link rel="canonical" href="https://ers-card-game.web.app/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Egyptian Rat Screw">
+    <meta property="og:title" content="Egyptian Rat Screw — the card game, in your browser">
+    <meta property="og:description" content="Play Egyptian Rat Screw with friends or bots. Practice your reflexes, discover slap patterns and take on the daily challenge.">
+    <meta property="og:url" content="https://ers-card-game.web.app/">
+    <meta property="og:image" content="https://ers-card-game.web.app/assets/og-image.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Egyptian Rat Screw — The Ultimate Card Battle">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="theme-color" content="#0a111c">
     <!-- v3.13.0 — installable, but NOT offline-cached. The manifest is 18
          lines of static JSON: a name, an icon and a splash colour, with no
@@ -37,7 +58,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.24.1">
+    <link rel="stylesheet" href="style.css?v=3.25.0">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
@@ -272,7 +293,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.24.1
+        <div id="game-version">Berk Elmalı · v3.25.0
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -1450,7 +1471,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.24.1"></script>
+    <script type="module" src="js/main.js?v=3.25.0"></script>
 </body>
 
 </html>

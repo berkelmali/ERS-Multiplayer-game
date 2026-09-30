@@ -68,6 +68,14 @@ export const CHROME = Object.freeze({
 
 export const LANGS = Object.freeze(Object.keys(CHROME));
 
+/**
+ * Link previews (v3.25.0, council ERS-39). The same image as index.html; the
+ * title and description are the page's own, in its language. `og:locale` is
+ * the Open Graph form of the page language.
+ */
+const OG_IMAGE = `${ORIGIN}/assets/og-image.jpg`;
+const OG_LOCALE = Object.freeze({ en: 'en_US', tr: 'tr_TR', de: 'de_DE', ru: 'ru_RU' });
+
 // ---------------------------------------------------------------------------
 // A very small HTML scanner.
 //
@@ -423,6 +431,17 @@ function shell({ lang, slug, title, body, adLabel }) {
     <title>${esc(title)} — Egyptian Rat Screw</title>
     <meta name="description" content="${esc(c.desc)}">
     <link rel="canonical" href="${self}">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="Egyptian Rat Screw">
+    <meta property="og:title" content="${esc(title)} — Egyptian Rat Screw">
+    <meta property="og:description" content="${esc(c.desc)}">
+    <meta property="og:url" content="${self}">
+    <meta property="og:image" content="${OG_IMAGE}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Egyptian Rat Screw">
+    <meta property="og:locale" content="${OG_LOCALE[lang]}">
+    <meta name="twitter:card" content="summary_large_image">
 ${alts}
     <link rel="alternate" hreflang="x-default" href="${ORIGIN}/en/${slug}">
     <link rel="icon" type="image/png" href="/assets/logo.png">
