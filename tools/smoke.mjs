@@ -1731,23 +1731,62 @@ await step('About and Rules render real prose, and follow the language', async (
     await page.waitForSelector('#main-menu.active', { timeout: 5000 });
 });
 
-await step('ads land on menus, and on no measured screen', async () => {
+await step('ads land on reading panels only, labelled, and never beside a control', async () => {
     // Until v3.14.0 this step proved the opposite claim — an empty publisher id
     // meant no script, no request, no cookie — and it is kept in the same place
     // because the replacement claim is the one that now protects the game:
     // units on reading panels, never on a screen where something is timed.
+    //
+    // v3.24.1 (council ERS-37) adds AdSense's own placement rules: no unit on
+    // the lobby, the shop or the account screen, and on a reading panel the
+    // unit sits under the title with content — not a button — on both sides.
+    // Measured while each panel is OPEN, because a closed panel has no boxes.
     const visits = [
         ['#btn-shop', '#shop-panel', '#btn-shop-back'],
         ['#btn-rules', '#rules-panel', '#btn-rules-back'],
-        ['#btn-slapiq', '#slapiq-panel', '#btn-slapiq-back']
+        ['#btn-slapiq', '#slapiq-panel', '#btn-slapiq-back'],
+        ['#btn-leaderboard', '#leaderboard-panel', '#btn-leaderboard-back']
     ];
+    const placed = [];
     for (const [open, panel, close] of visits) {
         if (!(await page.$(open))) continue;
         await page.click(open);
         await page.waitForSelector(panel + '.active', { timeout: 5000 });
         await page.waitForTimeout(150);
+        placed.push(await page.evaluate((panel) => {
+            const host = document.querySelector(panel + ' .ad-slot.filled');
+            if (!host) return { panel, filled: false };
+            const b = host.getBoundingClientRect();
+            // The nearest visible control, above or below the unit.
+            let gap = Infinity;
+            for (const c of document.querySelectorAll(panel + ' button, ' + panel + ' a[href]')) {
+                const r = c.getBoundingClientRect();
+                if (!r.width || !r.height) continue;
+                gap = Math.min(gap, r.top >= b.bottom ? r.top - b.bottom : b.top >= r.bottom ? b.top - r.bottom : -1);
+            }
+            return {
+                panel, filled: true,
+                label: host.dataset.adLabel || '',
+                drawn: getComputedStyle(host, '::before').content,
+                before: host.previousElementSibling && host.previousElementSibling.tagName,
+                after: host.nextElementSibling ? host.nextElementSibling.className : '',
+                gap: Math.round(gap)
+            };
+        }, panel));
         await page.click(close);
         await page.waitForSelector('#main-menu.active', { timeout: 5000 });
+    }
+    for (const p of placed) {
+        if (p.panel === '#shop-panel') {
+            if (p.filled) throw new Error('the shop carries an ad unit — a wall of buy buttons may not');
+            continue;
+        }
+        if (!p.filled) throw new Error(`${p.panel} opened and its unit was not filled`);
+        if (!p.label) throw new Error(`${p.panel}: the unit carries no ad label`);
+        if (p.drawn !== JSON.stringify(p.label)) throw new Error(`${p.panel}: the label is not drawn (::before is ${p.drawn})`);
+        if (p.before !== 'H2') throw new Error(`${p.panel}: the unit follows a ${p.before}, not the panel title`);
+        if (!/\brules-content\b/.test(p.after)) throw new Error(`${p.panel}: the unit is followed by "${p.after}", not the content`);
+        if (p.gap < 24) throw new Error(`${p.panel}: a control is ${p.gap}px from the unit`);
     }
 
     const seen = await page.evaluate(() => {
@@ -1770,7 +1809,9 @@ await step('ads land on menus, and on no measured screen', async () => {
             })),
             // Every screen id in the markup, so the deny list can be checked
             // against what is actually on the page rather than against itself.
-            denyOccupied: ['game-container', 'daily-panel', 'tutorial-screen', 'lobby-panel',
+            // The first three joined in v3.24.1: navigation and action screens.
+            denyOccupied: ['main-menu', 'shop-panel', 'account-panel',
+                           'game-container', 'daily-panel', 'tutorial-screen', 'lobby-panel',
                            'waiting-room-panel', 'victory-screen', 'settings-panel',
                            'privacy-panel', 'confirm-modal', 'invite-modal']
                 .filter(id => (document.getElementById(id) || { querySelectorAll: () => [] })
@@ -1788,27 +1829,20 @@ await step('ads land on menus, and on no measured screen', async () => {
     const badSlot = seen.units.filter(u => !/^\d{8,12}$/.test(u.slot || ''));
     if (badSlot.length) throw new Error(badSlot.length + ' unit(s) with no slot id');
 
-    // ONE lobby ad. This run is at 1280px, above the rail breakpoint, so the
-    // lobby's ad is its two rails and its in-column banner must have stepped
-    // aside. The phone case — banner, no rails — is the step below.
+    // NO lobby ad since v3.24.1: the lobby is a navigation screen. Neither the
+    // in-column banner nor the two rails — the rails were its desktop ad.
     const inLobby = seen.units.filter(u => u.where === 'main-menu');
-    if (inLobby.length) throw new Error(inLobby.length + ' in-column banner(s) in the lobby at 1280px, want 0 (the rails are its ad)');
-
-    // A rail asks for one fixed shape; a panel banner is responsive. Getting
-    // these the wrong way round renders, and looks wrong to a human only.
+    if (inLobby.length) throw new Error(inLobby.length + ' unit(s) in the lobby, want 0 (a navigation screen)');
     const rails = seen.units.filter(u => String(u.where).startsWith('RAIL:'));
-    for (const r of rails) {
-        if (r.format) throw new Error('a rail asked for data-ad-format=' + r.format);
-        if (r.fullWidth) throw new Error('a rail asked to go full width');
-        if (r.w !== '160px' || r.h !== '600px') throw new Error(`a rail is ${r.w} x ${r.h}, want 160px x 600px`);
-    }
+    if (rails.length) throw new Error(rails.length + ' rail unit(s) created, want 0 (both switches are off)');
     for (const b of seen.units.filter(u => !String(u.where).startsWith('RAIL:'))) {
         if (b.format !== 'horizontal') throw new Error(`the banner on ${b.where} asked for ${b.format}`);
         if (b.fullWidth !== 'false') throw new Error(`the banner on ${b.where} can escape its padded column`);
         if (b.w || b.h) throw new Error(`the banner on ${b.where} was given a fixed size`);
     }
     if (!adRequests.length) throw new Error('ads are on and nothing was ever requested');
-    console.log(`         ${seen.units.length} units (${rails.length} rails), 1 script, 0 on a measured screen`);
+    const gaps = placed.filter(p => p.filled).map(p => `${p.panel.slice(1, -6)} ${p.gap}px`).join(', ');
+    console.log(`         ${seen.units.length} units, 1 script, 0 on a measured or navigation screen; labelled; nearest control: ${gaps}`);
 });
 
 await step('no panel puts a control outside its own box', async () => {
@@ -1898,11 +1932,12 @@ await step('no panel puts a control outside its own box', async () => {
     console.log(`         ${seen.length} panels, nothing outside its box, no ad box in a row`);
 });
 
-await step('a phone gets the lobby banner, and no rails', async () => {
-    // The lobby has one ad at any width and a different one at each: rails in
-    // the gutter on a desktop, an in-column banner on a phone. Both are chosen
-    // by CSS alone, so the only way to know which one a player actually gets is
-    // to load the page at that width and look.
+await step('a phone: no ad in the lobby, and each panel banner fits the column, clear of the corner', async () => {
+    // Until v3.24.1 the lobby had one ad at any width — rails on a desktop, an
+    // in-column banner on a phone — and this step proved a phone got the
+    // banner. The lobby is a navigation screen, so now it proves the opposite
+    // at phone width too, and moves the "a banner fits a phone" half to the
+    // first reading panel a player is likely to open.
     //
     // A FRESH page, not a resize of this one: a fill is decided once, when the
     // screen is first opened, because re-running fills to chase a resize is the
@@ -1916,37 +1951,73 @@ await step('a phone gets the lobby banner, and no rails', async () => {
         await phone.waitForSelector('#main-menu.active', { timeout: 20000 });
         await phone.waitForTimeout(2500);
 
-        const seen = await phone.evaluate(() => {
-            const menu = document.getElementById('main-menu');
-            const banner = menu.querySelector('.ad-slot');
+        const lobby = await phone.evaluate(() => {
             const on = el => el && el.getClientRects().length > 0;
-            const b = banner ? banner.getBoundingClientRect() : null;
-            const footer = document.getElementById('game-version');
-            const f = footer ? footer.getBoundingClientRect() : null;
             return {
-                bannerFilled: !!(banner && banner.classList.contains('filled')),
-                bannerVisible: on(banner),
-                bannerUnits: menu.querySelectorAll('ins.adsbygoogle').length,
+                boxes: document.querySelectorAll('#main-menu .ad-slot').length,
+                units: document.querySelectorAll('#main-menu ins.adsbygoogle, .ad-rail ins.adsbygoogle').length,
                 railsVisible: [...document.querySelectorAll('.ad-rail')].filter(on).length,
-                railUnits: document.querySelectorAll('.ad-rail-slot ins.adsbygoogle').length,
-                width: b ? Math.round(b.width) : 0,
-                overlapsFooter: !!(b && f && b.bottom > f.top && b.top < f.bottom),
-                scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-                inTable: document.querySelectorAll('#game-container ins.adsbygoogle').length
+                scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth
             };
         });
+        if (lobby.boxes) throw new Error(lobby.boxes + ' ad box(es) in the phone lobby, want 0');
+        if (lobby.units) throw new Error(lobby.units + ' ad unit(s) in the phone lobby, want 0');
+        if (lobby.railsVisible) throw new Error(lobby.railsVisible + ' rail(s) visible on a 390px phone');
+        if (lobby.scrollX > 0) throw new Error(lobby.scrollX + 'px of horizontal overflow in the phone lobby');
+        if (phoneAds.some(u => /\/pagead\/ads/.test(u))) throw new Error('the phone lobby asked for an ad');
 
-        if (!seen.bannerFilled) throw new Error('the phone lobby got no banner at all');
-        if (!seen.bannerVisible) throw new Error('the phone banner was filled but is not on screen');
-        if (seen.bannerUnits !== 1) throw new Error(seen.bannerUnits + ' units in the phone lobby, want exactly 1');
-        if (seen.railsVisible) throw new Error(seen.railsVisible + ' rail(s) visible on a 390px phone');
-        if (seen.railUnits) throw new Error('a rail was filled on a phone — an invisible impression');
-        if (seen.width > 390) throw new Error('the banner is ' + seen.width + 'px wide in a 390px window');
-        if (seen.overlapsFooter) throw new Error('the banner sits on top of the version line');
-        if (seen.scrollX > 0) throw new Error(seen.scrollX + 'px of horizontal overflow on a phone');
-        if (seen.inTable) throw new Error('an ad unit is inside #game-container');
+        // Every reading panel, measured open. On a phone each one is full width
+        // and #top-left-corner (avatar, coins, spin) is fixed over its top, so
+        // the corner is the nearest control a unit could crowd: before v3.24.1
+        // moved the panels down, Slap IQ's unit began 36px under it.
+        const gaps = [];
+        for (const [open, panel, close] of [
+            ['#btn-rules', '#rules-panel', '#btn-rules-back'],
+            ['#btn-slapiq', '#slapiq-panel', '#btn-slapiq-back'],
+            ['#btn-leaderboard', '#leaderboard-panel', '#btn-leaderboard-back'],
+            ['#btn-about', '#about-panel', '#btn-about-back']
+        ]) {
+            await phone.click(open);
+            await phone.waitForSelector(panel + '.active', { timeout: 5000 });
+            await phone.waitForTimeout(300);
+            const seen = await phone.evaluate((panel) => {
+                const banner = document.querySelector(panel + ' .ad-slot');
+                const b = banner ? banner.getBoundingClientRect() : null;
+                const content = document.querySelector(panel + ' .rules-content').getBoundingClientRect();
+                const title = document.querySelector(panel + ' h2').getBoundingClientRect();
+                const corner = [...document.querySelectorAll('#top-left-corner > *')]
+                    .map(el => el.getBoundingClientRect()).filter(r => r.width && r.height);
+                const hits = (r) => corner.some(c => c.left < r.right && c.right > r.left && c.top < r.bottom && c.bottom > r.top);
+                const cornerBottom = Math.max(0, ...corner.map(c => c.bottom));
+                return {
+                    filled: !!(banner && banner.classList.contains('filled')),
+                    visible: !!(banner && banner.getClientRects().length > 0),
+                    units: document.querySelectorAll(panel + ' ins.adsbygoogle').length,
+                    width: b ? Math.round(b.width) : 0,
+                    aboveContent: !!(b && b.bottom <= content.top + 1),
+                    corners: corner.length,
+                    titleCovered: hits(title),
+                    gap: b ? Math.round(b.top - cornerBottom) : -1,
+                    scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                    inTable: document.querySelectorAll('#game-container ins.adsbygoogle').length
+                };
+            }, panel);
+            await phone.click(close);
+            await phone.waitForSelector('#main-menu.active', { timeout: 5000 });
+            if (!seen.filled) throw new Error(`${panel} got no banner on a phone`);
+            if (!seen.visible) throw new Error(`${panel}: the phone banner was filled but is not on screen`);
+            if (seen.units !== 1) throw new Error(`${seen.units} units on ${panel} on a phone, want exactly 1`);
+            if (seen.width > 390) throw new Error(`${panel}: the banner is ${seen.width}px wide in a 390px window`);
+            if (!seen.aboveContent) throw new Error(`${panel}: the banner does not sit above the text`);
+            if (!seen.corners) throw new Error('the fixed corner was not found, so the gap below proves nothing');
+            if (seen.titleCovered) throw new Error(`${panel}: the title is drawn under the fixed corner`);
+            if (seen.gap < 40) throw new Error(`${panel}: the unit starts ${seen.gap}px under the corner's controls`);
+            if (seen.scrollX > 0) throw new Error(`${panel}: ${seen.scrollX}px of horizontal overflow on a phone`);
+            if (seen.inTable) throw new Error('an ad unit is inside #game-container');
+            gaps.push(`${panel.slice(1, -6)} ${seen.gap}px`);
+        }
         if (!phoneAds.length) throw new Error('a phone made no ad request at all');
-        console.log(`         390x844: 1 banner (${seen.width}px), 0 rails, 0px overflow`);
+        console.log(`         390x844: 0 units in the lobby; each panel's banner above its text, titles clear of the corner, corner gap: ${gaps.join(', ')}`);
     } finally {
         await phone.close();
     }
@@ -1957,12 +2028,16 @@ await step('a mobile creative keeps its full height after AdSense rewrites the h
     try {
         await mobile.setViewportSize({ width: 375, height: 812 });
         await mobile.goto(base + '/', { waitUntil: 'domcontentloaded' });
-        await mobile.waitForSelector('#main-menu ins.adsbygoogle', { state: 'attached' });
+        await mobile.waitForSelector('#main-menu.active', { timeout: 20000 });
+        // v3.24.1: the lobby has no unit, so the About panel stands in — its
+        // unit sits above its text, which is what "below" now measures.
+        await mobile.click('#btn-about');
+        await mobile.waitForSelector('#about-panel ins.adsbygoogle', { state: 'attached' });
         // The ad network is stubbed. Reproduce its observed DOM writes without
         // requesting real impressions, and exercise both banner and square fill.
         for (const height of [100, 375]) {
             const box = await mobile.evaluate((height) => {
-                const host = document.querySelector('#main-menu .ad-slot');
+                const host = document.querySelector('#about-panel .ad-slot');
                 const ins = host.querySelector('ins');
                 host.style.setProperty('height', 'auto', 'important');
                 host.style.setProperty('min-height', '0', 'important');
@@ -1971,23 +2046,34 @@ await step('a mobile creative keeps its full height after AdSense rewrites the h
                 ins.setAttribute('data-ad-status', 'filled');
                 const h = host.getBoundingClientRect();
                 const i = ins.getBoundingClientRect();
-                const footer = document.getElementById('game-version').getBoundingClientRect();
+                const text = document.querySelector('#about-panel .rules-content').getBoundingClientRect();
                 return { hostHeight: h.height, adHeight: i.height,
                     inside: i.left >= h.left - 1 && i.right <= h.right + 1,
-                    below: footer.top >= i.bottom - 1,
+                    below: text.top >= i.bottom - 1,
                     overflow: document.documentElement.scrollWidth - innerWidth };
             }, height);
             if (box.hostHeight < height - 1 || box.adHeight < height - 1 || !box.inside || !box.below || box.overflow > 1)
                 throw new Error('creative clipped or overlapped: ' + JSON.stringify(box));
         }
+        // And the other answer AdSense can give: nothing. The host goes, label
+        // and reserved height with it, so no labelled blank box is left behind.
+        const unfilled = await mobile.evaluate(() => {
+            const host = document.querySelector('#about-panel .ad-slot');
+            host.querySelector('ins').setAttribute('data-ad-status', 'unfilled');
+            return { display: getComputedStyle(host).display, height: host.getBoundingClientRect().height };
+        });
+        if (unfilled.display !== 'none' || unfilled.height !== 0)
+            throw new Error('an unfilled unit left its box behind: ' + JSON.stringify(unfilled));
     } finally { await mobile.close(); }
 });
 
-await step('a zero-width lobby does not burn its one fill', async () => {
+await step('a zero-width panel does not burn its one fill', async () => {
     // Found on the live site, not here: a browser pane with no width laid the
     // lobby banner out at 0 x 60 — one client rect, because min-height gives it
     // height — and AdSense answered "No slot size for availableWidth=0". The
     // screen was already marked filled by then, so the fill was gone for good.
+    // v3.24.1: the lobby carries no unit, so the Rules panel stands in; the
+    // path is the same one — refused, remembered, filled once the box is real.
     //
     // Reproduced by squeezing the container rather than the window, because it
     // is the BOX's width that decides, and that is what the fix measures.
@@ -2003,22 +2089,24 @@ await step('a zero-width lobby does not burn its one fill', async () => {
             const res = await route.fetch();
             const body = await res.text();
             await route.fulfill({ response: res, body: body +
-                '\n#main-menu .ad-slot { width: 0 !important; max-width: 0 !important; }' });
+                '\n#rules-panel .ad-slot { width: 0 !important; max-width: 0 !important; min-height: 60px !important; }' });
         });
         await narrow.goto(base + '/', { waitUntil: 'domcontentloaded' });
         await narrow.waitForSelector('#main-menu.active', { timeout: 20000 });
-        await narrow.waitForTimeout(2500);
+        await narrow.click('#btn-rules');
+        await narrow.waitForSelector('#rules-panel.active', { timeout: 5000 });
+        await narrow.waitForTimeout(600);
 
         const collapsed = await narrow.evaluate(async () => {
             const { Ads } = await import('./js/ads.js');
-            const slot = document.querySelector('#main-menu .ad-slot');
+            const slot = document.querySelector('#rules-panel .ad-slot');
             return {
                 width: Math.round(slot.getBoundingClientRect().width),
                 rects: slot.getClientRects().length,     // the old predicate's answer
                 filled: slot.classList.contains('filled'),
                 units: slot.querySelectorAll('ins.adsbygoogle').length,
-                screenMarked: [...Ads._filled].includes('main-menu'),
-                waiting: Ads._pendingWidth.has('main-menu')
+                screenMarked: [...Ads._filled].includes('rules-panel'),
+                waiting: Ads._pendingWidth.has('rules-panel')
             };
         });
 
@@ -2038,18 +2126,18 @@ await step('a zero-width lobby does not burn its one fill', async () => {
         // source order decides, and a runtime <style> comes after style.css.
         await narrow.evaluate(() => {
             const css = document.createElement('style');
-            css.textContent = '#main-menu .ad-slot { width: 100% !important; max-width: 728px !important; }';
+            css.textContent = '#rules-panel .ad-slot { width: 100% !important; max-width: 728px !important; }';
             document.head.appendChild(css);
         });
         await narrow.waitForTimeout(1200);
         const after = await narrow.evaluate(async () => {
             const { Ads } = await import('./js/ads.js');
-            const slot = document.querySelector('#main-menu .ad-slot');
+            const slot = document.querySelector('#rules-panel .ad-slot');
             return {
                 width: Math.round(slot.getBoundingClientRect().width),
                 filled: slot.classList.contains('filled'),
                 units: slot.querySelectorAll('ins.adsbygoogle').length,
-                stillWaiting: Ads._pendingWidth.has('main-menu')
+                stillWaiting: Ads._pendingWidth.has('rules-panel')
             };
         });
         if (!after.width) throw new Error('the box never got a width back');
@@ -2059,6 +2147,106 @@ await step('a zero-width lobby does not burn its one fill', async () => {
         console.log(`         0px: refused and remembered; ${after.width}px: filled once, observer released`);
     } finally {
         await narrow.close();
+    }
+});
+
+await step('the generated rules and about pages carry one labelled unit; privacy none; a blocked tag leaves nothing', async () => {
+    // v3.24.1 (council ERS-38). These pages run no app code: js/page-ads.js
+    // shows a box only once Google's tag has loaded. So the three cases are
+    // measured on the real files under the real headers: the tag loads, the
+    // page is the privacy page, and an ad blocker refuses the tag.
+    const p = await ctx.newPage();
+    const wire = [];
+    const thrown = [];
+    const csp = [];
+    p.on('request', r => { if (AD_HOST.test(r.url())) wire.push(r.url()); });
+    p.on('pageerror', e => thrown.push(e.message));
+    p.on('console', m => { if (m.type() === 'error' && NEVER_IGNORABLE.test(m.text())) csp.push(m.text()); });
+    const units = () => wire.filter(u => /\/pagead\/ads/.test(u)).length;
+    try {
+        await p.setViewportSize({ width: 390, height: 844 });
+        const rows = [];
+        for (const path of ['/en/rules.html', '/tr/about.html']) {
+            const before = units();
+            await p.goto(base + path, { waitUntil: 'load' });
+            await p.waitForSelector('.ad-box.on', { timeout: 5000 });
+            await p.waitForTimeout(200);
+            const seen = await p.evaluate(() => {
+                const box = document.querySelector('.ad-box');
+                const b = box.getBoundingClientRect();
+                const h1 = document.querySelector('h1').getBoundingClientRect();
+                const first = document.querySelector('.rules-section').getBoundingClientRect();
+                const out = {
+                    boxes: document.querySelectorAll('.ad-box').length,
+                    label: box.querySelector('.ad-label').textContent,
+                    between: b.top >= h1.bottom - 1 && b.bottom <= first.top + 1,
+                    width: Math.round(b.width),
+                    scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth
+                };
+                // Google answers with nothing: the box goes, label and all.
+                box.querySelector('ins').setAttribute('data-ad-status', 'unfilled');
+                out.unfilledShown = box.getClientRects().length > 0;
+                return out;
+            });
+            seen.requested = units() - before;
+            rows.push(`${path} ${seen.label} ${seen.width}px`);
+            if (seen.boxes !== 1) throw new Error(`${path}: ${seen.boxes} ad boxes, want 1`);
+            if (seen.requested !== 1) throw new Error(`${path}: ${seen.requested} unit requests, want 1`);
+            if (!seen.label.trim()) throw new Error(`${path}: the unit carries no label`);
+            if (!seen.between) throw new Error(`${path}: the unit does not sit between the title and the text`);
+            if (seen.width > 390) throw new Error(`${path}: the unit is ${seen.width}px wide in a 390px window`);
+            if (seen.scrollX > 0) throw new Error(`${path}: ${seen.scrollX}px of horizontal overflow`);
+            if (seen.unfilledShown) throw new Error(`${path}: an unfilled unit left its box on the page`);
+        }
+
+        const beforePrivacy = wire.length;
+        await p.goto(base + '/en/privacy.html', { waitUntil: 'load' });
+        await p.waitForTimeout(400);
+        const privacy = await p.evaluate(() => document.querySelectorAll('.ad-box, ins.adsbygoogle').length);
+        if (privacy) throw new Error('the privacy page carries an ad unit');
+        if (wire.length !== beforePrivacy) throw new Error('the privacy page asked Google for something');
+
+        await p.route('**://pagead2.googlesyndication.com/**', r => r.abort());
+        const beforeBlocked = units();
+        await p.goto(base + '/de/rules.html', { waitUntil: 'load' });
+        await p.waitForTimeout(800);
+        const blocked = await p.evaluate(() => {
+            const box = document.querySelector('.ad-box');
+            return { on: box.classList.contains('on'), shown: box.getClientRects().length > 0 };
+        });
+        if (blocked.on || blocked.shown) throw new Error('a blocked tag left a labelled box on the page: ' + JSON.stringify(blocked));
+        if (units() !== beforeBlocked) throw new Error('a unit was requested with the tag blocked');
+        if (thrown.length) throw new Error('a page threw: ' + thrown[0]);
+        if (csp.length) throw new Error('a CSP violation on a content page: ' + csp[0]);
+        console.log(`         ${rows.join('; ')}; privacy: none; blocked tag: no box`);
+    } finally {
+        await p.close();
+    }
+});
+
+await step('in the app, a blocked ad tag leaves no labelled empty box', async () => {
+    // Since v3.24.1 a filled box has a label and a surface. An ad blocker used
+    // to leave a bare 100px gap; now it would leave a labelled empty frame on
+    // every reading panel, unless the failure is noticed. It is.
+    const q = await ctx.newPage();
+    try {
+        await q.route('**://pagead2.googlesyndication.com/**', r => r.abort());
+        await q.setViewportSize({ width: 1280, height: 860 });
+        await q.goto(base + '/', { waitUntil: 'domcontentloaded' });
+        await q.waitForSelector('#main-menu.active', { timeout: 20000 });
+        await q.waitForFunction(() => document.documentElement.classList.contains('ads-blocked'), null, { timeout: 5000 });
+        await q.click('#btn-rules');
+        await q.waitForSelector('#rules-panel.active', { timeout: 5000 });
+        await q.waitForTimeout(300);
+        const r = await q.evaluate(() => ({
+            units: document.querySelectorAll('ins.adsbygoogle').length,
+            shown: [...document.querySelectorAll('.ad-slot')].filter(el => el.getClientRects().length > 0).length
+        }));
+        if (r.units) throw new Error(r.units + ' unit(s) created after the tag failed');
+        if (r.shown) throw new Error(r.shown + ' ad box(es) still on screen after the tag failed');
+        console.log('         tag refused -> document marked, no unit created, no box on screen');
+    } finally {
+        await q.close();
     }
 });
 
@@ -2279,6 +2467,9 @@ await step('the lobby rails are geometry, not decoration', async () => {
         if (r.shown !== want) throw new Error(`${r.width}px: ${r.shown} rail(s) visible, want ${want}`);
         if (r.overlapsColumn) throw new Error(`${r.width}px: a rail overlaps the menu column`);
         if (r.offscreen) throw new Error(`${r.width}px: a rail hangs off the window`);
+        // v3.24.1: the lobby is a navigation screen and carries no ad, so a
+        // rail is shown (above the breakpoint) but never filled.
+        if (r.filled) throw new Error(`${r.width}px: a rail was filled — the lobby carries no ad since v3.24.1`);
         // A rail is either absent (0px) or exactly the shape ads.js asked the
         // network for. 604 is the failure this caught once: an inline-block on
         // the text baseline, four pixels of descender under a 600px unit.
@@ -2349,9 +2540,56 @@ await step('the privacy panel opens, reads, and closes', async () => {
     if (!p.mentionsAdSense) throw new Error('the policy does not name the ad network');
     if (!p.mentionsContact) throw new Error('the policy gives no contact address');
     if (p.words < 150) throw new Error('the policy is suspiciously short: ' + p.words + ' words');
+    // No consent script runs in this test, so the consent button must be absent.
+    const cookieShown = await page.evaluate(() =>
+        document.getElementById('btn-cookie-settings').getClientRects().length > 0);
+    if (cookieShown) throw new Error('the consent button is on screen with no consent API to say it applies');
     await page.click('#btn-privacy-back');
     await page.waitForSelector('#main-menu.active', { timeout: 5000 });
     console.log(`         ${p.words} words, names AdSense, gives an address, carries no ad`);
+});
+
+await step('the consent button appears only where the consent API says GDPR applies, and reopens the choice', async () => {
+    // v3.24.1. Google's consent script never runs here (the ad tag is stubbed),
+    // so this plays its part through the documented API: run the callbacks
+    // ads.js queued, answer them with a stand-in __tcfapi, and watch the real
+    // button on the real panel. The click has to reach Google's function.
+    const setup = await page.evaluate(() => {
+        const queue = (window.googlefc && window.googlefc.callbackQueue) || [];
+        const ready = queue.filter(q => q && typeof q.CONSENT_API_READY === 'function');
+        window.__smokeTcf = null;
+        window.__tcfapi = (cmd, ver, cb) => { if (cmd === 'addEventListener') window.__smokeTcf = cb; };
+        window.__smokeReopened = 0;
+        window.googlefc.showRevocationMessage = () => { window.__smokeReopened++; };
+        for (const q of ready) q.CONSENT_API_READY();
+        return { queued: ready.length, listening: typeof window.__smokeTcf === 'function' };
+    });
+    if (setup.queued !== 1) throw new Error(`${setup.queued} consent callbacks queued, want exactly 1`);
+    if (!setup.listening) throw new Error('the queued callback never asked the TCF API for consent data');
+
+    await page.click('#btn-privacy');
+    await page.waitForSelector('#privacy-panel.active', { timeout: 5000 });
+    const shown = (tcData, success) => page.evaluate(([d, s]) => {
+        window.__smokeTcf(d, s);
+        return document.getElementById('btn-cookie-settings').getClientRects().length > 0;
+    }, [tcData, success]);
+    const outside = await shown({ gdprApplies: false }, true);
+    const failed = await shown({ gdprApplies: true }, false);
+    const inside = await shown({ gdprApplies: true }, true);
+    if (outside) throw new Error('the consent button shows where GDPR does not apply');
+    if (failed) throw new Error('the consent button shows when the consent API call failed');
+    if (!inside) throw new Error('the consent button stays hidden where GDPR applies');
+
+    await page.click('#btn-cookie-settings');
+    const reopened = await page.evaluate(() => window.__smokeReopened);
+    if (reopened !== 1) throw new Error(`the click reached showRevocationMessage ${reopened} time(s), want 1`);
+
+    // Leave the page as it was for the steps after this one.
+    await shown({ gdprApplies: false }, true);
+    await page.evaluate(() => { delete window.__tcfapi; delete window.__smokeTcf; delete window.__smokeReopened; });
+    await page.click('#btn-privacy-back');
+    await page.waitForSelector('#main-menu.active', { timeout: 5000 });
+    console.log('         hidden outside GDPR and on a failed call, shown where it applies; one click, one reopen');
 });
 
 // v3.18.0: the Table of the Gods, through its real hall button and the real

@@ -1172,7 +1172,7 @@ echo   Otomatik reklamlar ^(Auto ads^) bu site icin KAPALI kalmali.
 echo   Acik oldugunda Google birimi sayfanin ISTEDIGI yerine koyar --
 echo   #game-container dahil, yani CANLI MASANIN uzerine. Bu tek anahtar
 echo   uc seyi ayni anda bozar:
-echo     1^) adsConfig.js'teki on ekranlik yasak listesi tamamen atlanir
+echo     1^) adsConfig.js'teki 15 ekranlik yasak listesi tamamen atlanir
 echo     2^) dort dildeki gizlilik sozu ^("mac sirasinda asla reklam yok"^)
 echo        yalan olur -- o soz 16 testle sabitlenmis durumda
 echo     3^) refleks olcumunun kendisi bozulur: olculdu, 50 ms takilma
@@ -1181,19 +1181,13 @@ echo        verir. Yani sadece puan degil, el kaybedilir.
 echo   Panel: AdSense ^> Reklamlar ^> Siteye gore ^> ers-card-game.web.app
 echo   ^> Otomatik reklamlar: KAPALI. Reklam birimleri elle yerlestirilir.
 echo.
-echo YAN RAYLAR ^(ana menunun sagi ve solu^):
-echo   Yalnizca 1200px ve uzeri pencerede, yalnizca ana menu aktifken
-echo   gorunur. Tek bir CSS kurali aciyor: #main-menu.active ~ .ad-rail
-echo   Hicbir script gosterip gizlemiyor -- v3.12.0'da ekranda kalan
-echo   kazanan bandi tam olarak "sahibi olan ama emekli edeni olmayan"
-echo   bir katmandi; bunun sahibi yok, cunku ihtiyaci yok.
-echo   600px'lik sutunun kenari merkezden 300px; ray 160px, aralik 24px;
-echo   yani 484px. 1200px'te her iki kenarda 116px bosluk kalir.
-echo   Raylar ancak adsConfig.js'te HEM yayinci kimligi HEM de
-echo   AD_RAIL_SLOT doluyken dolar; birisi bossa kutu gorunmez kalir.
-echo   KAPATMA: adsConfig.js'te PUBLISHER_ID = '' butun reklamlari,
-echo   AD_RAIL_SLOT = '' sadece raylari kapatir. Iki durumu da olcen
-echo   testler hala calisiyor.
+echo YAN RAYLAR ^(ana menunun sagi ve solu^) -- v3.24.1'DEN BERI KAPALI:
+echo   Ana menu bir gezinme ekrani ve AdSense gezinme ekranina reklam
+echo   koymayi yasakliyor. Bu yuzden menu yasak listesinde VE AD_RAIL_SLOT
+echo   bos: ikisinden biri tek basina raylari bos tutar. Isaretleme, CSS
+echo   kurali ^(#main-menu.active ~ .ad-rail^) ve yukleyicideki ray kolu
+echo   duruyor ama hicbir sey doldurmuyor; bos bir ray 160 x 0 olcer.
+echo   KAPATMA: adsConfig.js'te PUBLISHER_ID = '' butun reklamlari kapatir.
 echo.
 echo DEPLOY SONRASI KONTROL (bunlar sadece tarayicida dogrulanabilir):
 echo   - Ana menude surum yazisi package.json'daki surumle AYNI olmali
@@ -1247,20 +1241,23 @@ echo   - REKLAM KUTUSU CIKIYOR AMA BOS ISE: ^<ins^> uzerinde
 echo     data-ad-status="unfilled" var mi diye bak. Varsa bizim
 echo     tarafta yapilacak bir sey YOK -- istek gitti, Google reklam
 echo     DONDURMEDI. Yeni sitede saatler/gunler surebilir.
-echo   - YAN RAYLAR: pencereyi 1366px genislige getir -- menunun iki
-echo     yaninda 160x600 reklamlar GORUNMELI, kartlarin ustunde ama
-echo     menu sutununa DEGMEDEN. Pencereyi 1199px'e daralt: raylar
-echo     KAYBOLMALI ve YATAY KAYDIRMA CUBUGU CIKMAMALI.
-echo   - Ayarlar'i ac: yanlarda hicbir sey kalmamali ^(raylar lobiye ait^)
+echo   - ANA MENUDE REKLAM YOK ^(v3.24.1^): 1366px pencerede menunun
+echo     yanlari BOS olmali, telefonda Ayarlar'in altinda banner OLMAMALI.
+echo     Pencereyi 1199px'e daralt: YATAY KAYDIRMA CUBUGU CIKMAMALI.
+echo   - Ayarlar'i ac: yanlarda hicbir sey kalmamali
 echo   - BOTLARLA OYNA: masanin uzerinde ya da yaninda HICBIR reklam
 echo     olmamali, ve Network'te mac boyunca YENI istek olmamali.
 echo     Bu, adsConfig.js'in var olma sebebi -- 50 ms takilma 72 puan.
-echo   - Hakkinda / Kurallar / Magaza / Slap IQ / Skor Tablosu /
-echo     Hesap: her birinde metnin altinda TEK bir banner olmali
-echo   - TELEFONDA ^(ya da pencereyi 1199px'in altina daraltinca^):
-echo     ana menude, Ayarlar butonunun ALTINDA bir banner OLMALI --
-echo     ve yanlarda ray OLMAMALI. 1200px ustunde tam tersi.
-echo     Ikisini AYNI ANDA goruyorsan media query kaymis demektir.
+echo   - Hakkinda / Kurallar / Slap IQ / Skor Tablosu: BASLIGIN ALTINDA,
+echo     metnin USTUNDE, ustunde "ADVERTISEMENTS" ^(Turkcede REKLAMLAR^)
+echo     yazan TEK bir kutu. Hicbir dugmenin yaninda olmamali.
+echo     Magaza ve Hesap ekraninda reklam OLMAMALI ^(v3.24.1^).
+echo   - /en/rules ve /en/about: basligin altinda etiketli TEK kutu ^(onaya
+echo     kadar Google bos dondurur ve kutu gizlenir -- normal^); /en/privacy:
+echo     reklam YOK. Reklam engelleyici aciksa oyunda da sayfada da kutu YOK.
+echo   - TELEFONDA: panel basliklari sol ustteki profil/jeton/cark
+echo     dugmelerinin ALTINDA kalmamali; reklam kutusu o dugmelere
+echo     yapisik olmamali.
 echo   - Gizlilik sayfasinda reklam OLMAMALI ^(reklamlari anlatan
 echo     sayfanin yaninda reklam sacma^)
 echo   - RA'NIN CARKI ^(bu surumde duzeltildi^): cevir ve DUR. Isaretcinin
@@ -1915,6 +1912,48 @@ echo  244) Duzeltme: coklu maca girerken sekme bir an "bot macinda" diyordu
 echo       ^(lobi 'gameplay' olayi mod ayarlanmadan geliyordu^).
 echo       Firestore kurallari 233 kontrol ^(tum mutantlar yakalandi^), 3348 test.
 echo.
+echo  --- v3.24.1 -- ADSENSE UYUMU ^(konsey ERS-37^) ---
+echo  245) Ret sebebi HESAP bilgisiydi ^(ad, adres, telefon^): onu yalniz sen
+echo       AdSense panelinde duzeltebilirsin. Bu surum SITE tarafini kapatir.
+echo  246) Ana menu, Magaza ve Hesap ekraninda artik reklam YOK. Menu bir
+echo       gezinme ekrani, magaza satin alma dugmeleriyle dolu, hesap bir
+echo       giris formu: AdSense bu ekranlarda reklami yasakliyor. Lobinin
+echo       banneri ve iki yan rayi da gitti ^(raylar iki kez kapali^).
+echo  247) Reklam yalniz dort okuma panelinde: Kurallar, Hakkinda, Skor
+echo       Tablosu, Slap IQ. Her birinde BASLIGIN ALTINDA, metnin USTUNDE;
+echo       hicbir dugmenin yaninda degil ^(eskiden Geri dugmesinin 4px
+echo       ustundeydi^). Kutunun ustunde AdSense'in izin verdigi etiket
+echo       "Advertisements", oyuncunun dilinde ^(Reklamlar, Anzeigen, RU^).
+echo       Bos donen reklamin kutusu gizlenir: etiketli bos kutu kalmaz.
+echo  248) Telefonda panel basliklari sol ustteki profil/jeton/cark
+echo       dugmelerinin ALTINDA kaliyordu; paneller artik onlarin altindan
+echo       basliyor ^(Slap IQ reklami o dugmelere 36px'ti, simdi 55px^).
+echo  249) Gizlilik metni ^(4 dil^): reklamin hangi 4 ekranda oldugu, Google
+echo       dahil ucuncu taraf cerezleri, google.com/settings/ads,
+echo       www.aboutads.info, policies.google.com/technologies/partner-sites.
+echo       AEA / Birlesik Krallik / Isvicre icin Google'in onay mesaji ve
+echo       Gizlilik panelinde "Privacy and cookie settings" dugmesi: yalniz
+echo       Google'in onay API'si "GDPR gecerli" derse gorunur, mesaji yeniden
+echo       acar.
+echo  250) Konsey ERS-38 ^("baska nerelere reklam?"^): Savunulabilir 3-2, Guclu.
+echo       Statik Kurallar ve Hakkinda sayfalarina ^(/en /tr /de /ru^) sayfa
+echo       basina TEK birim: basligin altinda, metnin ustunde, etiketli.
+echo       Gizlilik sayfasi reklamsiz. Yukleyici harici /js/page-ads.js ^(CSP
+echo       satir ici betigi yasakliyor^); Google'in etiketi yuklenmezse kutu hic
+echo       gorunmez. Gizlilik metni bu iki sayfayi da adiyla sayiyor ^(4 dil^).
+echo  251) Reddedilenler: oyun sonu ekrani ^(Tekrar Oyna dugmesinin yaninda;
+echo       Google oyun penceresi ve play dugmesi yanina reklami uyariyor^) ve
+echo       maclar arasi ara reklam ^(kullanicinin acmadigi pencere^).
+echo       Ertelenenler: masaustunde TEK yapiskan ray ^(Google: tek yapiskan
+echo       birim, yalniz masaustu, iki yanda aynali YASAK^), odullu reklam
+echo       ^(hesap onayi ister^), kurallar metninin ortasina ikinci birim.
+echo  252) Canlidaki v3.24.0 lobisinde iki yanda AYNALI yapiskan ray var --
+echo       Google'in yapiskan reklam SSS'sine gore izin verilmeyen bicim. Bu
+echo       surumu yayinlamak onu kaldiriyor: yeniden basvurudan ONCE deploy et.
+echo  253) Reklam engelleyicili oyuncu: Google'in etiketi yuklenmezse oyun
+echo       artik bos, etiketli kutu gostermiyor ^(belge isaretlenir, istek
+echo       yapilmaz^). 3535 test ^(25 mutant yakalandi^), smoke 76 adim yesil.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -2161,5 +2200,27 @@ echo     dene: reddedilmeli.
 echo   - Istege bagli: Firebase Console, Firestore, TTL: match_log koleksiyonu,
 echo     alan expireAt. Acilirsa eski mac kayitlari kendiliginden silinir;
 echo     acilmazsa Multiplayer sekmesinde "suresi dolanlari temizle" dugmesi var.
+echo.
+echo  --- v3.24.1 -- ADSENSE: SENIN YAPMAN GEREKENLER ^(kodla yapilamaz^) ---
+echo   1^) AdSense ^> Odemeler ^> Odeme profili: ad-soyad bankadaki ve
+echo      kimlikteki ile HARFI HARFINE ayni; adres eksiksiz ^(mahalle, sokak,
+echo      no, posta kodu, ilce/il^); telefon dogrulanmis; hesap turu Bireysel.
+echo   2^) AdSense ^> Gizlilik ve mesajlar ^> Avrupa yonetmelikleri: mesaji
+echo      olustur ve YAYINLA. Gizlilik metni AEA/UK/CH ziyaretcisine bu
+echo      mesajin gosterildigini soyluyor; yayinlanmazsa o cumle YANLIS olur
+echo      ve AB trafigine reklam cikmaz.
+echo      Yayinlaninca Google AEA/UK/CH ziyaretcisine sayfanin altina kendi
+echo      "Privacy and cookie settings" baglantisini otomatik koyar: bir AB
+echo      VPN'iyle telefonda bak, oyun masasindaki dugmeleri ortuyor mu.
+echo   3^) Otomatik reklamlar KAPALI kalmali ^(nedeni yukarida^).
+echo   4^) Google Search Console: sitemap.xml'i gonder, /en/rules icin "Dizine
+echo      ekleme istegi". Konsey kosulu ^(ERS-38^): trafik gorulene kadar YENI
+echo      reklam yeri eklenmez.
+echo   5^) ONCE bu surumu deploy et, SONRA politika onay kutusunu isaretle ve
+echo      "Yeniden gonder"e SEN bas.
+echo   - Deploy sonrasi: menude reklam yok; Kurallar'da basligin altinda
+echo     "ADVERTISEMENTS" etiketli kutu ^(inceleme bitene kadar bos donup
+echo     gizlenmesi NORMAL^); Turkiye'den bakinca "Privacy and cookie
+echo     settings" dugmesinin gorunmemesi NORMAL ^(yalniz AEA/UK/CH^).
 echo.
 pause

@@ -129,6 +129,29 @@
     .play:hover { background: #3fb950; transform: translateY(-2px); text-decoration: none; }
     .cta { text-align: center; }
 
+    /* --- the ad unit (v3.24.1, council ERS-38) ------------------------------
+       Between the title and the text, like the app's reading panels, labelled
+       with the word AdSense permits. HIDDEN until js/page-ads.js has seen
+       Google's tag load, so a page whose tag is blocked, or that runs no
+       script, is the plain reading page it was; hidden again if Google answers
+       with nothing, so no labelled empty box is ever left on the page. */
+    .ad-box { display: none; }
+    .ad-box.on {
+        display: block;
+        min-height: 100px;
+        margin: 0 0 1.5rem;
+        padding: 6px 8px 8px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.22);
+        border: 1px solid var(--panel-border);
+    }
+    .ad-box.on:has(> ins.adsbygoogle[data-ad-status="unfilled"]) { display: none; }
+    .ad-label {
+        margin: 0 0 6px; text-align: center;
+        font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--muted);
+    }
+
     /* --- footer ------------------------------------------------------------ */
     .site-foot {
         margin-top: 28px; padding-top: 18px;
@@ -169,7 +192,7 @@
         </header>
         <main class="panel">
             <h1>Datenschutzerklärung</h1>
-            <p class="privacy-updated" data-i18n="pUpdated">Zuletzt aktualisiert: 29. August 2026</p>
+            <p class="privacy-updated" data-i18n="pUpdated">Zuletzt aktualisiert: 30. September 2026</p>
             
             <div class="rules-section">
             <h2 data-i18n="pAuthTitle">👤 Konto</h2>
@@ -188,12 +211,12 @@
             
             <div class="rules-section">
             <h2 data-i18n="pAdsTitle">📢 Werbung</h2>
-            <p data-i18n="pAdsDesc">Dieses Spiel zeigt Google-AdSense-Anzeigen ausschließlich auf Menü- und Informationsbildschirmen — nie während einer Partie und nie im Lauf der Täglichen Herausforderung. Google und Partner können Cookies zum Ausliefern und Messen von Anzeigen verwenden. Du kannst deine Auswahl jederzeit über den Einwilligungsdialog ändern und personalisierte Werbung unter google.com/settings/ads deaktivieren.</p>
+            <p data-i18n="pAdsDesc">Dieses Spiel zeigt Google-AdSense-Anzeigen nur an zwei Stellen: auf vier Leseseiten im Spiel — Spielregeln, Über dieses Spiel, Top-Spieler und Slap-IQ — und auf den Seiten Spielregeln und Über das Spiel dieser Website. Im Hauptmenü, im Shop und auf der Kontoseite gibt es keine — nie während einer Partie und nie im Lauf der Täglichen Challenge. Drittanbieter, einschließlich Google, verwenden Cookies, um Anzeigen auf Grundlage deiner früheren Besuche auf dieser oder anderen Websites auszuliefern. Durch Werbe-Cookies können Google und seine Partner dir Anzeigen auf Grundlage deiner Besuche auf dieser und/oder anderen Websites im Internet ausliefern. Personalisierte Werbung kannst du unter google.com/settings/ads deaktivieren, die Verwendung von Cookies für personalisierte Werbung durch einige andere Anbieter unter www.aboutads.info. Wie Google Informationen von Websites nutzt, auf denen seine Anzeigen erscheinen, steht unter policies.google.com/technologies/partner-sites.</p>
             </div>
             
             <div class="rules-section">
             <h2 data-i18n="pChoicesTitle">⚙️ Deine Möglichkeiten</h2>
-            <p data-i18n="pChoicesDesc">Du kannst ohne Konto spielen, lokale Daten durch Leeren des Browserspeichers löschen, deine Schlag-Statistiken im Slap-IQ-Panel zurücksetzen und deine Werbeeinwilligung jederzeit ändern. Für die Löschung eines Kontos und der gespeicherten Punktzahlen kontaktiere uns unten.</p>
+            <p data-i18n="pChoicesDesc">Du kannst ohne Konto spielen, lokale Daten durch Leeren des Browserspeichers löschen und deine Schlag-Statistiken im Slap-IQ-Panel zurücksetzen. Besucher aus dem Europäischen Wirtschaftsraum, dem Vereinigten Königreich und der Schweiz sehen Googles Einwilligungsdialog, der fragt, ob Anzeigen Cookies und personenbezogene Daten verwenden dürfen; diese Antwort lässt sich jederzeit mit der Schaltfläche „Datenschutz- und Cookie-Einstellungen“ am Ende dieser Seite im Spiel ändern. Für die Löschung eines Kontos und der gespeicherten Punktzahlen kontaktiere uns unten.</p>
             </div>
             
             <div class="rules-section">

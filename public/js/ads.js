@@ -1,5 +1,9 @@
 /**
- * ads.js — AdSense units on menu screens, and nowhere near a measured one.
+ * ads.js — AdSense units on reading panels, and nowhere near a measured one.
+ *
+ * Since v3.24.1 (council ERS-37) that means four panels — the rules, the page
+ * about the game, the leaderboard and Slap IQ — and never the menu, the shop
+ * or the account screen: see adsConfig.js for why each of those is refused.
  *
  * WHAT THIS DOES NOT DO, and why each one is deliberate:
  *
@@ -34,11 +38,26 @@
  * of the 600px column. They are body-level siblings of #main-menu, not children
  * of it, and CSS alone decides when they are visible — see the long note in
  * adsConfig.js for why both of those are load-bearing. This file's only extra
- * job is to refuse to fill a rail that is not actually on screen.
+ * job is to refuse to fill a rail that is not actually on screen. Since v3.24.1
+ * no rail is ever filled: the lobby is a navigation screen, and adsConfig.js
+ * switches the rails off twice.
+ *
+ * THE LABEL (v3.24.1). Every filled unit carries the word AdSense allows as an
+ * ad label ("Advertisements"), in the player's language, so an ad on a reading
+ * panel can never be taken for part of the page. The text travels as a data
+ * attribute that the stylesheet prints above the unit, because the unit's host
+ * is emptied and refilled here and a child element would not survive that.
+ *
+ * THE CONSENT BUTTON (v3.24.1). Google's consent message for the EEA, the UK
+ * and Switzerland arrives with the ad tag. Visitors it applies to must be able
+ * to change their answer later, so the privacy panel has a button that asks
+ * Google to show the message again — revealed only where Google's own consent
+ * API says the regulation applies.
  */
 
 import { PUBLISHER_ID, AD_SCREENS, RAIL_SIZE, adsEnabled, screenAllowsAd, slotFor, railSlotFor } from './adsConfig.js';
 import EventBus from './eventbus.js';
+import { Localization } from './localization.js?v=3';
 
 const SCRIPT_SRC = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js';
 
@@ -55,6 +74,8 @@ export const Ads = {
     _filled: new Set(),
     /** True from the moment a match starts until the player is back on a menu. */
     _inPlay: false,
+    /** True once Google's tag has failed to load (an ad blocker, a network). */
+    _blocked: false,
     /** Screens whose boxes had no width yet, keyed to the observer waiting. */
     _pendingWidth: new Map(),
     _observer: null,
@@ -74,11 +95,66 @@ export const Ads = {
             if (state === 'gameplay') this._inPlay = true;
             else if (state === 'menu') this._inPlay = false;
         });
+        // A label already on screen follows a language switch like any text.
+        EventBus.on('languageChanged', () => this._relabel());
 
+        // Before the tag: the consent script reads its callback queue when it
+        // loads, so the queue has to exist first.
+        this._wireConsentButton();
         this._loadScriptOnce();
         this._watchScreens();
-        // The menu is already on screen at boot, so it never fires a mutation.
-        this._maybeFill('main-menu');
+        // The screen showing at boot never fires a mutation. Today that is the
+        // menu, which carries no ad since v3.24.1, so this is normally refused;
+        // it stays so that "a screen is filled when it is shown" holds for
+        // whichever screen a page load starts on.
+        const shown = document.querySelector('.screen.active');
+        if (shown) this._maybeFill(shown.id);
+    },
+
+    /** The ad label in the current language; the English word if the key is missing. */
+    _label() {
+        const text = Localization.get('adLabel');
+        return text && text !== 'adLabel' ? text : 'Advertisements';
+    },
+
+    _relabel() {
+        for (const host of document.querySelectorAll('.ad-slot.filled')) {
+            host.dataset.adLabel = this._label();
+        }
+    },
+
+    /**
+     * Wires the privacy panel's "Privacy and cookie settings" button.
+     *
+     * Google's documented pattern for a custom revocation link, adapted to a
+     * CSP that forbids inline script: the button starts hidden, a callback on
+     * googlefc.callbackQueue waits for the consent framework's API, and the
+     * button is shown only while that API reports gdprApplies. Where the
+     * regulation does not apply, or where the European regulations message
+     * is not switched on in AdSense, the callback never shows it — a button
+     * that opens nothing is worse than no button.
+     */
+    _wireConsentButton() {
+        const btn = document.getElementById('btn-cookie-settings');
+        if (!btn) return 'no button in the markup';
+        btn.hidden = true;
+        btn.addEventListener('click', () => {
+            const fc = window.googlefc;
+            if (fc && typeof fc.showRevocationMessage === 'function') fc.showRevocationMessage();
+        });
+        window.googlefc = window.googlefc || {};
+        window.googlefc.callbackQueue = window.googlefc.callbackQueue || [];
+        window.googlefc.callbackQueue.push({
+            CONSENT_API_READY: () => {
+                if (typeof window.__tcfapi !== 'function') return;
+                // Called again whenever the consent record changes, so the
+                // button tracks the answer rather than the first reading.
+                window.__tcfapi('addEventListener', 0, (tcData, success) => {
+                    btn.hidden = !(success && tcData && tcData.gdprApplies === true);
+                });
+            }
+        });
+        return 'waiting for the consent API';
     },
 
     _loadScriptOnce() {
@@ -87,7 +163,17 @@ export const Ads = {
         s.async = true;
         s.crossOrigin = 'anonymous';
         s.src = `${SCRIPT_SRC}?client=${encodeURIComponent(PUBLISHER_ID)}`;
+        // An ad blocker, or a network that refuses Google, ends here. Since
+        // v3.24.1 a filled box carries a label and a surface, so without this
+        // every reading panel would show a labelled EMPTY box to that player.
+        s.addEventListener('error', () => this._tagFailed());
         document.head.appendChild(s);
+    },
+
+    /** The tag never loaded: request nothing more, and hide what was filled. */
+    _tagFailed() {
+        this._blocked = true;
+        document.documentElement.classList.add('ads-blocked');
     },
 
     _watchScreens() {
@@ -112,6 +198,7 @@ export const Ads = {
      */
     _maybeFill(screenId) {
         if (!adsEnabled(PUBLISHER_ID)) return 'no publisher id';
+        if (this._blocked) return 'the ad tag did not load';
         if (this._inPlay) return 'a match is running';
         if (!screenAllowsAd(screenId)) return 'screen is not an ad screen';
 
@@ -198,6 +285,7 @@ export const Ads = {
                 ins.setAttribute('data-full-width-responsive', 'false');
             }
             job.host.appendChild(ins);
+            job.host.dataset.adLabel = this._label();
             job.host.classList.add('filled');
 
             try {

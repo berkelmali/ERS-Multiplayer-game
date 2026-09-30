@@ -33,6 +33,9 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+// Zero-import module, so node loads it: the ONE place that says which pages
+// carry an ad unit and with which ids (v3.24.1, council ERS-38).
+import { PUBLISHER_ID, pageSlotFor } from '../public/js/adsConfig.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -47,8 +50,12 @@ export const PAGES = Object.freeze([
     { slug: 'privacy', panel: 'privacy-panel' }
 ]);
 
-/** Per-language chrome. Everything else on the page comes from localization. */
-const CHROME = Object.freeze({
+/**
+ * Per-language chrome. Everything else on the page comes from localization.
+ * Exported because the privacy policy names the rules and about pages by these
+ * words, and a test holds the two together.
+ */
+export const CHROME = Object.freeze({
     en: { name: 'English', home: 'Play the game', nav: 'On this site', rules: 'Game Rules', about: 'About', privacy: 'Privacy Policy',
           desc: 'Egyptian Rat Screw in your browser — the full rules, how the site works, and what data it keeps.' },
     tr: { name: 'Türkçe', home: 'Oyunu oyna', nav: 'Bu sitede', rules: 'Oyun Kuralları', about: 'Hakkında', privacy: 'Gizlilik Politikası',
@@ -329,6 +336,29 @@ const STYLE = `
     .play:hover { background: #3fb950; transform: translateY(-2px); text-decoration: none; }
     .cta { text-align: center; }
 
+    /* --- the ad unit (v3.24.1, council ERS-38) ------------------------------
+       Between the title and the text, like the app's reading panels, labelled
+       with the word AdSense permits. HIDDEN until js/page-ads.js has seen
+       Google's tag load, so a page whose tag is blocked, or that runs no
+       script, is the plain reading page it was; hidden again if Google answers
+       with nothing, so no labelled empty box is ever left on the page. */
+    .ad-box { display: none; }
+    .ad-box.on {
+        display: block;
+        min-height: 100px;
+        margin: 0 0 1.5rem;
+        padding: 6px 8px 8px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.22);
+        border: 1px solid var(--panel-border);
+    }
+    .ad-box.on:has(> ins.adsbygoogle[data-ad-status="unfilled"]) { display: none; }
+    .ad-label {
+        margin: 0 0 6px; text-align: center;
+        font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--muted);
+    }
+
     /* --- footer ------------------------------------------------------------ */
     .site-foot {
         margin-top: 28px; padding-top: 18px;
@@ -357,9 +387,25 @@ const STYLE = `
     }
 `.trim();
 
-function shell({ lang, slug, title, body }) {
+/**
+ * The unit for a page, or '' when the page carries none (privacy, or ads off).
+ * `aria-hidden` like every unit in the app: a screen reader reading the rules
+ * should not be handed an iframe in the middle of them.
+ */
+function adBox(slug, label) {
+    const slot = pageSlotFor(slug);
+    if (!slot) return '';
+    return `            <div class="ad-box" aria-hidden="true">
+                <div class="ad-label">${esc(label)}</div>
+                <ins class="adsbygoogle" style="display:block" data-ad-client="${esc(PUBLISHER_ID)}" data-ad-slot="${esc(slot)}" data-ad-format="horizontal" data-full-width-responsive="false"></ins>
+            </div>
+`;
+}
+
+function shell({ lang, slug, title, body, adLabel }) {
     const c = CHROME[lang];
     const self = `${ORIGIN}/${lang}/${slug}`;
+    const ad = adBox(slug, adLabel);
     const alts = LANGS.map((l) =>
         `    <link rel="alternate" hreflang="${l}" href="${ORIGIN}/${l}/${slug}">`).join('\n');
     const nav = PAGES.map(({ slug: s }) =>
@@ -397,7 +443,7 @@ ${STYLE}
         </header>
         <main class="panel">
             <h1>${esc(title)}</h1>
-${body}
+${ad}${body}
             <div class="cta"><a class="play" href="/">${esc(c.home)}</a></div>
         </main>
         <footer class="site-foot">
@@ -407,7 +453,7 @@ ${body}
             </div>
         </footer>
     </div>
-</body>
+${ad ? '    <script src="/js/page-ads.js" defer></script>\n' : ''}</body>
 </html>
 `;
 }
@@ -452,7 +498,9 @@ async function loadDictionaries(keys) {
 /** Returns { 'en/rules.html': '<!DOCTYPE html>…', … } for every language. */
 export async function buildAll() {
     const index = readFileSync(join(PUBLIC, 'index.html'), 'utf8');
-    const keys = [...new Set([...index.matchAll(/data-i18n="([^"]+)"/g)].map((m) => m[1]))];
+    // adLabel is not a data-i18n key in the markup (the app writes it into a
+    // data attribute), so it is asked for by name.
+    const keys = [...new Set([...index.matchAll(/data-i18n="([^"]+)"/g)].map((m) => m[1]).concat('adLabel'))];
     const dicts = await loadDictionaries(keys);
     const out = {};
 
@@ -467,7 +515,7 @@ export async function buildAll() {
             const title = d[titleKey] ?? /<h2[^>]*>([^<]*)</.exec(panelEl.inner)[1];
             const body = tidy(promoteHeadings(stripButtons(localize(content, d))))
                 .split('\n').map((l) => '            ' + l.trim()).join('\n');
-            out[`${lang}/${slug}.html`] = shell({ lang, slug, title, body });
+            out[`${lang}/${slug}.html`] = shell({ lang, slug, title, body, adLabel: d.adLabel ?? 'Advertisements' });
         }
     }
     return out;

@@ -37,7 +37,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.24.0">
+    <link rel="stylesheet" href="style.css?v=3.24.1">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
@@ -243,9 +243,8 @@
 
         <div class="lobby-spacer-bottom" aria-hidden="true"></div>
 
-        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
-             never on a screen where anything is being timed — see adsConfig.js. -->
-        <div class="ad-slot" aria-hidden="true"></div>
+        <!-- No ad unit here since v3.24.1: the lobby is a navigation screen, and
+             AdSense does not allow ads on one (council ERS-37, adsConfig.js). -->
         <!-- THE ONLY TWO <a href> IN THIS DOCUMENT, and they are the controls
              that were already here.
 
@@ -273,7 +272,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.24.0
+        <div id="game-version">Berk Elmalı · v3.24.1
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -295,7 +294,8 @@
          stranded over a live match the way v3.12.0's winner banner was, because
          the rule that reveals it stops matching the instant the lobby stops
          being the active screen. Empty and invisible until adsConfig.js has
-         both a publisher id and a rail slot id. -->
+         both a publisher id and a rail slot id — and since v3.24.1 the lobby
+         is on the deny list as well, so they stay empty (see adsConfig.js). -->
     <div class="ad-rail ad-rail-left" aria-hidden="true">
         <div class="ad-rail-slot" data-ad-screen="main-menu"></div>
     </div>
@@ -453,9 +453,8 @@
         <div id="shop-grid" class="shop-grid">
             <!-- Dynamically rendered by shopUI.js -->
         </div>
-        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
-             never on a screen where anything is being timed — see adsConfig.js. -->
-        <div class="ad-slot" aria-hidden="true"></div>
+        <!-- No ad unit since v3.24.1: every tile above is a buy or equip button,
+             and AdSense does not allow ads beside action elements. -->
         <button id="btn-shop-back" class="btn secondary" data-i18n="back">Back</button>
     </div>
 
@@ -500,7 +499,6 @@
     <!-- SLAP IQ PANEL (v3.0.0) -->
     <div id="slapiq-panel" class="screen scrollable-screen">
         <h2 data-i18n="slapIqTitle">🧠 Slap IQ</h2>
-        <div id="slapiq-body" class="rules-content" style="text-align:left;"></div>
         <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
              never on a screen where anything is being timed — see adsConfig.js.
              v3.14.4: this used to sit BETWEEN the two buttons, inside
@@ -509,9 +507,12 @@
              space and pushed the Back button 294px outside the panel. It was
              invisible while .ad-slot could shrink; v3.14.3 stopped it shrinking
              — correctly, for the column it was written for — and the row broke.
-             Every other panel puts the unit here, between the content and the
-             buttons, as a child of the panel COLUMN. So does this one now. -->
+             v3.24.1 (council ERS-37): it sits under the title, above the report,
+             on every ad panel — a child of the panel COLUMN with content, not a
+             control, on both sides, because AdSense does not allow a unit beside
+             navigation or action elements. -->
         <div class="ad-slot" aria-hidden="true"></div>
+        <div id="slapiq-body" class="rules-content" style="text-align:left;"></div>
         <div class="slapiq-actions">
             <button id="btn-slapiq-reset" class="btn secondary" data-i18n="slapIqReset">Reset stats</button>
             <button id="btn-slapiq-back" class="btn secondary" data-i18n="back">Back</button>
@@ -521,12 +522,13 @@
     <!-- LEADERBOARD PANEL -->
     <div id="leaderboard-panel" class="screen scrollable-screen">
         <h2 data-i18n="topPlayers">Top Players</h2>
+        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
+             never on a screen where anything is being timed — see adsConfig.js.
+             Between the title and the content, never beside a control (v3.24.1). -->
+        <div class="ad-slot" aria-hidden="true"></div>
         <div id="leaderboard-content" class="rules-content" style="text-align: left;">
             <p data-i18n="loading">Loading...</p>
         </div>
-        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
-             never on a screen where anything is being timed — see adsConfig.js. -->
-        <div class="ad-slot" aria-hidden="true"></div>
         <button id="btn-leaderboard-back" class="btn secondary" data-i18n="back">Back</button>
     </div>
 
@@ -538,6 +540,10 @@
     <div id="about-panel" class="screen scrollable-screen">
         <div class="lobby-content-container rules-container">
             <h2 data-i18n="aTitle" class="panel-title">About This Game</h2>
+            <!-- Ad unit: between the title and the content, never beside a
+                 control (v3.24.1). Outside .rules-content on purpose — that is
+                 the part tools/build-content-pages.mjs publishes as /xx/about. -->
+            <div class="ad-slot" aria-hidden="true"></div>
             <div class="rules-content">
 
                 <div class="rules-section">
@@ -566,7 +572,6 @@
                 </div>
 
             </div>
-            <div class="ad-slot" aria-hidden="true"></div>
             <button id="btn-about-back" class="btn secondary" data-i18n="back">Back</button>
         </div>
     </div>
@@ -585,7 +590,7 @@
                  It previously read "Account text", "Ads text", and so on: the
                  one document an ad network actually checks, served as stubs. -->
             <div class="rules-content">
-                <p class="privacy-updated" data-i18n="pUpdated">Last updated: 29 August 2026</p>
+                <p class="privacy-updated" data-i18n="pUpdated">Last updated: 30 September 2026</p>
 
                 <div class="rules-section">
                     <h3 data-i18n="pAuthTitle">👤 Account</h3>
@@ -604,12 +609,12 @@
 
                 <div class="rules-section">
                     <h3 data-i18n="pAdsTitle">📢 Advertising</h3>
-                    <p data-i18n="pAdsDesc">This game shows Google AdSense ads on menu and information screens only — never during a match, and never on a Daily Challenge run. Google and its partners may use cookies to serve and measure ads. You can review and change your choices at any time through the consent screen, and you can turn off personalised advertising at google.com/settings/ads.</p>
+                    <p data-i18n="pAdsDesc">This game shows Google AdSense ads in two places only: on four reading screens in the game — Game Rules, About, Top Players and Slap IQ — and on the Game Rules and About pages of this website. There are none on the main menu, in the shop or on the account screen — never during a match, and never on a Daily Challenge run. Third-party vendors, including Google, use cookies to serve ads based on your prior visits to this website or other websites. Google's use of advertising cookies enables it and its partners to serve ads to you based on your visits to this site and/or other sites on the Internet. You can opt out of personalised advertising at google.com/settings/ads, and out of some other vendors' use of cookies for personalised advertising at www.aboutads.info. How Google uses information from sites that show its ads is explained at policies.google.com/technologies/partner-sites.</p>
                 </div>
 
                 <div class="rules-section">
                     <h3 data-i18n="pChoicesTitle">⚙️ Your choices</h3>
-                    <p data-i18n="pChoicesDesc">You can play without an account, delete your local data by clearing browser storage, reset your slap statistics from the Slap IQ panel, and change your advertising consent at any time. To have an account and its stored scores deleted, contact us below.</p>
+                    <p data-i18n="pChoicesDesc">You can play without an account, delete your local data by clearing browser storage, and reset your slap statistics from the Slap IQ panel. Visitors from the European Economic Area, the United Kingdom and Switzerland are shown Google's consent message, which asks whether ads may use cookies and personal data; that answer can be changed at any time with the “Privacy and cookie settings” button at the end of this page in the game. To have an account and its stored scores deleted, contact us below.</p>
                 </div>
 
                 <div class="rules-section">
@@ -617,6 +622,12 @@
                     <p data-i18n="pContactDesc">Questions about this policy or a data request: berk9elmali9@gmail.com</p>
                 </div>
             </div>
+            <!-- v3.24.1: reopens Google's consent message so a visitor it applies
+                 to can change their answer. Hidden until Google's consent API
+                 reports that the regulation applies (ads.js), and OUTSIDE
+                 .rules-content, so the generated /xx/privacy pages — which run
+                 no ad tag and so could not honour it — never carry it. -->
+            <button id="btn-cookie-settings" type="button" class="btn secondary" data-i18n="pCookieSettings" hidden>Privacy and cookie settings</button>
             <button id="btn-privacy-back" class="btn secondary" data-i18n="back">Back</button>
         </div>
     </div>
@@ -744,6 +755,10 @@
     <div id="rules-panel" class="screen scrollable-screen">
         <div class="lobby-content-container rules-container">
             <h2 data-i18n="rules" class="panel-title">Game Rules</h2>
+            <!-- Ad unit: between the title and the content, never beside a
+                 control (v3.24.1). Outside .rules-content on purpose — that is
+                 the part tools/build-content-pages.mjs publishes as /xx/rules. -->
+            <div class="ad-slot" aria-hidden="true"></div>
             <div class="rules-content">
 
                 <div class="rules-section">
@@ -932,9 +947,6 @@
                 </div>
 
             </div>
-            <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
-             never on a screen where anything is being timed — see adsConfig.js. -->
-        <div class="ad-slot" aria-hidden="true"></div>
         <button id="btn-rules-back" class="btn secondary" data-i18n="back" style="margin-top: 1rem;">Back</button>
         </div>
     </div>
@@ -1174,9 +1186,8 @@
             </div>
         </div>
 
-        <!-- Ad unit. Filled by ads.js ONLY when a publisher id is set, and
-             never on a screen where anything is being timed — see adsConfig.js. -->
-        <div class="ad-slot" aria-hidden="true"></div>
+        <!-- No ad unit since v3.24.1: a sign-in form and account controls are
+             not publisher content, and AdSense does not allow a unit beside them. -->
         <div class="menu-buttons" style="margin-top: 2rem;">
             <button id="btn-close-account" class="btn secondary" data-i18n="close">Close</button>
         </div>
@@ -1439,7 +1450,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.24.0"></script>
+    <script type="module" src="js/main.js?v=3.24.1"></script>
 </body>
 
 </html>

@@ -19,6 +19,19 @@
  * So ads are confined to screens where nothing is being measured. This is not a
  * preference that can be relaxed later without re-opening the same hole council
  * ERS-06 closed for personal settings.
+ *
+ * WHY "NOT MEASURED" IS NOT ENOUGH (v3.24.1, council ERS-37)
+ *
+ * The second rule is AdSense's own. Google-served ads may not sit on screens
+ * without publisher content, or on screens used for navigation or other
+ * behavioural purposes, and may not sit next to navigation or action elements
+ * where a reach for a control lands on the ad. The main menu is a navigation
+ * screen (every visible thing on it is a button), the shop is a wall of buy
+ * and equip buttons, and the account screen is a sign-in form. All three
+ * carried a unit until v3.24.1, and none of them could keep one under that
+ * policy, whatever their timing. What is left are the four reading panels,
+ * and on each of them the unit sits between the title and the content — never
+ * beside a control. A test holds that placement.
  * ─────────────────────────────────────────────────────────────────────────
  */
 
@@ -42,17 +55,16 @@
 export const PUBLISHER_ID = 'ca-pub-7456321071922775';
 
 /**
- * Screens an ad unit may live on. Every one of these is a menu or a reading
- * panel: nothing on them is timed, and leaving one is always a deliberate click.
+ * Screens an ad unit may live on. Every one of these is a reading panel whose
+ * content is the reason to open it: the rules, the page about the game, the
+ * leaderboard and the player's own Slap IQ report. Nothing on them is timed,
+ * and leaving one is always a deliberate click.
  */
 export const AD_SCREENS = Object.freeze([
-    'main-menu',
     'about-panel',
-    'shop-panel',
     'rules-panel',
     'slapiq-panel',
-    'leaderboard-panel',
-    'account-panel'
+    'leaderboard-panel'
 ]);
 
 /**
@@ -75,8 +87,19 @@ export const AD_SCREENS = Object.freeze([
  *   confirm-modal       a modal asking for a decision
  *   privacy-panel       an ad next to the page that explains the ads is absurd
  *   invite-modal        sits over the waiting room one click from a latency-sensitive match
+ *   main-menu           a navigation screen: nothing on it but ways to go
+ *                       somewhere else. AdSense does not allow ads on screens
+ *                       used for navigation (v3.24.1; the lobby banner and the
+ *                       two side rails were its ads until then)
+ *   shop-panel          a store: every tile is a buy or equip button, so any
+ *                       unit there sits beside an action element (v3.24.1)
+ *   account-panel       a sign-in form and account controls, no publisher
+ *                       content to put an ad beside (v3.24.1)
  */
 export const NEVER_AD_SCREENS = Object.freeze([
+    'main-menu',
+    'shop-panel',
+    'account-panel',
     'game-container',
     'daily-panel',
     'tutorial-screen',
@@ -100,22 +123,35 @@ export const NEVER_AD_SCREENS = Object.freeze([
  * be made later by editing this object alone — nothing else in the codebase
  * knows these numbers.
  *
- * 'main-menu' carries a banner too, but ONLY on a narrow window. The lobby
- * gets exactly one ad at any width: the side rails above RAIL_MIN_WIDTH, this
- * banner below it. Never both — a rail plus a banner puts two units around
- * artwork the whole design is built on. The stylesheet enforces the swap by
- * hiding whichever one does not belong at that width, and ads.js refuses to
- * fill a box that is not actually on screen, so the hidden one is never
- * requested either.
+ * Until v3.24.1 'main-menu', 'shop-panel' and 'account-panel' had entries
+ * here. A slot id cannot put an ad on a screen the deny list names (slotFor
+ * asks screenAllowsAd first), but a stale entry is a claim nobody meant, and a
+ * test refuses one.
  */
 export const AD_SLOTS = Object.freeze({
-    'main-menu': '7107476549',
     'about-panel': '7107476549',
-    'shop-panel': '7107476549',
     'rules-panel': '7107476549',
     'slapiq-panel': '7107476549',
-    'leaderboard-panel': '7107476549',
-    'account-panel': '7107476549'
+    'leaderboard-panel': '7107476549'
+});
+
+/**
+ * The generated content pages that may carry ONE unit (v3.24.1, council
+ * ERS-38), keyed by page slug: /{en,tr,de,ru}/rules and /{en,tr,de,ru}/about,
+ * built by tools/build-content-pages.mjs from the same panels as above.
+ *
+ * They are the site's crawlable reading pages — the rules page is the one a
+ * search for the game's rules lands on — and, like the panels, the unit sits
+ * between the page title and the text. Never the privacy page, for the same
+ * reason as privacy-panel: an ad beside the page that explains the ads.
+ *
+ * One unit per page on purpose. A second one mid-way through the long rules
+ * page was proposed and deferred by the council until the account is approved
+ * and there is traffic data to justify it (Search Console).
+ */
+export const PAGE_AD_SLOTS = Object.freeze({
+    rules: '7107476549',
+    about: '7107476549'
 });
 
 /** True only when there is a real publisher id to load. */
@@ -140,6 +176,18 @@ export function screenAllowsAd(screenId) {
 export function slotFor(screenId) {
     if (!screenAllowsAd(screenId)) return '';
     const slot = AD_SLOTS[screenId];
+    return typeof slot === 'string' ? slot.trim() : '';
+}
+
+/**
+ * @returns {string} the slot id for a generated page, or '' if it carries none.
+ * The privacy page is refused by name, whatever PAGE_AD_SLOTS says, the same
+ * way screenAllowsAd refuses a deny-listed screen before reading the slots.
+ */
+export function pageSlotFor(slug) {
+    if (!adsEnabled(PUBLISHER_ID) || slug === 'privacy') return '';
+    if (!Object.prototype.hasOwnProperty.call(PAGE_AD_SLOTS, slug)) return '';
+    const slot = PAGE_AD_SLOTS[slug];
     return typeof slot === 'string' ? slot.trim() : '';
 }
 
@@ -175,6 +223,14 @@ export function slotFor(screenId) {
  * the window edges: assets/menu.jpg anchors on the two painted cards near the
  * left and right margins, and covering them is what "reklamlar sağda solda"
  * must NOT mean.
+ *
+ * SWITCHED OFF IN v3.24.1, TWICE OVER. The rails were the lobby's ad, and the
+ * lobby is a navigation screen, which AdSense does not allow ads on. So
+ * AD_RAIL_SLOT is empty again AND 'main-menu' is on the deny list — either one
+ * alone keeps every rail empty, because screenHasRail asks the deny list
+ * before anything else. The markup, the stylesheet rules and the loader's
+ * rail branch stay: they are inert without both switches, and they are what a
+ * future rail on a reading screen would reuse.
  * ───────────────────────────────────────────────────────────────────────── */
 
 /** The only screen that gets side rails. */
@@ -182,14 +238,15 @@ export const AD_RAIL_SCREEN = 'main-menu';
 
 /**
  * The ad unit id for the rails. Empty means no rail is ever filled and the two
- * rail boxes stay zero-height and invisible — that was the shipped state until
- * the site was approved, and it is still the off switch for the rails alone.
+ * rail boxes stay zero-height and invisible. That is the shipped state again
+ * since v3.24.1 (see above); from v3.14.0 to v3.24.0 it held the same unit as
+ * AD_SLOTS.
  *
- * The same unit as AD_SLOTS above, requested in FIXED SIZE rather than
- * responsive: see the comment in ads.js for why a 160x600 box must state both
- * dimensions instead of letting a responsive unit read its width.
+ * A rail asks for its unit in FIXED SIZE rather than responsive: see the
+ * comment in ads.js for why a 160x600 box must state both dimensions instead
+ * of letting a responsive unit read its width.
  */
-export const AD_RAIL_SLOT = '7107476549';
+export const AD_RAIL_SLOT = '';
 
 /**
  * The shape a rail asks for. 160x600 is the standard wide skyscraper, and it

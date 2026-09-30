@@ -129,6 +129,29 @@
     .play:hover { background: #3fb950; transform: translateY(-2px); text-decoration: none; }
     .cta { text-align: center; }
 
+    /* --- the ad unit (v3.24.1, council ERS-38) ------------------------------
+       Between the title and the text, like the app's reading panels, labelled
+       with the word AdSense permits. HIDDEN until js/page-ads.js has seen
+       Google's tag load, so a page whose tag is blocked, or that runs no
+       script, is the plain reading page it was; hidden again if Google answers
+       with nothing, so no labelled empty box is ever left on the page. */
+    .ad-box { display: none; }
+    .ad-box.on {
+        display: block;
+        min-height: 100px;
+        margin: 0 0 1.5rem;
+        padding: 6px 8px 8px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.22);
+        border: 1px solid var(--panel-border);
+    }
+    .ad-box.on:has(> ins.adsbygoogle[data-ad-status="unfilled"]) { display: none; }
+    .ad-label {
+        margin: 0 0 6px; text-align: center;
+        font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--muted);
+    }
+
     /* --- footer ------------------------------------------------------------ */
     .site-foot {
         margin-top: 28px; padding-top: 18px;
@@ -169,7 +192,7 @@
         </header>
         <main class="panel">
             <h1>Gizlilik Politikası</h1>
-            <p class="privacy-updated" data-i18n="pUpdated">Son güncelleme: 29 Ağustos 2026</p>
+            <p class="privacy-updated" data-i18n="pUpdated">Son güncelleme: 30 Eylül 2026</p>
             
             <div class="rules-section">
             <h2 data-i18n="pAuthTitle">👤 Hesap</h2>
@@ -188,12 +211,12 @@
             
             <div class="rules-section">
             <h2 data-i18n="pAdsTitle">📢 Reklamlar</h2>
-            <p data-i18n="pAdsDesc">Bu oyun Google AdSense reklamlarını yalnızca menü ve bilgi ekranlarında gösterir — maç sırasında asla, Günlük Meydan Okuma koşusunda asla. Google ve iş ortakları reklamları sunmak ve ölçmek için çerez kullanabilir. Tercihlerinizi onay ekranından istediğiniz zaman değiştirebilir, kişiselleştirilmiş reklamları google.com/settings/ads adresinden kapatabilirsiniz.</p>
+            <p data-i18n="pAdsDesc">Bu oyun Google AdSense reklamlarını yalnızca iki yerde gösterir: oyundaki dört okuma ekranında — Oyun Kuralları, Hakkında, En İyiler ve Slap IQ — ve bu sitenin Oyun Kuralları ve Hakkında sayfalarında. Ana menüde, mağazada ve hesap ekranında reklam yoktur — maç sırasında asla, Günlük Meydan Okuma koşusunda asla. Google dahil üçüncü taraf sağlayıcılar, bu siteye veya başka sitelere önceki ziyaretlerinize dayanarak reklam sunmak için çerez kullanır. Google'ın reklam çerezlerini kullanması, Google'ın ve iş ortaklarının size bu siteye ve/veya internetteki başka sitelere yaptığınız ziyaretlere dayanan reklamlar sunmasını sağlar. Kişiselleştirilmiş reklamları google.com/settings/ads adresinden, bazı başka sağlayıcıların kişiselleştirilmiş reklam için çerez kullanımını da www.aboutads.info adresinden kapatabilirsiniz. Google'ın, reklamlarını gösteren sitelerden gelen bilgileri nasıl kullandığı policies.google.com/technologies/partner-sites adresinde açıklanır.</p>
             </div>
             
             <div class="rules-section">
             <h2 data-i18n="pChoicesTitle">⚙️ Seçimleriniz</h2>
-            <p data-i18n="pChoicesDesc">Hesapsız oynayabilir, tarayıcı depolamasını temizleyerek yerel verilerinizi silebilir, şaplak istatistiklerinizi Slap IQ panelinden sıfırlayabilir ve reklam onayınızı istediğiniz zaman değiştirebilirsiniz. Hesabınızın ve saklanan puanlarınızın silinmesi için aşağıdan iletişime geçin.</p>
+            <p data-i18n="pChoicesDesc">Hesapsız oynayabilir, tarayıcı depolamasını temizleyerek yerel verilerinizi silebilir ve şaplak istatistiklerinizi Slap IQ panelinden sıfırlayabilirsiniz. Avrupa Ekonomik Alanı, Birleşik Krallık ve İsviçre'den gelen ziyaretçilere, reklamların çerez ve kişisel veri kullanıp kullanamayacağını soran Google onay mesajı gösterilir; bu yanıt, oyunda bu sayfanın sonundaki “Gizlilik ve çerez ayarları” düğmesiyle istenildiği zaman değiştirilebilir. Hesabınızın ve saklanan puanlarınızın silinmesi için aşağıdan iletişime geçin.</p>
             </div>
             
             <div class="rules-section">

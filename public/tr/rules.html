@@ -129,6 +129,29 @@
     .play:hover { background: #3fb950; transform: translateY(-2px); text-decoration: none; }
     .cta { text-align: center; }
 
+    /* --- the ad unit (v3.24.1, council ERS-38) ------------------------------
+       Between the title and the text, like the app's reading panels, labelled
+       with the word AdSense permits. HIDDEN until js/page-ads.js has seen
+       Google's tag load, so a page whose tag is blocked, or that runs no
+       script, is the plain reading page it was; hidden again if Google answers
+       with nothing, so no labelled empty box is ever left on the page. */
+    .ad-box { display: none; }
+    .ad-box.on {
+        display: block;
+        min-height: 100px;
+        margin: 0 0 1.5rem;
+        padding: 6px 8px 8px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.22);
+        border: 1px solid var(--panel-border);
+    }
+    .ad-box.on:has(> ins.adsbygoogle[data-ad-status="unfilled"]) { display: none; }
+    .ad-label {
+        margin: 0 0 6px; text-align: center;
+        font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--muted);
+    }
+
     /* --- footer ------------------------------------------------------------ */
     .site-foot {
         margin-top: 28px; padding-top: 18px;
@@ -169,6 +192,10 @@
         </header>
         <main class="panel">
             <h1>Oyun Kuralları</h1>
+            <div class="ad-box" aria-hidden="true">
+                <div class="ad-label">Reklamlar</div>
+                <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-7456321071922775" data-ad-slot="7107476549" data-ad-format="horizontal" data-full-width-responsive="false"></ins>
+            </div>
             <div class="rules-section">
             <h2 data-i18n="rWinTitle">🏆 Nasıl Kazanılır</h2>
             <p data-i18n="rWinDesc">Oyunu kazanmak için <strong>tüm 52 kartı</strong> toplayın. Ortadaki desteyi kazandığınızda kartlar destenizin en altına eklenir.</p>
@@ -349,5 +376,6 @@
             </div>
         </footer>
     </div>
+    <script src="/js/page-ads.js" defer></script>
 </body>
 </html>

@@ -129,6 +129,29 @@
     .play:hover { background: #3fb950; transform: translateY(-2px); text-decoration: none; }
     .cta { text-align: center; }
 
+    /* --- the ad unit (v3.24.1, council ERS-38) ------------------------------
+       Between the title and the text, like the app's reading panels, labelled
+       with the word AdSense permits. HIDDEN until js/page-ads.js has seen
+       Google's tag load, so a page whose tag is blocked, or that runs no
+       script, is the plain reading page it was; hidden again if Google answers
+       with nothing, so no labelled empty box is ever left on the page. */
+    .ad-box { display: none; }
+    .ad-box.on {
+        display: block;
+        min-height: 100px;
+        margin: 0 0 1.5rem;
+        padding: 6px 8px 8px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.22);
+        border: 1px solid var(--panel-border);
+    }
+    .ad-box.on:has(> ins.adsbygoogle[data-ad-status="unfilled"]) { display: none; }
+    .ad-label {
+        margin: 0 0 6px; text-align: center;
+        font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--muted);
+    }
+
     /* --- footer ------------------------------------------------------------ */
     .site-foot {
         margin-top: 28px; padding-top: 18px;
@@ -169,7 +192,7 @@
         </header>
         <main class="panel">
             <h1>Политика конфиденциальности</h1>
-            <p class="privacy-updated" data-i18n="pUpdated">Последнее обновление: 29 августа 2026 г.</p>
+            <p class="privacy-updated" data-i18n="pUpdated">Последнее обновление: 30 сентября 2026 г.</p>
             
             <div class="rules-section">
             <h2 data-i18n="pAuthTitle">👤 Аккаунт</h2>
@@ -188,12 +211,12 @@
             
             <div class="rules-section">
             <h2 data-i18n="pAdsTitle">📢 Реклама</h2>
-            <p data-i18n="pAdsDesc">Игра показывает объявления Google AdSense только на экранах меню и информации — никогда во время матча и никогда в ходе Ежедневного испытания. Google и партнёры могут использовать файлы cookie для показа и измерения рекламы. Вы можете изменить выбор в окне согласия в любой момент и отключить персонализированную рекламу на google.com/settings/ads.</p>
+            <p data-i18n="pAdsDesc">Игра показывает объявления Google AdSense только в двух местах: на четырёх экранах для чтения в игре — «Правила игры», «Об этой игре», «Лучшие игроки» и Slap IQ — и на страницах «Правила игры» и «Об игре» этого сайта. В главном меню, в магазине и на экране аккаунта их нет — никогда во время матча и никогда в ходе Ежедневного вызова. Сторонние поставщики, в том числе Google, используют файлы cookie, чтобы показывать рекламу на основе ваших прошлых посещений этого и других сайтов. Рекламные файлы cookie позволяют Google и его партнёрам показывать вам рекламу на основе ваших посещений этого сайта и/или других сайтов в интернете. Отказаться от персонализированной рекламы можно на google.com/settings/ads, а от использования файлов cookie для персонализированной рекламы некоторыми другими поставщиками — на www.aboutads.info. Как Google использует информацию с сайтов, на которых показывается его реклама, объяснено на policies.google.com/technologies/partner-sites.</p>
             </div>
             
             <div class="rules-section">
             <h2 data-i18n="pChoicesTitle">⚙️ Ваш выбор</h2>
-            <p data-i18n="pChoicesDesc">Можно играть без аккаунта, удалить локальные данные очисткой хранилища браузера, сбросить статистику шлепков в панели Slap IQ и в любой момент изменить согласие на рекламу. Для удаления аккаунта и сохранённых результатов свяжитесь с нами ниже.</p>
+            <p data-i18n="pChoicesDesc">Можно играть без аккаунта, удалить локальные данные очисткой хранилища браузера и сбросить статистику шлепков в панели Slap IQ. Посетителям из Европейской экономической зоны, Великобритании и Швейцарии показывается окно согласия Google с вопросом, могут ли объявления использовать файлы cookie и персональные данные; изменить этот ответ можно в любой момент кнопкой «Настройки конфиденциальности и файлов cookie» в конце этой страницы в игре. Для удаления аккаунта и сохранённых результатов свяжитесь с нами ниже.</p>
             </div>
             
             <div class="rules-section">

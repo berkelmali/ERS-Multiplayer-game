@@ -4746,31 +4746,57 @@ body.high-legibility .stat-value {
 .ad-slot {
     width: 100%;
     max-width: 728px;
-    margin: 14px auto 4px;
+    margin: 0 auto;             /* an unfilled slot takes no room at all */
     min-height: 0;              /* nothing reserved until a slot is actually filled */
     /* AdSense can set height:auto!important and min-height:0!important.
        Keep the actual creative's natural height in the flex column rather
-       than shrinking its host into the space left by the menu controls. */
+       than shrinking its host into the space left by the panel content. */
     flex: 0 0 auto;
     overflow: visible;
 }
 
+/* v3.24.1 (council ERS-37). Every slot sits between a panel's title and its
+   content, never beside a control, and a filled one is marked as an ad: the
+   label is the word AdSense permits ("Advertisements"), which ads.js writes
+   into data-ad-label in the player's language. The bottom margin keeps the
+   unit clear of the first line of the content it precedes. */
 .ad-slot.filled {
     min-height: 100px;
+    margin: 4px auto 22px;
+    padding: 6px 8px 8px;
     border-radius: 8px;
+    /* Its own surface, so the label reads on the two panels that have no
+       card behind their title (Slap IQ, Top Players sit on the artwork). */
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+}
+
+.ad-slot.filled::before {
+    content: attr(data-ad-label);
+    display: block;
+    margin: 0 0 6px;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--text-color);
+    opacity: 0.55;
 }
 
 .ad-slot .adsbygoogle { display: block; width: 100%; }
 
-/* A responsive creative can be taller than the viewport's remaining room.
-   Keep the footer after it in document flow, including on tall phones where
-   the old short-screen-only footer rule did not apply. */
-#main-menu > .ad-slot.filled + #game-version {
-    position: static;
-    flex: 0 0 auto;
-    margin: 20px auto 0;
-    text-align: center;
-}
+/* A request that came back empty leaves no labelled blank box behind. AdSense
+   marks the unit `data-ad-status="unfilled"`; hiding the HOST (not just the
+   unit, which is Google's own suggestion) takes the label and the reserved
+   height with it. Browsers without :has() keep the box, which is untidy and
+   nothing worse. */
+.ad-slot.filled:has(> ins.adsbygoogle[data-ad-status="unfilled"]) { display: none; }
+
+/* The other case with nothing to show: Google's tag never loaded (an ad
+   blocker, a network that refuses it). ads.js marks the document and stops
+   requesting; a box filled before the failure was noticed goes too. These two
+   are the only rules that may hide an ad container. */
+.ads-blocked .ad-slot { display: none; }
 
 @media (max-width: 480px) {
     .ad-slot.filled { min-height: 60px; }
@@ -4853,14 +4879,11 @@ body.high-legibility .stat-value {
 .ad-rail-slot .adsbygoogle { vertical-align: top; width: 160px; height: 600px; }
 
 @media (min-width: 1200px) {
+    /* Since v3.24.1 this reveals two EMPTY boxes: the lobby is on the deny
+       list and the rail slot id is blank (adsConfig.js), so no rail is ever
+       filled and each one measures 160 x 0. The lobby's in-column banner that
+       used to step aside here is gone from the markup. */
     #main-menu.active ~ .ad-rail { display: block; }
-    /* One lobby ad at any width. Above the breakpoint the rails are the
-       lobby's ad, so its in-column banner steps aside — two units around the
-       artwork is exactly what the rails were placed in the gutter to avoid.
-       Below it, the rails are gone and the banner is the only one left.
-       ads.js never fills a box with no client rects, so whichever one is
-       hidden here is not merely invisible: it is never requested. */
-    #main-menu .ad-slot { display: none; }
 }
 
 /* ---------- Shared Daily board offer (v3.16.5) -------------------------- */
@@ -4904,6 +4927,18 @@ body.high-legibility .stat-value {
     font-size: 0.8rem;
     margin: 0 0 14px;
 }
+
+/* v3.24.1 — reopens Google's consent message. Its own line above Back, and a
+   size down from it: it is a setting, not the way out of the page. ads.js keeps
+   it `hidden` unless Google's consent API says the regulation applies, and
+   `hidden` alone loses to any display rule, hence the !important. */
+#btn-cookie-settings {
+    display: block;
+    margin: 0 auto 12px;
+    padding: 0.7rem 1.4rem;
+    font-size: 1rem;
+}
+#btn-cookie-settings[hidden] { display: none !important; }
 
 /* --- INVITE MODAL & SHARE STYLES (v3.4.2) --- */
 #invite-modal {
@@ -7765,4 +7800,24 @@ body.admin-page {
 }
 @media (prefers-reduced-motion: reduce) {
     .admin-page *, .admin-page *::before, .admin-page *::after { animation-duration: 0.001s !important; animation-iteration-count: 1 !important; transition-duration: 0.001s !important; }
+}
+
+/* --- v3.24.1: on a phone, a panel starts below the fixed corner ------------
+   #top-left-corner (avatar, coins, the daily spin) sits over every non-game
+   screen, from 15px down to about 52px. On a phone every panel is full width,
+   so each one's title was drawn UNDER it. That was cosmetic until v3.24.1
+   (council ERS-37) put the reading panels' ad directly beneath the title: on
+   Slap IQ the unit began 36px below three controls, and AdSense does not
+   allow a unit beside navigation or action elements. So below the width at
+   which a screen stops being centred (.screen max-width is 600px), a panel's
+   content starts clear of the corner. The ID selectors are listed because
+   #rules-panel, #leaderboard-panel and #account-panel set their own padding;
+   this rule comes after all three. Measured by smoke at 390px. */
+@media (max-width: 600px) {
+    .screen.scrollable-screen,
+    #rules-panel,
+    #leaderboard-panel,
+    #account-panel {
+        padding-top: calc(72px + env(safe-area-inset-top, 0px));
+    }
 }
