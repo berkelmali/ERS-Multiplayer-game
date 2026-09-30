@@ -47,7 +47,10 @@ service cloud.firestore {
     function validReflex(r) { return r is int && r >= 80 && r <= 60000; }
 
     match /users/{userId} {
-      allow read: if isUser(userId);
+      // v3.24.0 (owner's choice, council ERS-36): an admin reads a player's
+      // match record (counts and best reflex; the email left this document in
+      // v3.18.0) for the admin page's player card. Never writes it.
+      allow read: if isUser(userId) || isAdmin();
 
       allow create: if isUser(userId)
         && request.resource.data.keys().hasOnly(['username', 'totalScore', 'gamesPlayed', 'gamesWon', 'bestReflex', 'updatedAt'])
@@ -75,6 +78,8 @@ service cloud.firestore {
                     || request.resource.data.bestReflex < resource.data.bestReflex)))
         && (!('updatedAt' in request.resource.data.diff(resource.data).affectedKeys())
             || request.resource.data.updatedAt == request.time)
+        // v3.24.0: a suspended account's record does not move (bans, block 7).
+        && (!isBanned() || !(grew('totalScore') || grew('gamesPlayed') || grew('gamesWon')))
         // A counter moves only with a fresh stamp, and not within 10 s of the last.
         && (!(grew('totalScore') || grew('gamesPlayed') || grew('gamesWon'))
             || (request.resource.data.get('updatedAt', null) == request.time
@@ -91,13 +96,15 @@ service cloud.firestore {
     match /leaderboard/{userId} {
       allow read: if true;
       allow create, update: if isUser(userId)
+        && !isBanned()
         && request.resource.data.keys().hasOnly(['username', 'totalScore', 'updatedAt'])
         && validName(request.resource.data.username)
         && request.resource.data.totalScore is int
         && request.resource.data.totalScore
              == getAfter(/databases/$(database)/documents/users/$(userId)).data.get('totalScore', 0)
         && request.resource.data.updatedAt == request.time;
-      allow delete: if isUser(userId);
+      // v3.24.0: an admin may remove an entry, with a log record (block 7).
+      allow delete: if isUser(userId) || loggedAction('delete-leaderboard', 'leaderboard/' + userId);
     }
 
     // ── 3. Multiplayer tables. ─────────────────────────────────────────────
@@ -119,6 +126,7 @@ service cloud.firestore {
       allow read: if signedIn();
 
       allow create: if signedIn()
+        && !isBanned()
         && request.resource.data.hostId == request.auth.uid
         && request.auth.uid in ids(request.resource.data)
         && request.resource.data.tableId == tableId;
@@ -130,7 +138,8 @@ service cloud.firestore {
       // old passes here; its room stays protected by database.rules.json
       // (lastPlayTime), and the admin page never offers a table whose room
       // is alive. Mirrored in adminCore.js (ADMIN_CLOSE_*).
-      allow delete: if signedIn() && (resource.data.hostId == request.auth.uid || adminMayClose());
+      allow delete: if signedIn() && (resource.data.hostId == request.auth.uid
+                                      || (adminMayClose() && loggedAction('close-table', 'multiplayer_tables/' + tableId)));
 
       allow update: if signedIn()
         && request.resource.data.tableId == resource.data.tableId
@@ -142,6 +151,7 @@ service cloud.firestore {
              || (
                   (request.auth.uid in ids(resource.data)
                    || (resource.data.gameState.status == 'waiting'
+                       && !isBanned()
                        && request.auth.uid in ids(request.resource.data)
                        && ids(request.resource.data).keys().removeAll(ids(resource.data).keys()).hasOnly([request.auth.uid])
                        && ids(resource.data).keys().removeAll(ids(request.resource.data).keys()).size() == 0))
@@ -201,16 +211,20 @@ service cloud.firestore {
 
       allow create: if request.auth != null
                     && request.auth.uid == userId
+                    && !isBanned()
                     && validScore(request.resource.data);
 
       // Improvements only. A later run may raise your entry; nothing may lower
       // it, and nothing may rewrite the identity on it.
       allow update: if request.auth != null
                     && request.auth.uid == userId
+                    && !isBanned()
                     && validScore(request.resource.data)
                     && request.resource.data.score > resource.data.score;
 
-      allow delete: if false;
+      // v3.24.0: the board is unverified, so an admin may remove a forged
+      // entry — only with a log record naming it (block 7).
+      allow delete: if loggedAction('delete-daily', 'daily_challenges/' + dateKey + '/scores/' + userId);
     }
 
     // ── 6. Coins: the server owns the ledger (v3.22.0). ─────────────────────
@@ -375,6 +389,201 @@ service cloud.firestore {
                    ? adminGrantAfter(request.resource.data.lastGrantId).amount : 0)
         && request.resource.data.given <= 20000;
       allow delete: if false;
+    }
+
+    // ── 7. Admin actions and moderation (v3.24.0, council ERS-36). ───────────
+    //    Every admin power beyond coins commits WITH an immutable record in
+    //    /admin_actions naming its kind and its exact target, and moves the
+    //    admin's /admin_state/{uid}.lastActionId to that record in the same
+    //    commit. A protected write passes only if the record written in THIS
+    //    commit (an old one cannot be replayed: !exists before) names this
+    //    kind and this target. The same shape as coin grants (block 6).
+    //    Kinds, targets and every bound are MIRRORED in moderationCore.js.
+    //
+    //    What this does NOT cover: Realtime Database deletes (rooms, lobby
+    //    mirrors). Those rules cannot read Firestore, so the page writes the
+    //    record first and deletes second — logged, but not in one commit.
+    function actionAfter() {
+      return getAfter(/databases/$(database)/documents/admin_state/$(request.auth.uid)).data.lastActionId;
+    }
+    function loggedAction(kind, target) {
+      let log = getAfter(/databases/$(database)/documents/admin_actions/$(actionAfter())).data;
+      return isAdmin()
+             && !exists(/databases/$(database)/documents/admin_actions/$(actionAfter()))
+             && log.kind == kind
+             && log.target == target
+             && log.by == request.auth.uid;
+    }
+    match /admin_actions/{actionId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['kind', 'target', 'by', 'reason', 'detail', 'at'])
+        && request.resource.data.keys().hasAll(['kind', 'target', 'by', 'reason', 'at'])
+        && request.resource.data.kind in ['close-table', 'delete-room', 'delete-lobby', 'delete-daily',
+                                          'delete-leaderboard', 'ban', 'unban', 'announce',
+                                          'clear-announcement', 'delete-match', 'clear-errors']
+        && request.resource.data.target is string
+        && request.resource.data.target.size() > 0 && request.resource.data.target.size() <= 200
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() >= 3 && request.resource.data.reason.size() <= 120
+        && (!('detail' in request.resource.data)
+            || (request.resource.data.detail is string && request.resource.data.detail.size() <= 200))
+        && request.resource.data.at == request.time
+        && actionAfter() == actionId;
+      allow update, delete: if false;
+    }
+    match /admin_state/{userId} {
+      allow read: if isUser(userId) && isAdmin();
+      allow create, update: if isUser(userId) && isAdmin()
+        && request.resource.data.keys().hasOnly(['lastActionId'])
+        && request.resource.data.lastActionId is string
+        && request.resource.data.lastActionId != (resource == null ? '' : resource.data.get('lastActionId', ''))
+        && !exists(/databases/$(database)/documents/admin_actions/$(request.resource.data.lastActionId))
+        && getAfter(/databases/$(database)/documents/admin_actions/$(request.resource.data.lastActionId)).data.by == userId;
+      allow delete: if false;
+    }
+
+    // Suspensions. A banned account cannot open or join a multiplayer table,
+    // write the leaderboard or the Daily board, or move its match record.
+    // Coins, solo play and an ongoing seat are left alone. At most 30 days;
+    // the end date is the server's to compare. No client may write one.
+    function isBanned() {
+      return signedIn()
+             && exists(/databases/$(database)/documents/bans/$(request.auth.uid))
+             && get(/databases/$(database)/documents/bans/$(request.auth.uid)).data.until > request.time;
+    }
+    match /bans/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+      allow create, update: if loggedAction('ban', 'bans/' + userId)
+        && request.resource.data.keys().hasOnly(['until', 'reason', 'by', 'at'])
+        && request.resource.data.keys().hasAll(['until', 'reason', 'by', 'at'])
+        && request.resource.data.until is timestamp
+        && request.resource.data.until > request.time
+        && request.resource.data.until <= request.time + duration.value(30, 'd')
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() >= 3 && request.resource.data.reason.size() <= 120
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.at == request.time;
+      allow delete: if loggedAction('unban', 'bans/' + userId);
+    }
+
+    // The menu announcement. Plain text in up to four languages, no links (a
+    // stolen admin password must not put a phishing URL in front of every
+    // player), live at most 7 days. MIRRORED in moderationCore.js.
+    // One line only: RE2's '.' does not cross a newline, so a link on a second
+    // line would slip past both patterns. Look-alike '@' and dots are caught
+    // too; the filter is lexical, and a determined spelling ("dot com") passes.
+    function noLink(t) {
+      return t.matches('[^\\n\\r]*')
+             && !t.matches('.*(://|[wW][wW][wW]|[@＠]|[hH][tT][tT][pP]).*')
+             && !t.matches('.*[a-zA-Z0-9-][.․．。﹒][a-zA-Z]{2,}.*');
+    }
+    function annText(d, lang) {
+      return !(lang in d)
+             || (d[lang] is string && d[lang].size() >= 3 && d[lang].size() <= 160 && noLink(d[lang]));
+    }
+    match /config/{docId} {
+      allow read: if docId == 'announcement';
+      allow create, update: if docId == 'announcement'
+        && loggedAction('announce', 'config/announcement')
+        && request.resource.data.keys().hasOnly(['tr', 'en', 'de', 'ru', 'level', 'until', 'by', 'at'])
+        && request.resource.data.keys().hasAll(['level', 'until', 'by', 'at'])
+        && request.resource.data.keys().hasAny(['tr', 'en', 'de', 'ru'])
+        && annText(request.resource.data, 'tr') && annText(request.resource.data, 'en')
+        && annText(request.resource.data, 'de') && annText(request.resource.data, 'ru')
+        && request.resource.data.level in ['info', 'warn']
+        && request.resource.data.until is timestamp
+        && request.resource.data.until > request.time
+        && request.resource.data.until <= request.time + duration.value(7, 'd')
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.at == request.time;
+      allow delete: if docId == 'announcement' && loggedAction('clear-announcement', 'config/announcement');
+    }
+
+    // Finished multiplayer matches (the room itself is deleted 5 s after the
+    // end). Written once by a person who played in it; read by admins only;
+    // kept 30 days (expireAt — a Firestore TTL policy on it deletes on time,
+    // and an admin may sweep an expired one without a record). The content is
+    // the client's claim, like the room it came from: a diagnostic, not proof.
+    function validSeat(p) {
+      return p is map && p.keys().hasOnly(['uid', 'name', 'bot', 'cards'])
+             && p.keys().hasAll(['uid', 'name', 'bot', 'cards'])
+             && p.uid is string && p.uid.size() <= 128
+             && validName(p.name)
+             && p.bot is bool
+             && p.cards is int && p.cards >= 0 && p.cards <= 60;
+    }
+    match /match_log/{roomId} {
+      allow read: if isAdmin();
+      allow create: if signedIn()
+        && roomId.matches('^room_[A-Z0-9]{4,8}_[0-9]{10,14}$')
+        && request.resource.data.keys().hasOnly(['roomId', 'tableId', 'players', 'playerIds', 'winner', 'startedAt',
+                                                 'endedAt', 'expireAt', 'disconnects', 'god', 'houseRules'])
+        && request.resource.data.keys().hasAll(['roomId', 'tableId', 'players', 'playerIds', 'winner', 'startedAt',
+                                                'endedAt', 'expireAt', 'disconnects', 'god', 'houseRules'])
+        && request.resource.data.roomId == roomId
+        && request.resource.data.tableId is string && request.resource.data.tableId.matches('^[A-Z0-9]{4,8}$')
+        && request.resource.data.playerIds is list
+        && request.resource.data.playerIds.size() >= 1 && request.resource.data.playerIds.size() <= 4
+        && request.auth.uid in request.resource.data.playerIds
+        && request.resource.data.players is list
+        && request.resource.data.players.size() >= 2 && request.resource.data.players.size() <= 4
+        && validSeat(request.resource.data.players[0]) && validSeat(request.resource.data.players[1])
+        && (request.resource.data.players.size() < 3 || validSeat(request.resource.data.players[2]))
+        && (request.resource.data.players.size() < 4 || validSeat(request.resource.data.players[3]))
+        && request.resource.data.winner is int
+        && request.resource.data.winner >= -1 && request.resource.data.winner <= 3
+        && request.resource.data.startedAt is int && request.resource.data.startedAt >= 0
+        && request.resource.data.endedAt == request.time
+        && request.resource.data.expireAt is timestamp
+        && request.resource.data.expireAt > request.time + duration.value(29, 'd')
+        && request.resource.data.expireAt < request.time + duration.value(31, 'd')
+        && request.resource.data.disconnects is int
+        && request.resource.data.disconnects >= 0 && request.resource.data.disconnects <= 4
+        && (request.resource.data.god == null
+            || (request.resource.data.god is string && request.resource.data.god.size() <= 24))
+        && request.resource.data.houseRules is string && request.resource.data.houseRules.size() <= 120;
+      allow update: if false;
+      allow delete: if (isAdmin() && resource.data.expireAt < request.time)
+                    || loggedAction('delete-match', 'match_log/' + roomId);
+    }
+
+    // Page errors of a signed-in player: a ring of the last five, one write
+    // per 10 s, text only. Read by admins; the player may clear their own.
+    function validErr(e) {
+      return e is map && e.keys().hasOnly(['m', 'src', 'line', 'at', 'mode'])
+             && e.keys().hasAll(['m', 'src', 'line', 'at', 'mode'])
+             && e.m is string && e.m.size() > 0 && e.m.size() <= 200
+             && e.src is string && e.src.size() <= 80
+             && e.line is int && e.line >= 0 && e.line <= 1000000
+             && e.at is int
+             && e.mode in ['menu', 'bots', 'daily', 'legends', 'match'];
+    }
+    function errShape(d) {
+      return d.keys().hasOnly(['e0', 'e1', 'e2', 'e3', 'e4', 'count', 'v', 'updatedAt'])
+             && d.keys().hasAll(['count', 'v', 'updatedAt'])
+             && (!('e0' in d) || validErr(d.e0)) && (!('e1' in d) || validErr(d.e1))
+             && (!('e2' in d) || validErr(d.e2)) && (!('e3' in d) || validErr(d.e3))
+             && (!('e4' in d) || validErr(d.e4))
+             && d.count is int
+             && d.v is string && d.v.size() <= 16
+             && d.updatedAt == request.time;
+    }
+    match /client_errors/{userId} {
+      allow read: if isAdmin();
+      allow create: if isUser(userId)
+        && errShape(request.resource.data)
+        && request.resource.data.count == 1
+        && request.resource.data.keys().removeAll(['count', 'v', 'updatedAt']).size() == 1;
+      allow update: if isUser(userId)
+        && errShape(request.resource.data)
+        && request.resource.data.count == resource.data.count + 1
+        && request.resource.data.count <= 1000000
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .difference(['count', 'v', 'updatedAt'].toSet()).size() == 1
+        && request.time > resource.data.updatedAt + duration.value(10, 's');
+      allow delete: if isUser(userId) || loggedAction('clear-errors', 'client_errors/' + userId);
     }
 
     // ── 5. Firestore game rooms: CLOSED. ─────────────────────────────────────

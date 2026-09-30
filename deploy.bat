@@ -1893,6 +1893,28 @@ echo   - Deploy sonrasi: hesapla bir bot maci baslat, ortasinda cik ^(uyari
 echo     "kaydina yenilgi yazilir" demeli^). Profilde oynanan mac +1, galibiyet
 echo     ayni kalmali. Hemen ardindan 10 sn icinde ikinci cikis yazilmaz: normal.
 echo.
+echo  --- v3.24.0 -- YONETICI YETKILERI ^(konsey ERS-36, sahibin secimi^) ---
+echo  238) "Multiplayer" artik gercek bir sekme: canli maclar, bekleyen masalar,
+echo       multiplayer'daki oyuncular, biten maclar ^(30 gun^). v3.22.5'teki
+echo       yazi sekme gibi duruyor ama tiklaninca hicbir sey yapmiyordu.
+echo  239) Her yonetici islemi ^(masa kapatma, oda/lobi silme, skor silme, aski,
+echo       duyuru, hata raporu temizleme^) ayni commit'te silinemez bir
+echo       admin_actions kaydi yazar; kural kayitsiz degisikligi reddeder. Eski
+echo       bir kayit tekrar kullanilamaz. Denetim kaydi sekmesi hepsini gosterir.
+echo  240) Aski: en fazla 30 gun. Askidaki hesap coklu masa acamaz/katilamaz,
+echo       liderlik ve Gunluk tablosuna yazamaz, mac kaydi ilerlemez. Jeton ve
+echo       tek oyunculu modlar acik. Oyuncu menude sebebi ve bitis tarihini gorur.
+echo  241) Skor tablosu temizligi: sahte Gunluk skoru ve liderlik kaydi silinir.
+echo  242) Menu duyurusu: yalniz ana menude, duz metin, en fazla 7 gun. Baglanti,
+echo       alan adi, @ ve ikinci satir SUNUCUDA reddedilir ^(benzer karakterler
+echo       dahil^). Filtre sozcukseldir: "nokta com" gibi yazim gecer.
+echo  243) Okuma: oyuncu istatistikleri, biten mac kayitlari ^(ev sahibi yazar,
+echo       30 gun^), giris yapmis oyuncularin son 5 sayfa hatasi ^(10 sn'de bir^).
+echo       Canli maca mudahale YOK ^(konsey 5/5^). Gizlilik metni 4 dilde.
+echo  244) Duzeltme: coklu maca girerken sekme bir an "bot macinda" diyordu
+echo       ^(lobi 'gameplay' olayi mod ayarlanmadan geliyordu^).
+echo       Firestore kurallari 233 kontrol ^(tum mutantlar yakalandi^), 3348 test.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -2127,5 +2149,17 @@ echo     satirini false yap, deploy.bat. Tek satir; hicbir sey yazilmaz, cizilme
 echo     Yukselis bundan bagimsizdir.
 echo   - Tanrilar Masasi: yenilmis bir tanrida I dugmesi acik ve altinda ne
 echo     yaptigi yazili; bir seviye gecince cerceve altin, sonraki seviye acik.
+echo.
+echo  --- v3.24.0 -- SIRA: ONCE deploy-rules.bat ^(Firestore^), SONRA BU ---
+echo   - Kurallar yayinlanmadan: masa kapatma, aski, duyuru reddedilir; mac
+echo     kaydi ve hata raporu yazilmaz ^(oyun etkilenmez^). RTDB kurali degismedi.
+echo   - /admin, Multiplayer sekmesine tikla: acilmali.
+echo   - Moderasyon: bir TEST hesabini 1 gun askiya al. O hesapla oyunda menude
+echo     kirmizi aski satiri, "Masa olustur" denince sebep. Sonra askiyi kaldir.
+echo   - Duyuru: "Test 23.00" yayinla, menude gor, kaldir. Alan adi yazmayi
+echo     dene: reddedilmeli.
+echo   - Istege bagli: Firebase Console, Firestore, TTL: match_log koleksiyonu,
+echo     alan expireAt. Acilirsa eski mac kayitlari kendiliginden silinir;
+echo     acilmazsa Multiplayer sekmesinde "suresi dolanlari temizle" dugmesi var.
 echo.
 pause

@@ -57,6 +57,7 @@ import { GameState } from './game.js';
 import { GameManager } from './gameManager.js';
 import { MatchContext } from './matchContext.js';
 import { AuthSystem } from './auth.js';
+import { BanStatus } from './banStatus.js';
 import { UIManager } from './ui.js';
 import EventBus from './eventbus.js';
 
@@ -513,6 +514,8 @@ export const DailyChallenge = {
     async submitScore(rec) {
         const user = AuthSystem.currentUser;
         if (!user) return; // Local-only for signed-out players. Still scored locally.
+        // v3.24.0: a suspended account keeps its local record; the board refuses it.
+        if (BanStatus.isActive()) return;
 
         const payload = toBoardPayload(rec, user);
         const bad = validateScorePayload(payload);

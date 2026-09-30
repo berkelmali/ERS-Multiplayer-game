@@ -33,6 +33,9 @@ import { SlapForensics } from './slapForensics.js';
 import { DailyChallenge } from './dailyChallenge.js';
 import { NetQuality } from './netQuality.js';
 import { OnlinePresence } from './onlinePresence.js';
+import { BanStatus } from './banStatus.js';
+import { Announcement } from './announcement.js';
+import { ErrorReporter } from './errorReporter.js';
 import { renderRulesBadge } from './rulesBadge.js';
 import { Ads } from './ads.js';
 import { parseInviteCode, parseDailyDate, savePendingInvite, consumePendingInvite, peekPendingInvite, clearPendingInvite } from './inviteLink.js';
@@ -95,7 +98,20 @@ document.addEventListener('DOMContentLoaded', () => {
         : (PantheonMode.armed || DuatMode.armed) ? 'legends'
         : GameManager.activeMode === 'bots' ? 'bots' : 'menu';
     EventBus.on('gameStarted', () => OnlinePresence.setActivity(currentActivity()));
-    EventBus.on('gameStateChanged', (st) => OnlinePresence.setActivity(st === 'menu' ? 'menu' : currentActivity()));
+    // v3.24.0: only 'menu' is taken from gameStateChanged. lobbyUI fires
+    // 'gameplay' BEFORE GameManager.startMultiplayerGame(), so a tab that
+    // played bots earlier reported 'bots' for the first instant of a
+    // multiplayer match (and sent a solo summary of a multiplayer board).
+    // Every mode emits gameStarted once its mode is set; that is the signal.
+    EventBus.on('gameStateChanged', (st) => { if (st === 'menu') OnlinePresence.setActivity('menu'); });
+    // v3.24.0 (council ERS-36): the account's suspension, the admin's menu
+    // announcement, and page-error reports for signed-in players.
+    BanStatus.init();
+    Announcement.init();
+    ErrorReporter.init({
+        modeOf: () => OnlinePresence._activity,
+        version: (document.getElementById('game-version')?.textContent.match(/v(\d+\.\d+\.\d+)/) || [])[1] || ''
+    });
     // v3.22.5 — a bot / Daily / Legends match leaves no table or room, so the
     // admin sees it only through this summary. COUNTS, never a card.
     const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Number.isFinite(v) ? Math.trunc(v) : lo));

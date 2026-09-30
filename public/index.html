@@ -37,7 +37,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.23.3">
+    <link rel="stylesheet" href="style.css?v=3.24.0">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
@@ -203,6 +203,16 @@
              heading element at all — but is visually hidden, because
              assets/menu.jpg already draws that exact title in gold. -->
         <h1 class="visually-hidden">Egyptian Rat Screw</h1>
+        <!-- v3.24.0 (council ERS-36): the admin's announcement and the account's
+             suspension. Menu only — never over a match. Filled with textContent
+             by announcement.js / banStatus.js; hidden when there is nothing. -->
+        <div class="menu-notices">
+            <div id="site-notice" class="site-notice" role="status" hidden>
+                <span id="site-notice-text"></span>
+                <button id="site-notice-close" type="button" class="site-notice-close" data-i18n="close">Close</button>
+            </div>
+            <p id="ban-notice" class="ban-notice" role="status" hidden></p>
+        </div>
         <div class="lobby-spacer-top" aria-hidden="true"></div>
 
         <div class="setting-group" id="main-menu-username-group" style="margin-top: 1rem; margin-bottom: 2rem;">
@@ -263,7 +273,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.23.3
+        <div id="game-version">Berk Elmalı · v3.24.0
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -584,12 +594,12 @@
 
                 <div class="rules-section">
                     <h3 data-i18n="pGameTitle">🎮 Game data</h3>
-                    <p data-i18n="pGameDesc">Your username and scores are stored in Firebase Firestore so leaderboards can exist. Multiplayer matches are coordinated through Firebase Realtime Database and the room data is deleted when the match ends. A Daily Challenge result is written with exactly nine fields: your account id, your username, the score, your reaction time, whether you finished the run, how long it took, the scenario profile you were given, your starting hand size, and the time you submitted it — nothing else. If you are signed in, your coin balance, the card skins you own and the day of your last wheel spin are stored in Firestore under your account, readable only by you; coins sent by the game's administrator are recorded in an audit log. While you are signed in, each open tab also keeps a connection marker under online/ in Realtime Database: your account id, when the tab connected, and what it is doing (menu, bot match, Daily Challenge, Legends or multiplayer — one word, updated when the screen changes; during a bot, Daily Challenge or Legends match it also holds that match's card counts, whose turn it is and how many page errors occurred — never the cards themselves); the server deletes it when the tab disconnects, and only the administrator can list it.</p>
+                    <p data-i18n="pGameDesc">Your username and scores are stored in Firebase Firestore so leaderboards can exist. Multiplayer matches are coordinated through Firebase Realtime Database and the room data is deleted when the match ends. A Daily Challenge result is written with exactly nine fields: your account id, your username, the score, your reaction time, whether you finished the run, how long it took, the scenario profile you were given, your starting hand size, and the time you submitted it — nothing else. If you are signed in, your coin balance, the card skins you own and the day of your last wheel spin are stored in Firestore under your account, readable only by you; coins sent by the game's administrator are recorded in an audit log. While you are signed in, each open tab also keeps a connection marker under online/ in Realtime Database: your account id, when the tab connected, and what it is doing (menu, bot match, Daily Challenge, Legends or multiplayer — one word, updated when the screen changes; during a bot, Daily Challenge or Legends match it also holds that match's card counts, whose turn it is and how many page errors occurred — never the cards themselves); the server deletes it when the tab disconnects, and only the administrator can list it. If an administrator suspends your account, the end date and the reason are stored under your account id, and you are shown both. When a multiplayer match ends, a record of it (the players' names and ids, the winner, card counts, how many disconnected and when it started) is kept for 30 days for the administrator. If you are signed in and the page hits an error, the last five error messages (text about the code, with no web addresses) are stored for the administrator; you can ask for them to be removed.</p>
                 </div>
 
                 <div class="rules-section">
                     <h3 data-i18n="pLocalTitle">💾 Stored in your browser</h3>
-                    <p data-i18n="pLocalDesc">Settings, house rules, slap statistics, your Daily Challenge result for the day and your daily wheel spin's tier progress are kept in your browser's localStorage. They never leave your device unless you are signed in and a score is submitted. Clearing your browser data removes all of it.</p>
+                    <p data-i18n="pLocalDesc">Settings, house rules, slap statistics, your Daily Challenge result for the day and your daily wheel spin's tier progress are kept in your browser's localStorage. They never leave your device unless you are signed in and a score is submitted. Clearing your browser data removes all of it. The id of the last announcement you closed is kept too, so it does not come back.</p>
                 </div>
 
                 <div class="rules-section">
@@ -1429,7 +1439,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.23.3"></script>
+    <script type="module" src="js/main.js?v=3.24.0"></script>
 </body>
 
 </html>

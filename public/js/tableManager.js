@@ -3,6 +3,7 @@ import { playerIdsOf } from "./tableIds.js";
 import { ref, set, onDisconnect, onValue, off, get, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { app, rtdb } from "./firebaseConfig.js";
 import { AuthSystem } from "./auth.js";
+import { BanStatus } from "./banStatus.js";
 import { Settings } from "./settings.js";
 import { createDeck } from "./game.js";
 import { HouseRules } from "./houseRules.js";
@@ -30,6 +31,8 @@ export const TableManager = {
 
     async createTable() {
         if (!AuthSystem.currentUser) throw appError(ERR.AUTH_REQUIRED, "createTable: no signed-in user");
+        // v3.24.0: the rules refuse a suspended account; say why first.
+        if (BanStatus.isActive()) throw appError(ERR.BANNED, "createTable: account suspended");
 
         const tableId = this.generateTableId();
         const uid = AuthSystem.currentUser.uid;
@@ -86,6 +89,7 @@ export const TableManager = {
 
     async joinTable(tableId) {
         if (!AuthSystem.currentUser) throw appError(ERR.AUTH_REQUIRED, "joinTable: no signed-in user");
+        if (BanStatus.isActive()) throw appError(ERR.BANNED, "joinTable: account suspended");
 
         const tableIdUpper = tableId.toUpperCase();
         const tableRef = doc(db, "multiplayer_tables", tableIdUpper);

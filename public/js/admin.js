@@ -17,6 +17,11 @@
  *     15 minutes, host gone). Never an edit, never a live one (section 7).
  *   · The online list (v3.22.3) reads online/{uid}/{conn}, written by each
  *     signed-in tab (onlinePresence.js) and removed by the server on disconnect.
+ *   · v3.24.0 (council ERS-36, the owner's choices): suspensions, board
+ *     cleanup, the menu announcement, match history, error reports and player
+ *     stats. Every write goes through adminCommit(): ONE batch with an
+ *     immutable admin_actions record naming the kind and the exact target —
+ *     the rules refuse the change without it. Live matches stay untouchable.
  *   · Nothing player-chosen ever reaches innerHTML: every node is built with
  *     `h()` below, text through text nodes. Names are player input.
  *   · Every id that becomes part of a database path passes adminCore.safeId.
@@ -29,7 +34,7 @@
  */
 import { app, rtdb } from './firebaseConfig.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, deleteDoc, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { ref, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { WalletAdmin } from './wallet.js';
 import { CARD_SKINS } from './cardSkins.js';
@@ -40,6 +45,10 @@ import {
     roomIsDead, tableClosePlan, CLOSE_REASON, onlineRows, orphanLobbies, lobbyDeletable, ACTIVITY_LABEL,
     ONLINE_CATEGORIES, onlineCategory, clockNote, latencyNote, soloDiagnostics, soloSummary
 } from './adminCore.js';
+import {
+    ACTION_LABEL, targetFor, validReason, REASON_MIN, REASON_MAX, DETAIL_MAX, BAN_DAYS, banActive, banUntilFor,
+    toMs, ANN_LANGS, ANN_HOURS, annTextProblem, annUntilFor, pickAnnouncement, errorEntries
+} from './moderationCore.js';
 import { isBotSeat, realCount } from './slapOutcome.js';
 import { ghostCount } from './ghostCards.js';
 
@@ -86,16 +95,35 @@ async function copy(text) {
     try { await navigator.clipboard.writeText(text); toast('Kopyalandı'); }
     catch (e) { toast('Kopyalanamadı — elle seç', 'error'); }
 }
-function confirmDialog(title, text) {
+/**
+ * confirmDialog(title, text)                    → Promise<boolean>
+ * confirmDialog(title, text, { reason: true })  → Promise<string|null>
+ *   v3.24.0: an admin action asks for the reason that goes into its
+ *   admin_actions record; null when cancelled or when the reason is not
+ *   REASON_MIN–REASON_MAX characters (the rules would refuse it anyway).
+ */
+function confirmDialog(title, text, opts = {}) {
     const dlg = $('adm-confirm');
     $('adm-confirm-title').textContent = title;
     $('adm-confirm-text').textContent = text;
+    const wrap = $('adm-confirm-reason-wrap');
+    const input = $('adm-confirm-reason');
+    wrap.hidden = !opts.reason;
+    input.value = opts.reasonDefault || '';
     return new Promise((resolve) => {
-        dlg.addEventListener('close', () => resolve(dlg.returnValue === 'ok'), { once: true });
+        dlg.addEventListener('close', () => {
+            const ok = dlg.returnValue === 'ok';
+            if (!opts.reason) { resolve(ok); return; }
+            const r = input.value.trim();
+            if (ok && !validReason(r)) toast(`Sebep ${REASON_MIN}–${REASON_MAX} karakter olmalı — işlem yapılmadı`, 'error');
+            resolve(ok && validReason(r) ? r : null);
+        }, { once: true });
         dlg.returnValue = '';
         dlg.showModal();
+        if (opts.reason) input.focus();
     });
 }
+
 /** A status pill always carries its word — never colour alone. */
 const pill = (level, text) => h('span', { class: `adm-pill is-${level}` }, text || LEVEL_WORD[level] || level);
 function findingsList(findings) {
@@ -131,6 +159,13 @@ const S = {
     lobbies: null, lobbiesErr: null,                  // lobbyRooms, fetched on demand
     closing: new Set(),                               // table/room ids with a delete in flight
     rtt: null,                                        // ms, one small read's round trip (v3.22.5)
+    // v3.24.0 (council ERS-36)
+    actions: [], actionsAt: null, actionsErr: null,   // admin_actions, newest 300
+    bans: new Map(), bansAt: null, bansErr: null,     // bans/{uid}
+    matches: [], matchesAt: null, matchesErr: null,   // match_log, newest 200
+    errors: [], errorsAt: null, errorsErr: null,      // client_errors, newest 100
+    announcement: null, annErr: null,                 // config/announcement
+    board: null,                                      // the score board being cleaned
     roomFeed: new Map(),      // roomId → events, newest last
     feed: [],                 // every room, newest last
     paused: false,
@@ -240,6 +275,9 @@ function stopAll() {
     S.tablesErr = S.grantsErr = S.roomsErr = S.onlineErr = S.lobbiesErr = null;
     S.tablesAt = S.grantsAt = S.roomsAt = S.onlineAt = null;
     S.online = null; S.lobbies = null; S.closing.clear(); S.rtt = null;
+    S.actions = []; S.bans = new Map(); S.matches = []; S.errors = []; S.announcement = null; S.board = null;
+    S.actionsAt = S.bansAt = S.matchesAt = S.errorsAt = null;
+    S.actionsErr = S.bansErr = S.matchesErr = S.errorsErr = S.annErr = null;
     clearInterval(S.pingTimer); S.pingTimer = null;
 }
 
@@ -278,6 +316,33 @@ function startAll() {
     refreshLobbies();
     measureLatency();
     S.pingTimer = setInterval(measureLatency, 15000);
+
+    // v3.24.0 (council ERS-36): the action log, suspensions, match history,
+    // error reports and the menu announcement — each bounded.
+    const listen = (q, onData, key) => S.unsubs.push(onSnapshot(q, (snap) => {
+        onData(snap);
+        S[key + 'At'] = Date.now(); S[key + 'Err'] = null;
+        scheduleRender();
+    }, (e) => { S[key + 'Err'] = (e && e.code) || 'error'; scheduleRender(); }));
+    listen(query(collection(db, 'admin_actions'), orderBy('at', 'desc'), limit(300)), (snap) => {
+        S.actions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        S.actions.forEach(a => resolveName(a.by));
+    }, 'actions');
+    listen(collection(db, 'bans'), (snap) => {
+        S.bans = new Map();
+        snap.forEach(d => { if (safeId(d.id)) S.bans.set(d.id, d.data()); });
+        [...S.bans.keys()].forEach(resolveName);
+    }, 'bans');
+    listen(query(collection(db, 'match_log'), orderBy('endedAt', 'desc'), limit(200)), (snap) => {
+        S.matches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }, 'matches');
+    listen(query(collection(db, 'client_errors'), orderBy('updatedAt', 'desc'), limit(100)), (snap) => {
+        S.errors = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => safeId(d.id));
+        S.errors.forEach(d => resolveName(d.id));
+    }, 'errors');
+    S.unsubs.push(onSnapshot(doc(db, 'config', 'announcement'), (snap) => {
+        S.announcement = snap.exists() ? snap.data() : null; S.annErr = null; scheduleRender();
+    }, (e) => { S.annErr = (e && e.code) || 'error'; scheduleRender(); }));
 }
 
 /** One read of this admin's own flag, timed. get() goes to the server when connected. */
@@ -363,6 +428,9 @@ function render() {
     if (S.view === 'rooms') renderRooms();
     if (S.view === 'tables') renderTables();
     if (S.view === 'online') renderOnline();
+    if (S.view === 'multiplayer') renderMultiplayer();
+    if (S.view === 'moderation') renderModeration();
+    if (S.view === 'errors') renderErrors();
     if (S.view === 'audit') renderAudit();
 }
 
@@ -383,6 +451,12 @@ function renderChrome() {
     $('adm-rooms-count').textContent = S.rooms ? String(S.rooms.size) : '';
     $('adm-tables-count').textContent = S.tables.size ? String(S.tables.size) : '';
     $('adm-online-count').textContent = S.online ? String(Object.keys(S.online).length) : '';
+    const liveCount = S.rooms ? liveRoomEntries().filter(([, r]) => !r.gameOver).length : null;
+    $('adm-mp-count').textContent = liveCount === null ? '' : String(liveCount);
+    const activeBans = [...S.bans.values()].filter(b => banActive(b, serverNow())).length;
+    $('adm-bans-count').textContent = activeBans ? String(activeBans) : '';
+    const freshErrors = S.errors.filter(e => (toMillis(e.updatedAt) || 0) > serverNow() - 86400e3).length;
+    $('adm-errors-count').textContent = freshErrors ? String(freshErrors) : '';
 
     const notes = [];
     if (offline) notes.push('Sunucuyla bağlantı yok — gösterilen veriler son bağlantı anına ait, akış duraklamış olabilir.');
@@ -390,6 +464,7 @@ function renderChrome() {
     if (S.tablesErr) notes.push(`Masalar okunamadı (${S.tablesErr}).`);
     if (S.grantsErr) notes.push(`Denetim kaydı okunamadı (${S.grantsErr}).`);
     if (S.onlineErr && !S.roomsErr) notes.push(`Çevrimiçi listesi okunamıyor (${S.onlineErr}) — database.rules.json v3.22.3 yayınlandı mı? (deploy-db-rules.bat)`);
+    if (S.actionsErr) notes.push(`İşlem kaydı okunamıyor (${S.actionsErr}) — firestore.rules v3.24.0 yayınlandı mı? (deploy-rules.bat) Yayınlanmadan masa kapatma, askı ve duyuru reddedilir.`);
     const b = $('adm-banner');
     clear(b);
     b.hidden = !notes.length;
@@ -449,9 +524,10 @@ function renderOverview() {
     renderGlobalFeed();
 
     const rg = clear($('adm-recent-grants'));
-    if (!S.grantsAt && !S.grantsErr) rg.append(...skeleton(2));
-    else if (!S.grants.length) rg.append(emptyState('Henüz gönderim yok', 'Oyuncular sekmesinden bir oyuncuya jeton gönderdiğinde burada görünür.'));
-    S.grants.slice(0, 5).forEach(g => rg.append(grantRow(g)));
+    const recent = auditItems().slice(0, 6);
+    if (!S.grantsAt && !S.grantsErr && !S.actionsAt) rg.append(...skeleton(2));
+    else if (!recent.length) rg.append(emptyState('Henüz işlem yok', 'Jeton gönderimleri, masa kapatmalar, askılar ve duyurular burada görünür.'));
+    recent.forEach(it => rg.append(it.g ? grantRow(it.g) : actionRow(it.a)));
 }
 
 function feedItem(e, withRoom) {
@@ -735,41 +811,76 @@ function closePlanFor(t) {
     return tableClosePlan(t, { now: serverNow(), room, hostOnline });
 }
 
-async function closeSteps(t, plan) {
+// ── the action log (v3.24.0, council ERS-36) ───────────────────────────────
+/**
+ * Every admin power beyond coins is ONE batch: the admin_actions record, the
+ * admin's admin_state pointer, and — for a Firestore target — the change
+ * itself. The rules refuse the change unless the record written in the SAME
+ * commit names this kind and this exact target (firestore.rules block 7).
+ * A Realtime Database target cannot join that commit: its record is written
+ * first and the delete follows — logged, but not atomic, and said so.
+ */
+async function adminCommit(kind, target, reason, { detail, apply } = {}) {
+    if (!S.user || !target || !validReason(reason)) throw Object.assign(new Error('bad-action'), { code: 'invalid-argument' });
+    const id = doc(collection(db, 'admin_actions')).id;
+    const b = writeBatch(db);
+    const rec = { kind, target, by: S.user.uid, reason: reason.trim(), at: serverTimestamp() };
+    if (detail) rec.detail = String(detail).slice(0, DETAIL_MAX);
+    b.set(doc(db, 'admin_actions', id), rec);
+    b.set(doc(db, 'admin_state', S.user.uid), { lastActionId: id });
+    if (apply) apply(b);
+    await b.commit();
+    return id;
+}
+const refusal = (e) => `Sunucu reddetti: ${(e && (e.code || e.message)) || e}`;
+
+async function closeSteps(t, plan, reason) {
     const id = safeId(t.id);
     if (!id) throw new Error('bad-id');
+    const why = `masa ${id} kapatılırken`;
     if (plan.room) {
         const rid = safeId(plan.room);
-        if (rid) await remove(ref(rtdb, `gameRooms/${rid}`));
+        if (rid) {
+            await adminCommit('delete-room', targetFor('delete-room', rid), reason, { detail: why });
+            await remove(ref(rtdb, `gameRooms/${rid}`));
+        }
     }
     const lb = await get(ref(rtdb, `lobbyRooms/${id}`));
-    if (lb.exists()) await remove(ref(rtdb, `lobbyRooms/${id}`));
-    await deleteDoc(doc(db, 'multiplayer_tables', id));
+    if (lb.exists()) {
+        await adminCommit('delete-lobby', targetFor('delete-lobby', id), reason, { detail: why });
+        await remove(ref(rtdb, `lobbyRooms/${id}`));
+    }
+    await adminCommit('close-table', targetFor('close-table', id), reason, {
+        detail: `${(t.gameState && t.gameState.status) || '?'} · ev sahibi ${t.hostUsername || shortId(t.hostId)}`,
+        apply: (b) => b.delete(doc(db, 'multiplayer_tables', id))
+    });
 }
 
 async function closeTable(t) {
     const plan = closePlanFor(t);
     if (!plan.ok) { toast(CLOSE_REASON[plan.reason] || plan.reason, 'error'); return; }
-    const ok = await confirmDialog('Masayı kapat',
+    const reason = await confirmDialog('Masayı kapat',
         `Masa ${t.id} (${(t.gameState && t.gameState.status) || '?'}) silinecek` +
-        `${plan.room ? `, odası ${plan.room} ile birlikte` : ''}. Geri alınamaz; oyunculara bildirim gitmez.`);
-    if (!ok) return;
+        `${plan.room ? `, odası ${plan.room} ile birlikte` : ''}. Geri alınamaz; oyunculara bildirim gitmez.`,
+        { reason: true, reasonDefault: 'ölü masa temizliği' });
+    if (!reason) return;
     S.closing.add(t.id); render();
-    try { await closeSteps(t, plan); toast(`Masa ${t.id} kapatıldı`); }
-    catch (e) { toast(`Sunucu reddetti: ${(e && (e.code || e.message)) || e}`, 'error'); }
+    try { await closeSteps(t, plan, reason); toast(`Masa ${t.id} kapatıldı`); }
+    catch (e) { toast(refusal(e), 'error'); }
     finally { S.closing.delete(t.id); refreshLobbies(); render(); }
 }
 
 async function sweepTables(list) {
     const todo = list.filter(t => closePlanFor(t).ok);
     if (!todo.length) return;
-    const ok = await confirmDialog('Ölü masaları kapat',
-        `${todo.length} masa silinecek (bitmiş, 30 dk başlatılmamış ya da 2 saatten eski; odası canlı olan yok). Geri alınamaz.`);
-    if (!ok) return;
+    const reason = await confirmDialog('Ölü masaları kapat',
+        `${todo.length} masa silinecek (bitmiş, 30 dk başlatılmamış ya da 2 saatten eski; odası canlı olan yok). Geri alınamaz.`,
+        { reason: true, reasonDefault: 'ölü masa temizliği' });
+    if (!reason) return;
     let done = 0, failed = 0;
     for (const t of todo) {
         S.closing.add(t.id);
-        try { await closeSteps(t, closePlanFor(t)); done++; }
+        try { await closeSteps(t, closePlanFor(t), reason); done++; }
         catch (e) { failed++; console.warn('[admin] close failed', t.id, e && e.code); }
         finally { S.closing.delete(t.id); }
     }
@@ -781,23 +892,340 @@ async function deleteRoom(id) {
     const rid = safeId(id);
     const r = rid && S.rooms && S.rooms.get(rid);
     if (!r || !roomIsDead(r, serverNow())) { toast('Oda canlı — silinemez', 'error'); return; }
-    const ok = await confirmDialog('Odayı sil', `Oda ${rid} (${r.gameOver ? 'bitmiş' : '15 dakikadır hamle yok'}) silinecek. Geri alınamaz.`);
-    if (!ok) return;
+    const reason = await confirmDialog('Odayı sil', `Oda ${rid} (${r.gameOver ? 'bitmiş' : '15 dakikadır hamle yok'}) silinecek. Geri alınamaz.`,
+        { reason: true, reasonDefault: 'ölü oda temizliği' });
+    if (!reason) return;
     S.closing.add(rid); render();
-    try { await remove(ref(rtdb, `gameRooms/${rid}`)); toast(`Oda ${rid} silindi`); }
-    catch (e) { toast(`Sunucu reddetti: ${(e && e.code) || e}`, 'error'); }
+    try {
+        await adminCommit('delete-room', targetFor('delete-room', rid), reason);
+        await remove(ref(rtdb, `gameRooms/${rid}`));
+        toast(`Oda ${rid} silindi`);
+    } catch (e) { toast(refusal(e), 'error'); }
     finally { S.closing.delete(rid); render(); }
 }
 
 async function deleteLobby(id) {
     const lid = safeId(id);
     if (!lid) return;
-    const ok = await confirmDialog('Lobi kaydını sil', `Sahipsiz lobi kaydı ${lid} silinecek. Arkasında masa yok.`);
-    if (!ok) return;
+    const reason = await confirmDialog('Lobi kaydını sil', `Sahipsiz lobi kaydı ${lid} silinecek. Arkasında masa yok.`,
+        { reason: true, reasonDefault: 'sahipsiz lobi kaydı' });
+    if (!reason) return;
     S.closing.add(lid); render();
-    try { await remove(ref(rtdb, `lobbyRooms/${lid}`)); toast(`Kayıt ${lid} silindi`); }
-    catch (e) { toast(`Sunucu reddetti: ${(e && e.code) || e}`, 'error'); }
+    try {
+        await adminCommit('delete-lobby', targetFor('delete-lobby', lid), reason);
+        await remove(ref(rtdb, `lobbyRooms/${lid}`));
+        toast(`Kayıt ${lid} silindi`);
+    } catch (e) { toast(refusal(e), 'error'); }
     finally { S.closing.delete(lid); refreshLobbies(); }
+}
+
+// ── multiplayer overview (v3.24.0) ─────────────────────────────────────────
+function mpPlayers() {
+    if (!S.online) return [];
+    return onlineRows(S.online, { tables: S.tables, rooms: S.rooms || new Map(), names: S.names })
+        .filter(r => onlineCategory(r) === 'multiplayer');
+}
+function renderMultiplayer() {
+    const now = serverNow();
+    const liveRooms = liveRoomEntries().filter(([, r]) => !r.gameOver);
+    const waiting = [...S.tables.values()].filter(t => t.gameState && t.gameState.status === 'waiting');
+    const players = mpPlayers();
+    const day = S.matches.filter(m => (toMillis(m.endedAt) || 0) > now - 86400e3);
+    const humansLive = liveRooms.reduce((a, [, r]) => a + asList(r.players).filter(p => p && !isBotSeat(p) && p.status !== 'disconnected').length, 0);
+    const tile = (label, value, sub, kind = '') => h('div', { class: `adm-stat ${kind}` }, h('span', {}, label), h('strong', {}, value), h('small', {}, sub));
+    const stats = clear($('adm-mp-stats'));
+    stats.removeAttribute('aria-busy');
+    stats.append(
+        tile('Canlı maç', S.rooms ? String(liveRooms.length) : '—', S.rooms ? `${humansLive} insan oynuyor` : 'izleme kapalı', S.rooms ? '' : 'is-muted'),
+        tile('Bekleyen masa', String(waiting.length), `${S.tables.size} masa toplam`),
+        tile('Multiplayer\'da', S.online ? String(players.length) : '—', 'bağlı oyuncu (masada ya da maçta)'),
+        tile('Son 24 saatte biten', String(day.length), `${day.reduce((a, m) => a + (Number(m.disconnects) || 0), 0)} kopma`));
+
+    const live = clear($('adm-mp-live'));
+    if (!S.rooms) live.append(emptyState(S.roomsErr ? 'İzleme kapalı' : 'Yükleniyor…', S.roomsErr ? 'Canlı odalar okunamıyor — üstteki uyarıya bak.' : ''));
+    else if (!liveRooms.length) live.append(emptyState('Şu an maç yok', 'Bir multiplayer maç başladığında burada belirir.'));
+    liveRooms.sort((a, b) => (lastMoveAge(a[1]) ?? 1e12) - (lastMoveAge(b[1]) ?? 1e12)).forEach(([id, r]) => {
+        const sum = summarize(roomFindings(r));
+        const age = lastMoveAge(r);
+        live.append(h('button', { type: 'button', class: 'adm-row', onclick: () => openRoom(id) },
+            h('span', { class: 'adm-row-title' }, h('span', { class: 'adm-mono' }, id), ' ', pill(sum.worst, sum.worst === 'ok' ? 'Sağlıklı' : sum.text)),
+            h('span', { class: 'adm-muted' }, `${asList(r.players).filter(p => p && !isBotSeat(p)).map(p => p.name || '—').join(', ')} · ${age === null ? '—' : `son hamle ${formatAge(age)} önce`}`)));
+    });
+
+    const wait = clear($('adm-mp-waiting'));
+    if (!S.tablesAt && !S.tablesErr) wait.append(...skeleton(2));
+    else if (!waiting.length) wait.append(emptyState('Bekleyen masa yok', 'Bir oyuncu masa açtığında burada görünür.'));
+    waiting.forEach(t => wait.append(h('button', { type: 'button', class: 'adm-row', onclick: () => go('tables') },
+        h('span', { class: 'adm-row-title' }, h('span', { class: 'adm-mono' }, t.id), ` · ${asList(t.players).filter(p => p && !isBotSeat(p)).length} oyuncu`),
+        h('span', { class: 'adm-muted' }, `ev sahibi ${t.hostUsername || shortId(t.hostId)} · açıldı ${formatAge(tableAge(t))} önce`))));
+
+    const pl = clear($('adm-mp-players'));
+    if (S.onlineErr) pl.append(emptyState('Liste okunamıyor', S.onlineErr));
+    else if (!S.online) pl.append(...skeleton(2));
+    else if (!players.length) pl.append(emptyState('Multiplayer\'da kimse yok', 'Masada ya da maçta bağlı bir oyuncu olduğunda burada görünür.'));
+    else pl.append(onlineTable(players, now));
+
+    renderMatchHistory(now);
+}
+
+function renderMatchHistory(now) {
+    const box = clear($('adm-mp-history'));
+    const meta = $('adm-mp-history-meta');
+    const expired = S.matches.filter(m => (toMs(m.expireAt) ?? Infinity) < now);
+    const sweep = $('adm-mp-sweep');
+    sweep.hidden = !expired.length;
+    sweep.textContent = `Süresi dolanları temizle (${expired.length})`;
+    sweep.onclick = () => sweepMatches(expired);
+    if (S.matchesErr) { meta.textContent = ''; box.append(emptyState('Maç geçmişi okunamıyor', `${S.matchesErr} — firestore.rules v3.24.0 yayınlandı mı? (deploy-rules.bat)`)); return; }
+    if (!S.matchesAt) { box.append(...skeleton(2)); return; }
+    meta.textContent = `${S.matches.length} maç · en yeni önce`;
+    if (!S.matches.length) { box.append(emptyState('Henüz biten maç kaydı yok', 'v3.24.0 ile biten her multiplayer maç burada görünür.')); return; }
+    box.append(h('table', { class: 'adm-tbl' },
+        h('caption', { class: 'adm-sr' }, 'Biten multiplayer maçlar, en yeni önce'),
+        h('thead', {}, h('tr', {}, ['Bitti', 'Masa', 'Oyuncular (kart)', 'Kazanan', 'Süre', 'Kopma', ''].map(x => h('th', { scope: 'col' }, x)))),
+        h('tbody', {}, S.matches.map(m => {
+            const seats = asList(m.players);
+            const winner = Number.isInteger(m.winner) && m.winner >= 0 ? seats[m.winner] : null;
+            const ended = toMillis(m.endedAt);
+            const dur = ended && m.startedAt ? ended - Number(m.startedAt) : null;
+            return h('tr', {},
+                h('td', {}, ended ? new Date(ended).toLocaleString('tr-TR') : '…'),
+                h('td', { class: 'adm-mono' }, m.tableId || '—'),
+                h('td', {}, h('span', { class: 'adm-online-where' }, seats.map(p => h('span', { class: 'adm-seat' },
+                    p.bot ? '🤖 ' : '',
+                    p.uid && safeId(p.uid) ? h('button', { type: 'button', class: 'adm-linkbtn', onclick: () => { go('players'); selectPlayer({ uid: p.uid, username: p.name }); } }, p.name) : p.name,
+                    ` (${p.cards})`)))),
+                h('td', {}, winner ? `🏆 ${winner.name}` : 'berabere'),
+                h('td', {}, dur !== null && dur >= 0 ? formatAge(dur) : '—'),
+                h('td', { class: 'adm-num' }, String(m.disconnects || 0)),
+                h('td', {}, h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => deleteMatch(m) }, 'Sil')));
+        }))));
+}
+
+async function deleteMatch(m) {
+    const id = safeId(m.id);
+    if (!id) return;
+    const reason = await confirmDialog('Maç kaydını sil', `${m.tableId || id} maçının kaydı silinecek.`, { reason: true });
+    if (!reason) return;
+    try { await adminCommit('delete-match', targetFor('delete-match', id), reason, { apply: (b) => b.delete(doc(db, 'match_log', id)) }); toast('Maç kaydı silindi'); }
+    catch (e) { toast(refusal(e), 'error'); }
+}
+/** Retention housekeeping: the rule lets an admin delete an EXPIRED record without a log entry. */
+async function sweepMatches(list) {
+    const ok = await confirmDialog('Süresi dolan maç kayıtları', `${list.length} kayıt 30 günü doldurdu ve silinecek (saklama süresi temizliği).`);
+    if (!ok) return;
+    let done = 0;
+    for (const m of list) {
+        const id = safeId(m.id);
+        if (!id) continue;
+        try { await deleteDoc(doc(db, 'match_log', id)); done++; } catch (e) { /* not expired after all: the rule refuses */ }
+    }
+    toast(`${done} kayıt silindi`);
+}
+
+// ── moderation (v3.24.0, council ERS-36) ───────────────────────────────────
+BAN_DAYS.forEach(d => $('adm-ban-days').append(h('option', { value: String(d) }, `${d} gün`)));
+$('adm-ban-days').value = String(BAN_DAYS[0]);
+ANN_HOURS.forEach(n => $('adm-ann-hours').append(h('option', { value: String(n) }, n < 24 ? `${n} saat` : `${n / 24} gün`)));
+$('adm-ann-hours').value = '24';
+
+$('adm-ban-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const uid = $('adm-ban-uid').value.trim();
+    if (await banPlayer(uid, Number($('adm-ban-days').value), $('adm-ban-reason').value.trim(), nameOf(uid))) {
+        $('adm-ban-uid').value = ''; $('adm-ban-reason').value = '';
+    }
+});
+
+/** The reason is what the player is shown; it is also the log's reason. */
+async function banPlayer(uid, days, playerReason, name) {
+    const target = targetFor('ban', uid);
+    if (!target) { toast('Geçersiz oyuncu kimliği', 'error'); return false; }
+    if (uid === S.user.uid) { toast('Kendi hesabını askıya alamazsın', 'error'); return false; }
+    if (!validReason(playerReason)) { toast(`Oyuncunun göreceği sebep ${REASON_MIN}–${REASON_MAX} karakter olmalı`, 'error'); return false; }
+    const until = banUntilFor(days, serverNow());
+    const ok = await confirmDialog('Askıya al', `${name || uid} · ${days} gün (bitiş ${new Date(until).toLocaleString('tr-TR')})\nOyuncunun göreceği sebep: ${playerReason}`);
+    if (!ok) return false;
+    try {
+        await adminCommit('ban', target, playerReason, {
+            detail: `${days} gün`,
+            apply: (b) => b.set(doc(db, 'bans', uid), { until: new Date(until), reason: playerReason, by: S.user.uid, at: serverTimestamp() })
+        });
+        toast(`${name || uid} ${days} gün askıya alındı`);
+        return true;
+    } catch (e) { toast(refusal(e), 'error'); return false; }
+}
+async function unbanPlayer(uid) {
+    const target = targetFor('unban', uid);
+    if (!target) return false;
+    const reason = await confirmDialog('Askıyı kaldır', `${nameOf(uid)} hesabının askısı kaldırılacak.`, { reason: true });
+    if (!reason) return false;
+    try { await adminCommit('unban', target, reason, { apply: (b) => b.delete(doc(db, 'bans', uid)) }); toast('Askı kaldırıldı'); return true; }
+    catch (e) { toast(refusal(e), 'error'); return false; }
+}
+
+const ANN_PROBLEM = { short: 'en az 3 karakter olmalı', long: 'en fazla 160 karakter olabilir', link: 'bağlantı, alan adı ya da @ içeremez', lines: 'tek satır olmalı', type: 'metin değil' };
+$('adm-ann-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const problem = $('adm-ann-problem');
+    problem.textContent = '';
+    const texts = {};
+    for (const l of ANN_LANGS) { const v = $(`adm-ann-${l}`).value.trim(); if (v) texts[l] = v; }
+    if (!Object.keys(texts).length) { problem.textContent = 'En az bir dilde metin yaz.'; return; }
+    for (const [l, t] of Object.entries(texts)) {
+        const why = annTextProblem(t);
+        if (why) { problem.textContent = `${l}: ${ANN_PROBLEM[why]}.`; return; }
+    }
+    const hours = Number($('adm-ann-hours').value) || 24;
+    const until = annUntilFor(hours, serverNow());
+    const level = $('adm-ann-level').value === 'warn' ? 'warn' : 'info';
+    const first = Object.values(texts)[0];
+    const reason = await confirmDialog('Duyuruyu yayınla',
+        `${first}\n(${Object.keys(texts).join(', ')} · ${hours < 24 ? `${hours} saat` : `${hours / 24} gün`} · ${level === 'warn' ? 'uyarı' : 'bilgi'})`,
+        { reason: true, reasonDefault: 'duyuru' });
+    if (!reason) return;
+    try {
+        await adminCommit('announce', targetFor('announce'), reason, {
+            detail: first.slice(0, 120),
+            apply: (b) => b.set(doc(db, 'config', 'announcement'), { ...texts, level, until: new Date(until), by: S.user.uid, at: serverTimestamp() })
+        });
+        ANN_LANGS.forEach(l => { $(`adm-ann-${l}`).value = ''; });
+        toast('Duyuru yayında');
+    } catch (err) { toast(refusal(err), 'error'); }
+});
+async function clearAnnouncement() {
+    const reason = await confirmDialog('Duyuruyu kaldır', 'Menüdeki duyuru hemen kalkar.', { reason: true, reasonDefault: 'duyuru bitti' });
+    if (!reason) return;
+    try { await adminCommit('clear-announcement', targetFor('clear-announcement'), reason, { apply: (b) => b.delete(doc(db, 'config', 'announcement')) }); toast('Duyuru kaldırıldı'); }
+    catch (e) { toast(refusal(e), 'error'); }
+}
+
+function renderModeration() {
+    const now = serverNow();
+    const bans = clear($('adm-bans'));
+    if (S.bansErr) bans.append(emptyState('Askılar okunamıyor', `${S.bansErr} — firestore.rules v3.24.0 yayınlandı mı? (deploy-rules.bat)`));
+    else if (!S.bansAt) bans.append(...skeleton(1));
+    else {
+        const rows = [...S.bans.entries()].sort((a, b) => (toMs(b[1].until) || 0) - (toMs(a[1].until) || 0));
+        if (!rows.length) bans.append(emptyState('Askıda hesap yok', 'Askıya alınan hesaplar burada listelenir.'));
+        rows.forEach(([uid, b]) => {
+            const active = banActive(b, now);
+            bans.append(h('div', { class: 'adm-row adm-row--static' },
+                h('span', { class: 'adm-row-title' }, active ? pill('error', 'ASKIDA') : pill('info', 'BİTTİ'), ' ', h('strong', {}, nameOf(uid)), ' ',
+                    h('span', { class: 'adm-mono adm-muted' }, uid)),
+                h('span', { class: 'adm-muted' }, `${active ? `bitiş ${new Date(toMs(b.until)).toLocaleString('tr-TR')}` : 'süresi doldu'} · sebep: ${b.reason || '—'} · ${nameOf(b.by)}`),
+                h('div', { class: 'adm-toolbar' }, h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => unbanPlayer(uid) }, active ? 'Askıyı kaldır' : 'Kaydı sil'))));
+        });
+    }
+
+    const cur = clear($('adm-ann-current'));
+    const live = pickAnnouncement(S.announcement, 'tr', now);
+    if (S.annErr) cur.append(h('p', { class: 'adm-error' }, `Duyuru okunamadı (${S.annErr}).`));
+    else if (!live) cur.append(h('p', { class: 'adm-muted' }, 'Şu an yayında duyuru yok.'));
+    else cur.append(h('div', { class: 'adm-card adm-card--inset' },
+        h('p', {}, pill(live.level === 'warn' ? 'warn' : 'info', live.level === 'warn' ? 'UYARI' : 'BİLGİ'),
+            ` yayında · bitiş ${new Date(toMs(S.announcement.until)).toLocaleString('tr-TR')}`),
+        ANN_LANGS.filter(l => typeof S.announcement[l] === 'string').map(l => h('p', {}, h('code', {}, l), ' ', S.announcement[l])),
+        h('div', { class: 'adm-toolbar' }, h('button', { type: 'button', class: 'adm-btn adm-btn--danger', onclick: clearAnnouncement }, 'Duyuruyu kaldır'))));
+
+    renderBoard();
+}
+
+// Score boards: loaded on demand (they are public; a listener would be waste).
+$('adm-daily-date').value = new Date().toISOString().slice(0, 10);
+$('adm-daily-load').addEventListener('click', () => loadDaily($('adm-daily-date').value));
+$('adm-lb-load').addEventListener('click', () => loadLeaderboard());
+async function loadDaily(date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { toast('Tarih seç', 'error'); return; }
+    S.board = { kind: 'daily', date, rows: null }; renderBoard();
+    try {
+        const snap = await getDocs(query(collection(db, 'daily_challenges', date, 'scores'), orderBy('score', 'desc'), limit(50)));
+        S.board = { kind: 'daily', date, rows: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+    } catch (e) { S.board = { kind: 'daily', date, rows: [], err: (e && e.code) || 'error' }; }
+    renderBoard();
+}
+async function loadLeaderboard() {
+    S.board = { kind: 'leaderboard', rows: null }; renderBoard();
+    try {
+        const snap = await getDocs(query(collection(db, 'leaderboard'), orderBy('totalScore', 'desc'), limit(50)));
+        S.board = { kind: 'leaderboard', rows: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+    } catch (e) { S.board = { kind: 'leaderboard', rows: [], err: (e && e.code) || 'error' }; }
+    renderBoard();
+}
+function renderBoard() {
+    const box = clear($('adm-boards'));
+    const B = S.board;
+    if (!B) { box.append(h('p', { class: 'adm-muted' }, 'Bir tablo yükle.')); return; }
+    if (!B.rows) { box.append(...skeleton(2)); return; }
+    if (B.err) { box.append(h('p', { class: 'adm-error' }, `Okunamadı (${B.err}).`)); return; }
+    if (!B.rows.length) { box.append(emptyState('Kayıt yok', B.kind === 'daily' ? `${B.date} için skor yok.` : 'Liderlik tablosu boş.')); return; }
+    const daily = B.kind === 'daily';
+    box.append(h('table', { class: 'adm-tbl' },
+        h('caption', { class: 'adm-sr' }, daily ? `Günlük tablo ${B.date}` : 'Liderlik tablosu'),
+        h('thead', {}, h('tr', {}, (daily ? ['#', 'Oyuncu', 'Skor', 'Kazandı', 'Refleks', 'Süre', ''] : ['#', 'Oyuncu', 'Skor', '']).map(x => h('th', { scope: 'col' }, x)))),
+        h('tbody', {}, B.rows.map((r, i) => h('tr', {},
+            h('td', { class: 'adm-num' }, String(i + 1)),
+            h('td', {}, safeId(r.id) ? h('button', { type: 'button', class: 'adm-linkbtn', onclick: () => { go('players'); selectPlayer({ uid: r.id, username: r.username }); } }, r.username || shortId(r.id)) : (r.username || '—')),
+            h('td', { class: 'adm-num' }, String(daily ? r.score : r.totalScore)),
+            daily ? h('td', {}, r.won ? '✓' : '—') : null,
+            daily ? h('td', { class: 'adm-num' }, `${r.reflex} ms`) : null,
+            daily ? h('td', {}, formatAge(Number(r.durationMs) || 0)) : null,
+            h('td', {}, h('button', { type: 'button', class: 'adm-btn adm-btn--danger', onclick: () => deleteBoardEntry(B, r) }, 'Sil')))))));
+}
+async function deleteBoardEntry(B, r) {
+    const uid = safeId(r.id);
+    if (!uid) return false;
+    const daily = B.kind === 'daily';
+    const kind = daily ? 'delete-daily' : 'delete-leaderboard';
+    const target = daily ? targetFor(kind, B.date, uid) : targetFor(kind, uid);
+    if (!target) { toast('Geçersiz kayıt', 'error'); return false; }
+    const reason = await confirmDialog(daily ? 'Günlük skoru sil' : 'Liderlik kaydını sil',
+        `${r.username || uid} · ${daily ? r.score : r.totalScore}${daily ? ` (${B.date})` : ''}.` +
+        (daily ? '' : ' Oyuncunun bir sonraki maçı kaydı yeniden yazar — tekrar ederse hesabı askıya al.'),
+        { reason: true, reasonDefault: 'sahte skor' });
+    if (!reason) return false;
+    try {
+        await adminCommit(kind, target, reason, {
+            detail: `${r.username || ''} · ${daily ? r.score : r.totalScore}`,
+            apply: (b) => b.delete(daily ? doc(db, 'daily_challenges', B.date, 'scores', uid) : doc(db, 'leaderboard', uid))
+        });
+        if (Array.isArray(B.rows)) B.rows = B.rows.filter(x => x.id !== r.id);
+        renderBoard();
+        toast('Silindi');
+        return true;
+    } catch (e) { toast(refusal(e), 'error'); return false; }
+}
+
+// ── error reports (v3.24.0) ────────────────────────────────────────────────
+$('adm-errors-filter').addEventListener('input', () => renderErrors());
+function renderErrors() {
+    const box = clear($('adm-errors'));
+    if (S.errorsErr) { box.append(emptyState('Raporlar okunamıyor', `${S.errorsErr} — firestore.rules v3.24.0 yayınlandı mı? (deploy-rules.bat)`)); return; }
+    if (!S.errorsAt) { box.append(...skeleton(2)); return; }
+    box.removeAttribute('aria-busy');
+    const f = $('adm-errors-filter').value.trim().toLowerCase();
+    const rows = S.errors.map(d => ({ d, entries: errorEntries(d) }))
+        .filter(({ d, entries }) => !f || [nameOf(d.id), d.id, ...entries.map(e => `${e.src} ${e.m}`)].some(x => String(x).toLowerCase().includes(f)));
+    $('adm-errors-meta').textContent = `${rows.length} oyuncu · ${rows.reduce((a, r) => a + (Number(r.d.count) || 0), 0)} hata toplam`;
+    if (!rows.length) { box.append(emptyState(S.errors.length ? 'Filtreye uyan yok' : 'Hata raporu yok', S.errors.length ? 'Filtreyi değiştir.' : 'Giriş yapmış bir oyuncunun sayfasında hata olduğunda burada görünür.')); return; }
+    const now = serverNow();
+    rows.forEach(({ d, entries }) => box.append(h('article', { class: 'adm-card' },
+        h('header', { class: 'adm-table-head' },
+            h('button', { type: 'button', class: 'adm-linkbtn', onclick: () => { go('players'); selectPlayer({ uid: d.id, username: S.names.get(d.id) }); } }, nameOf(d.id)),
+            h('span', { class: 'adm-muted' }, `${d.count || 0} hata · v${d.v || '?'} · son ${toMillis(d.updatedAt) ? `${formatAge(now - toMillis(d.updatedAt))} önce` : '—'}`),
+            h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => clearErrors(d.id) }, 'Temizle')),
+        h('ol', { class: 'adm-feed' }, entries.map(e => h('li', { class: 'adm-ev is-bad' },
+            h('time', { class: 'adm-ev-time' }, new Date(Number(e.at) || 0).toLocaleString('tr-TR')),
+            h('span', { class: 'adm-ev-icon', 'aria-hidden': 'true' }, '🐞'),
+            h('span', { class: 'adm-ev-text' }, `${e.m} `, h('code', {}, `${e.src || '?'}:${e.line} · ${ACTIVITY_LABEL[e.mode] || e.mode}`))))))));
+}
+async function clearErrors(uid) {
+    const id = safeId(uid);
+    if (!id) return;
+    const reason = await confirmDialog('Hata raporunu temizle', `${nameOf(id)} için kayıtlı hatalar silinecek.`, { reason: true, reasonDefault: 'incelendi' });
+    if (!reason) return;
+    try { await adminCommit('clear-errors', targetFor('clear-errors', id), reason, { apply: (b) => b.delete(doc(db, 'client_errors', id)) }); toast('Temizlendi'); }
+    catch (e) { toast(refusal(e), 'error'); }
 }
 
 // ── online (v3.22.3) ───────────────────────────────────────────────────────
@@ -891,60 +1319,116 @@ async function selectPlayer(p) {
     const box = $('adm-player');
     box.hidden = false;
     clear(box).append(...skeleton(2));
-    const [wallet, board, pres, grants] = await Promise.all([
+    const [wallet, board, pres, grants, stats, matches, errs] = await Promise.all([
         WalletAdmin.readWallet(p.uid).catch(() => undefined),
         getDoc(doc(db, 'leaderboard', p.uid)).then(s => (s.exists() ? s.data() : null)).catch(() => null),
         get(ref(rtdb, `presence/${p.uid}`)).then(s => s.val()).catch(() => null),
         getDocs(query(collection(db, 'coin_grants'), where('to', '==', p.uid), limit(100)))
             .then(s => s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (toMillis(b.at) || 0) - (toMillis(a.at) || 0)))
-            .catch(() => [])
+            .catch(() => []),
+        // v3.24.0: the match record (admin read), their finished matches, their error reports
+        getDoc(doc(db, 'users', p.uid)).then(s => (s.exists() ? s.data() : null)).catch(() => undefined),
+        getDocs(query(collection(db, 'match_log'), where('playerIds', 'array-contains', p.uid), limit(50)))
+            .then(s => s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (toMillis(b.endedAt) || 0) - (toMillis(a.endedAt) || 0)))
+            .catch(() => []),
+        getDoc(doc(db, 'client_errors', p.uid)).then(s => (s.exists() ? s.data() : null)).catch(() => null)
     ]);
     if (S.selectedPlayer !== p) return;
-    renderPlayer(p, wallet, board, pres, grants);
+    renderPlayer(p, wallet, board, pres, grants, { stats, matches, errs });
 }
 
-function renderPlayer(p, wallet, board, pres, grants) {
+
+function renderPlayer(p, wallet, board, pres, grants, extra = {}) {
     const box = clear($('adm-player'));
     const name = p.username || (board && board.username) || shortId(p.uid);
     const today = dayNumber(serverNow());
     const ps = presenceState(pres);
+    const tile = (label, value, sub) => h('div', { class: 'adm-stat' }, h('span', {}, label), h('strong', {}, value), h('small', {}, sub || ''));
     box.append(h('header', { class: 'adm-player-head' },
         h('div', {}, h('h3', {}, name), h('button', { type: 'button', class: 'adm-linkbtn adm-mono', onclick: () => copy(p.uid) }, `${p.uid} ⧉`)),
         h('span', { class: `adm-chip ${ps === 'online' ? 'is-good' : ''}` }, ps === 'online' ? '🟢 çevrimiçi' : ps === 'offline' ? '⚫ çevrimdışı' : '⚪ bilinmiyor')));
 
-    if (wallet === undefined) { box.append(h('p', { class: 'adm-error' }, 'Cüzdan okunamadı (yetki ya da bağlantı).')); return; }
-    if (wallet === null) {
-        box.append(h('div', { class: 'adm-card adm-card--warn' }, 'Bu oyuncunun henüz cüzdanı yok — v3.22.0 sonrasında en az bir kez giriş yapması gerekiyor. O zamana kadar jeton gönderilemez.'));
-        return;
+    // v3.24.0: the match record (read-only) and moderation.
+    const st = extra.stats;
+    if (st === undefined) box.append(h('p', { class: 'adm-muted' }, 'Oyun istatistikleri okunamadı (firestore.rules v3.24.0 yayınlandı mı?).'));
+    else if (st) box.append(h('div', { class: 'adm-stats' },
+        tile('Maç', String(st.gamesPlayed || 0), 'oynanan'),
+        tile('Galibiyet', String(st.gamesWon || 0), st.gamesPlayed ? `%${Math.round((st.gamesWon || 0) / st.gamesPlayed * 100)}` : '—'),
+        tile('En iyi refleks', Number.isInteger(st.bestReflex) ? `${st.bestReflex} ms` : '—', 'kayıtlı en hızlı şaplak'),
+        tile('Skor', String(st.totalScore || 0), board ? `liderlikte ${board.totalScore}` : 'liderlikte yok')));
+    box.append(playerModeration(p, name, board));
+
+    if (wallet === undefined) box.append(h('p', { class: 'adm-error' }, 'Cüzdan okunamadı (yetki ya da bağlantı).'));
+    else if (wallet === null) box.append(h('div', { class: 'adm-card adm-card--warn' }, 'Bu oyuncunun henüz cüzdanı yok — v3.22.0 sonrasında en az bir kez giriş yapması gerekiyor. O zamana kadar jeton gönderilemez.'));
+    else {
+        const earned = wallet.earnDay === today ? wallet.earnedToday : 0;
+        box.append(h('div', { class: 'adm-stats' },
+            tile('Bakiye', `🪙 ${wallet.coins}`, `${wallet.owned.length - 1} skin sahibi`),
+            tile('Bugün kazandı', `${earned} / ${EARN_DAILY_CAP}`, earned >= EARN_DAILY_CAP ? 'günlük tavan doldu' : `${EARN_DAILY_CAP - earned} kaldı`),
+            tile('Çark', wallet.spinDay >= today ? 'çevrildi' : 'çevrilebilir', 'bugün (UTC)')));
+        const owned = new Set(wallet.owned);
+        box.append(h('div', { class: 'adm-skins', 'aria-label': 'Skinler' }, CARD_SKINS.map(s =>
+            h('span', { class: `adm-skin ${owned.has(s.id) ? 'is-owned' : ''}`, title: `${s.cost} jeton` }, owned.has(s.id) ? '✓ ' : '', s.id, sr(owned.has(s.id) ? ' (sahip)' : ' (yok)')))));
+
+        // The grant form.
+        const amount = h('input', { type: 'number', class: 'adm-input', step: '1', id: 'adm-grant-amount', 'aria-describedby': 'adm-grant-help' });
+        const note = h('input', { type: 'text', class: 'adm-input', maxlength: '120', id: 'adm-grant-note' });
+        const presets = [50, 100, 250, 500, 1000].map(n => h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => { amount.value = String(n); amount.focus(); } }, `+${n}`));
+        const send = h('button', { type: 'button', class: 'adm-btn adm-btn--primary', onclick: () => doGrant(p, name, wallet, amount, note, send) }, 'Jeton gönder');
+        box.append(h('section', { class: 'adm-grant', 'aria-labelledby': 'h-grant' },
+            h('h4', { id: 'h-grant' }, 'Jeton gönder / geri al'),
+            h('div', { class: 'adm-toolbar' }, presets),
+            h('div', { class: 'adm-formgrid' },
+                h('label', { for: 'adm-grant-amount' }, 'Miktar'), amount,
+                h('label', { for: 'adm-grant-note' }, 'Sebep (zorunlu)'), note),
+            h('p', { id: 'adm-grant-help', class: 'adm-muted' }, `Negatif sayı jetonu geri alır. Tek işlem en fazla ${ADMIN_GRANT_MAX}; bir yönetici günde en fazla ${ADMIN_DAILY_CAP} verebilir.`),
+            send));
+
+        box.append(h('h4', {}, `Bu oyuncuya yapılan gönderimler (${grants.length})`));
+        if (!grants.length) box.append(h('p', { class: 'adm-muted' }, 'Kayıt yok.'));
+        grants.slice(0, 20).forEach(g => box.append(grantRow(g)));
     }
-    const earned = wallet.earnDay === today ? wallet.earnedToday : 0;
-    const tile = (label, value, sub) => h('div', { class: 'adm-stat' }, h('span', {}, label), h('strong', {}, value), h('small', {}, sub || ''));
-    box.append(h('div', { class: 'adm-stats' },
-        tile('Bakiye', `🪙 ${wallet.coins}`, `${wallet.owned.length - 1} skin sahibi`),
-        tile('Bugün kazandı', `${earned} / ${EARN_DAILY_CAP}`, earned >= EARN_DAILY_CAP ? 'günlük tavan doldu' : `${EARN_DAILY_CAP - earned} kaldı`),
-        tile('Çark', wallet.spinDay >= today ? 'çevrildi' : 'çevrilebilir', 'bugün (UTC)'),
-        tile('Skor', board ? String(board.totalScore) : '—', 'liderlik tablosu')));
-    const owned = new Set(wallet.owned);
-    box.append(h('div', { class: 'adm-skins', 'aria-label': 'Skinler' }, CARD_SKINS.map(s =>
-        h('span', { class: `adm-skin ${owned.has(s.id) ? 'is-owned' : ''}`, title: `${s.cost} jeton` }, owned.has(s.id) ? '✓ ' : '', s.id, sr(owned.has(s.id) ? ' (sahip)' : ' (yok)')))));
 
-    // The grant form.
-    const amount = h('input', { type: 'number', class: 'adm-input', step: '1', id: 'adm-grant-amount', 'aria-describedby': 'adm-grant-help' });
-    const note = h('input', { type: 'text', class: 'adm-input', maxlength: '120', id: 'adm-grant-note' });
-    const presets = [50, 100, 250, 500, 1000].map(n => h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => { amount.value = String(n); amount.focus(); } }, `+${n}`));
-    const send = h('button', { type: 'button', class: 'adm-btn adm-btn--primary', onclick: () => doGrant(p, name, wallet, amount, note, send) }, 'Jeton gönder');
-    box.append(h('section', { class: 'adm-grant', 'aria-labelledby': 'h-grant' },
-        h('h4', { id: 'h-grant' }, 'Jeton gönder / geri al'),
-        h('div', { class: 'adm-toolbar' }, presets),
-        h('div', { class: 'adm-formgrid' },
-            h('label', { for: 'adm-grant-amount' }, 'Miktar'), amount,
-            h('label', { for: 'adm-grant-note' }, 'Sebep (zorunlu)'), note),
-        h('p', { id: 'adm-grant-help', class: 'adm-muted' }, `Negatif sayı jetonu geri alır. Tek işlem en fazla ${ADMIN_GRANT_MAX}; bir yönetici günde en fazla ${ADMIN_DAILY_CAP} verebilir.`),
-        send));
+    const matches = extra.matches || [];
+    box.append(h('h4', {}, `Son multiplayer maçları (${matches.length})`));
+    if (!matches.length) box.append(h('p', { class: 'adm-muted' }, 'Kayıtlı maç yok (v3.24.0 sonrası biten maçlar görünür).'));
+    matches.slice(0, 10).forEach(m => {
+        const seats = asList(m.players);
+        const me = seats.findIndex(x => x && x.uid === p.uid);
+        const won = me >= 0 && m.winner === me;
+        box.append(h('div', { class: 'adm-row adm-row--static' },
+            h('span', { class: 'adm-row-title' }, won ? '🏆 kazandı' : '— kaybetti', ' · ', h('span', { class: 'adm-mono' }, m.tableId || m.id)),
+            h('span', { class: 'adm-muted' }, `${toMillis(m.endedAt) ? new Date(toMillis(m.endedAt)).toLocaleString('tr-TR') : '…'} · ${seats.map(x => x.name).join(', ')} · ${m.disconnects || 0} kopma`)));
+    });
 
-    box.append(h('h4', {}, `Bu oyuncuya yapılan gönderimler (${grants.length})`));
-    if (!grants.length) box.append(h('p', { class: 'adm-muted' }, 'Kayıt yok.'));
-    grants.slice(0, 20).forEach(g => box.append(grantRow(g)));
+    const errs = extra.errs;
+    const entries = errorEntries(errs);
+    if (entries.length) {
+        box.append(h('h4', {}, `Sayfa hataları (${errs.count || entries.length})`));
+        entries.slice(0, 3).forEach(e => box.append(h('div', { class: 'adm-row adm-row--static' },
+            h('span', { class: 'adm-row-title' }, '🐞 ', e.m),
+            h('span', { class: 'adm-muted adm-mono' }, `${e.src || '?'}:${e.line} · ${ACTIVITY_LABEL[e.mode] || e.mode} · ${new Date(Number(e.at) || 0).toLocaleString('tr-TR')}`))));
+        box.append(h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: () => { $('adm-errors-filter').value = p.uid; go('errors'); } }, 'Tüm hatalar'));
+    }
+}
+
+/** Suspension and leaderboard removal, from the player card. */
+function playerModeration(p, name, board) {
+    const ban = S.bans.get(p.uid);
+    const active = banActive(ban, serverNow());
+    const days = h('select', { class: 'adm-input', 'aria-label': 'Askı süresi' }, BAN_DAYS.map(d => h('option', { value: String(d) }, `${d} gün`)));
+    const reason = h('input', { class: 'adm-input', maxlength: '120', placeholder: 'Oyuncunun göreceği sebep', 'aria-label': 'Askı sebebi' });
+    return h('section', { class: 'adm-grant', 'aria-label': 'Moderasyon' },
+        h('h4', {}, 'Moderasyon'),
+        active ? h('p', {}, pill('error', 'ASKIDA'), ` bitiş ${new Date(toMs(ban.until)).toLocaleString('tr-TR')} · sebep: ${ban.reason}`)
+            : h('p', { class: 'adm-muted' }, 'Askıda değil.'),
+        h('div', { class: 'adm-toolbar' },
+            active
+                ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost', onclick: async () => { if (await unbanPlayer(p.uid)) selectPlayer(p); } }, 'Askıyı kaldır')
+                : [days, reason, h('button', { type: 'button', class: 'adm-btn adm-btn--danger',
+                    onclick: async () => { if (await banPlayer(p.uid, Number(days.value), reason.value.trim(), name)) selectPlayer(p); } }, '⛔ Askıya al')],
+            board ? h('button', { type: 'button', class: 'adm-btn adm-btn--ghost',
+                onclick: async () => { if (await deleteBoardEntry({ kind: 'leaderboard', rows: null }, { id: p.uid, username: board.username, totalScore: board.totalScore })) selectPlayer(p); } }, 'Liderlikten sil') : null));
 }
 
 async function doGrant(p, name, wallet, amountEl, noteEl, btn) {
@@ -968,36 +1452,71 @@ async function doGrant(p, name, wallet, amountEl, noteEl, btn) {
     } finally { btn.disabled = false; }
 }
 
-// ── audit ──────────────────────────────────────────────────────────────────
+// ── audit (coin grants + every other admin action, v3.24.0) ────────────────
+/** One list: coin grants (their own trail since v3.22.0) and admin_actions. */
+function auditItems() {
+    const grants = S.grants.map(g => ({ at: toMillis(g.at) || 0, by: g.by, g }));
+    const acts = S.actions.map(a => ({ at: toMillis(a.at) || 0, by: a.by, a }));
+    return [...grants, ...acts].sort((x, y) => y.at - x.at);
+}
+/** Who an action was about, when its target names a player. */
+function actionPlayer(a) {
+    const m = String(a.target || '').match(/^(?:bans|leaderboard|client_errors)\/([A-Za-z0-9_-]+)$|^daily_challenges\/[\d-]+\/scores\/([A-Za-z0-9_-]+)$/);
+    return m ? safeId(m[1] || m[2]) : null;
+}
+function actionRow(a) {
+    const when = toMillis(a.at);
+    const who = actionPlayer(a);
+    return h('div', { class: 'adm-row adm-row--static' },
+        h('span', { class: 'adm-row-title' }, ACTION_LABEL[a.kind] || a.kind, ' → ', who ? h('strong', {}, nameOf(who)) : h('span', { class: 'adm-mono' }, a.target)),
+        h('span', { class: 'adm-muted' }, `${when ? new Date(when).toLocaleString('tr-TR') : '…'} · ${nameOf(a.by)} · ${a.reason || '—'}${a.detail ? ` · ${a.detail}` : ''}`));
+}
 function auditRows() {
     const f = $('adm-audit-filter').value.trim().toLowerCase();
-    return S.grants.filter(g => !f || [nameOf(g.to), nameOf(g.by), g.to, g.by, g.note].some(x => String(x || '').toLowerCase().includes(f)));
+    if (!f) return auditItems();
+    return auditItems().filter(it => {
+        const hay = it.g ? [nameOf(it.g.to), nameOf(it.g.by), it.g.to, it.g.by, it.g.note, 'jeton']
+            : [ACTION_LABEL[it.a.kind], it.a.kind, it.a.target, nameOf(it.a.by), it.a.by, it.a.reason, it.a.detail, actionPlayer(it.a) ? nameOf(actionPlayer(it.a)) : ''];
+        return hay.some(x => String(x || '').toLowerCase().includes(f));
+    });
 }
 function renderAudit() {
     const box = clear($('adm-audit'));
-    if (!S.grantsAt && !S.grantsErr) { box.append(...skeleton(3)); return; }
+    if (!S.grantsAt && !S.grantsErr && !S.actionsAt && !S.actionsErr) { box.append(...skeleton(3)); return; }
     box.removeAttribute('aria-busy');
     const rows = auditRows();
-    if (!rows.length) { box.append(emptyState(S.grants.length ? 'Filtreye uyan kayıt yok' : 'Kayıt yok', S.grants.length ? 'Filtreyi değiştir.' : 'İlk jeton gönderimi burada görünecek.')); return; }
-    box.append(h('p', { class: 'adm-muted' }, `${rows.length} kayıt · güncellendi ${clock(S.grantsAt)}`),
+    const total = S.grants.length + S.actions.length;
+    if (!rows.length) { box.append(emptyState(total ? 'Filtreye uyan kayıt yok' : 'Kayıt yok', total ? 'Filtreyi değiştir.' : 'İlk yönetici işlemi burada görünecek.')); return; }
+    const playerLink = (uid) => (uid ? h('button', { type: 'button', class: 'adm-linkbtn', onclick: () => { go('players'); selectPlayer({ uid, username: S.names.get(uid) }); } }, nameOf(uid)) : null);
+    box.append(h('p', { class: 'adm-muted' }, `${rows.length} kayıt · güncellendi ${clock(Math.max(S.grantsAt || 0, S.actionsAt || 0))}`),
         h('table', { class: 'adm-tbl' },
-            h('caption', { class: 'adm-sr' }, 'Jeton gönderimleri, en yeni önce'),
-            h('thead', {}, h('tr', {}, ['Zaman', 'Yönetici', 'Oyuncu', 'Miktar', 'Önce → sonra', 'Sebep'].map(x => h('th', { scope: 'col' }, x)))),
-            h('tbody', {}, rows.map(g => h('tr', {},
-                h('td', {}, toMillis(g.at) ? new Date(toMillis(g.at)).toLocaleString('tr-TR') : '…'),
-                h('td', {}, nameOf(g.by)),
-                h('td', {}, h('button', { type: 'button', class: 'adm-linkbtn', onclick: () => { go('players'); selectPlayer({ uid: g.to, username: S.names.get(g.to) }); } }, nameOf(g.to))),
-                h('td', { class: g.amount >= 0 ? 'adm-plus' : 'adm-minus' }, `${g.amount >= 0 ? '+' : '−'}${Math.abs(g.amount)}`),
-                h('td', { class: 'adm-num' }, `${g.before} → ${g.after}`),
-                h('td', {}, g.note || '—'))))));
+            h('caption', { class: 'adm-sr' }, 'Yönetici işlemleri, en yeni önce'),
+            h('thead', {}, h('tr', {}, ['Zaman', 'Yönetici', 'İşlem', 'Hedef', 'Ayrıntı', 'Sebep'].map(x => h('th', { scope: 'col' }, x)))),
+            h('tbody', {}, rows.map(it => it.g
+                ? h('tr', {},
+                    h('td', {}, it.at ? new Date(it.at).toLocaleString('tr-TR') : '…'),
+                    h('td', {}, nameOf(it.g.by)),
+                    h('td', { class: it.g.amount >= 0 ? 'adm-plus' : 'adm-minus' }, `🪙 ${it.g.amount >= 0 ? '+' : '−'}${Math.abs(it.g.amount)}`),
+                    h('td', {}, playerLink(it.g.to)),
+                    h('td', { class: 'adm-num' }, `${it.g.before} → ${it.g.after}`),
+                    h('td', {}, it.g.note || '—'))
+                : h('tr', {},
+                    h('td', {}, it.at ? new Date(it.at).toLocaleString('tr-TR') : '…'),
+                    h('td', {}, nameOf(it.a.by)),
+                    h('td', {}, ACTION_LABEL[it.a.kind] || it.a.kind),
+                    h('td', {}, playerLink(actionPlayer(it.a)) || h('span', { class: 'adm-mono' }, it.a.target)),
+                    h('td', {}, it.a.detail || '—'),
+                    h('td', {}, it.a.reason || '—'))))));
 }
 $('adm-audit-filter').value = typeof prefs.audit === 'string' ? prefs.audit : '';
 $('adm-audit-filter').addEventListener('input', (e) => { savePref('audit', e.currentTarget.value); renderAudit(); });
 $('adm-audit-csv').addEventListener('click', () => {
-    const rows = [['time', 'admin_uid', 'admin', 'player_uid', 'player', 'amount', 'before', 'after', 'note', 'id']]
-        .concat(auditRows().map(g => [toMillis(g.at) ? new Date(toMillis(g.at)).toISOString() : '', g.by, nameOf(g.by), g.to, nameOf(g.to), g.amount, g.before, g.after, g.note, g.id]));
+    const rows = [['time', 'admin_uid', 'admin', 'kind', 'target', 'player', 'amount', 'before', 'after', 'detail', 'reason', 'id']]
+        .concat(auditRows().map(it => it.g
+            ? [it.at ? new Date(it.at).toISOString() : '', it.g.by, nameOf(it.g.by), 'coin-grant', `wallets/${it.g.to}`, nameOf(it.g.to), it.g.amount, it.g.before, it.g.after, '', it.g.note, it.g.id]
+            : [it.at ? new Date(it.at).toISOString() : '', it.a.by, nameOf(it.a.by), it.a.kind, it.a.target, actionPlayer(it.a) ? nameOf(actionPlayer(it.a)) : '', '', '', '', it.a.detail || '', it.a.reason, it.a.id]));
     const url = URL.createObjectURL(new Blob(['﻿' + toCsv(rows)], { type: 'text/csv;charset=utf-8' }));
-    const a = h('a', { href: url, download: `coin_grants_${new Date().toISOString().slice(0, 10)}.csv` });
+    const a = h('a', { href: url, download: `admin_audit_${new Date().toISOString().slice(0, 10)}.csv` });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
@@ -1005,4 +1524,4 @@ $('adm-audit-csv').addEventListener('click', () => {
 window.addEventListener('online', () => renderChrome());
 window.addEventListener('offline', () => renderChrome());
 // Ages ("son hamle 4 sn önce") tick without new data.
-setInterval(() => { if (S.user && ['overview', 'rooms', 'tables', 'online'].includes(S.view)) render(); }, 5000);
+setInterval(() => { if (S.user && ['overview', 'rooms', 'tables', 'online', 'multiplayer', 'errors'].includes(S.view)) render(); }, 5000);

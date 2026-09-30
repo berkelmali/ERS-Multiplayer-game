@@ -2965,16 +2965,33 @@ export const doc = (base, ...segs) => {
 };
 const snapDoc = (path) => { const v = store.fs[path]; return { id: path.split('/').pop(), exists: () => v !== undefined, data: () => v }; };
 export const getDoc = async (r) => snapDoc(r.path);
-export const where = (f, op, v) => ({ where: [f, v] });
+export const where = (f, op, v) => ({ where: [f, op, v] });
 export const orderBy = () => ({});
 export const limit = () => ({});
 export const query = (c, ...mods) => ({ kind: 'col', path: c.path, where: mods.filter(m => m.where).map(m => m.where) });
 const colDocs = (q) => Object.keys(store.fs)
     .filter(p => p.startsWith(q.path + '/') && p.split('/').length === q.path.split('/').length + 1)
-    .map(snapDoc).filter(d => (q.where || []).every(([f, v]) => d.data()[f] === v));
+    .map(snapDoc).filter(d => (q.where || []).every(([f, op, v]) => (op === 'array-contains'
+        ? Array.isArray(d.data()[f]) && d.data()[f].includes(v) : d.data()[f] === v)));
 export const getDocs = async (q) => { const docs = colDocs(q); return { docs, empty: !docs.length, forEach: (f) => docs.forEach(f) }; };
 const removals = (globalThis.__removes = globalThis.__removes || []);
 export const deleteDoc = async (r) => { removals.push('fs:' + r.path); delete store.fs[r.path]; (store.listeners || []).forEach(f => f()); };
+// v3.24.0: every admin power is one batch (admin_actions record + admin_state + the change).
+export const writeBatch = () => {
+    const ops = [];
+    return {
+        set: (r, v) => { ops.push(['set', r.path, v]); },
+        update: (r, v) => { ops.push(['update', r.path, v]); },
+        delete: (r) => { ops.push(['delete', r.path]); },
+        commit: async () => {
+            for (const [op, path, v] of ops) {
+                if (op === 'delete') { removals.push('fs:' + path); delete store.fs[path]; }
+                else store.fs[path] = op === 'update' ? { ...store.fs[path], ...v } : v;
+            }
+            (store.listeners || []).forEach(f => f());
+        }
+    };
+};
 export const onSnapshot = (q, next) => {
     const fire = () => { if (q.kind === 'doc') next(snapDoc(q.path)); else { const docs = colDocs(q); next({ docs, forEach: (f) => docs.forEach(f) }); } };
     setTimeout(fire, 0); (store.listeners = store.listeners || []).push(fire); return noop;
@@ -3020,6 +3037,13 @@ export const remove = async (r) => {
         user: { uid: 'boss', email: 'berk@admin.ers-card-game.web.app' },
         fs: {
             'admins/boss': { note: 'owner' },
+            // v3.24.0: one finished match (Ayşe dropped, Blitz won) and one page error of hers.
+            'match_log/room_AAA111_1790000000000': {
+                roomId: 'room_AAA111_1790000000000', tableId: 'AAA111', playerIds: ['h1', 'p2'], winner: 2,
+                players: [{ uid: 'h1', name: 'Host', bot: false, cards: 0 }, { uid: 'p2', name: 'Ayşe', bot: false, cards: 4 }, { uid: '', name: 'Blitz', bot: true, cards: 48 }],
+                startedAt: now - 20 * 60000, endedAt: now - 60000, expireAt: now + 29 * 86400000, disconnects: 1, god: null, houseRules: 'doubles'
+            },
+            'client_errors/p2': { e0: { m: 'TypeError: boom', src: 'ui.js', line: 12, at: now - 5000, mode: 'bots' }, count: 1, v: '3.24.0', updatedAt: now - 5000 },
             'leaderboard/boss': { username: 'Berk', totalScore: 3 },
             'leaderboard/p2': { username: 'Ayşe', totalScore: 7 },
             'wallets/p2': { coins: 100, owned: ['classic', 'golden'], earnDay: today, earnedToday: 40, spinDay: -1 },
@@ -3187,10 +3211,68 @@ export const remove = async (r) => {
             throw new Error('the close did not go room → lobby → table: ' + removed.join(','));
         if (shots) await p.screenshot({ path: `${shots}/admin-tables-closed.png`, fullPage: true });
 
+        // v3.24.0 (council ERS-36): every step of that close left a record, and the
+        // table's own delete rode in the same batch as its record.
+        const log = await p.evaluate(() => {
+            const fs = globalThis.__ADM_STORE__.fs;
+            const acts = Object.entries(fs).filter(([k]) => k.startsWith('admin_actions/')).map(([k, v]) => ({ id: k.split('/')[1], ...v }));
+            return { acts: acts.map(a => `${a.kind}:${a.target}:${a.by}:${a.reason}`), last: (fs['admin_state/boss'] || {}).lastActionId,
+                     closeId: (acts.find(a => a.kind === 'close-table') || {}).id };
+        });
+        const wantActs = ['delete-room:rtdb:gameRooms/ROOM01:boss:ölü masa temizliği', 'delete-lobby:rtdb:lobbyRooms/AAA111:boss:ölü masa temizliği',
+                          'close-table:multiplayer_tables/AAA111:boss:ölü masa temizliği'];
+        if (JSON.stringify(log.acts) !== JSON.stringify(wantActs) || log.last !== log.closeId)
+            throw new Error('the close was not logged step by step: ' + JSON.stringify(log));
+
+        // "Multiplayer" is a real tab now: live, waiting, who, and finished matches.
+        await p.click('.adm-tab[data-view="multiplayer"]');
+        await p.waitForFunction(() => !document.getElementById('view-multiplayer').hidden
+            && /AAA111/.test(document.getElementById('adm-mp-history').textContent), null, { timeout: 5000 });
+        const mp = await p.evaluate(() => ({ stats: document.getElementById('adm-mp-stats').textContent, hist: document.getElementById('adm-mp-history').textContent,
+                                             waiting: document.getElementById('adm-mp-waiting').textContent }));
+        if (!/Canlı maç/.test(mp.stats) || !/🏆 Blitz/.test(mp.hist) || !/Ayşe/.test(mp.hist) || !/DDD444/.test(mp.waiting))
+            throw new Error('the multiplayer tab does not show matches and tables: ' + JSON.stringify(mp).slice(0, 400));
+        if (shots) await p.screenshot({ path: `${shots}/admin-multiplayer.png`, fullPage: true });
+
+        // Moderation: a suspension, and an announcement that must not carry a link.
+        await p.click('.adm-tab[data-view="moderation"]');
+        await p.fill('#adm-ban-uid', 'p2');
+        await p.fill('#adm-ban-reason', 'smoke ban');
+        await p.click('#adm-ban-form button[type="submit"]');
+        await p.click('#adm-confirm button[value="ok"]');
+        await p.waitForFunction(() => !!globalThis.__ADM_STORE__.fs['bans/p2'], null, { timeout: 5000 });
+        await p.fill('#adm-ann-en', 'Free coins at ers-card-game.web.app');
+        await p.click('#adm-ann-form button[type="submit"]');
+        const linkRefused = await p.evaluate(() => ({ problem: document.getElementById('adm-ann-problem').textContent,
+                                                      written: !!globalThis.__ADM_STORE__.fs['config/announcement'] }));
+        if (!/bağlantı/.test(linkRefused.problem) || linkRefused.written) throw new Error('a link reached the announcement: ' + JSON.stringify(linkRefused));
+        await p.fill('#adm-ann-en', 'Maintenance tonight at 23.00');
+        await p.click('#adm-ann-form button[type="submit"]');
+        await p.click('#adm-confirm button[value="ok"]');
+        await p.waitForFunction(() => !!globalThis.__ADM_STORE__.fs['config/announcement'], null, { timeout: 5000 });
+        const mod = await p.evaluate(() => {
+            const fs = globalThis.__ADM_STORE__.fs;
+            const acts = Object.values(fs).filter(v => v && v.kind && v.target);
+            return { ban: fs['bans/p2'], ann: fs['config/announcement'], kinds: acts.map(a => a.kind), bans: document.getElementById('adm-bans').textContent };
+        });
+        if (!mod.ban || mod.ban.reason !== 'smoke ban' || !(new Date(mod.ban.until).getTime() > now) || !mod.kinds.includes('ban')
+            || !mod.ann || mod.ann.en !== 'Maintenance tonight at 23.00' || !mod.kinds.includes('announce') || !/ASKIDA/.test(mod.bans))
+            throw new Error('the suspension or the announcement did not land with its record: ' + JSON.stringify(mod).slice(0, 400));
+        if (shots) await p.screenshot({ path: `${shots}/admin-moderation.png`, fullPage: true });
+
+        // Error reports.
+        await p.click('.adm-tab[data-view="errors"]');
+        await p.waitForFunction(() => /TypeError: boom/.test(document.getElementById('adm-errors').textContent), null, { timeout: 5000 });
+        const errText = await p.textContent('#adm-errors');
+        if (!/ui\.js:12/.test(errText) || !/bot maçında/.test(errText)) throw new Error('the error report is not shown in full: ' + errText.slice(0, 300));
+
         await p.click('.adm-tab[data-view="players"]');
         await p.fill('#adm-search', 'Ayşe');
         await p.press('#adm-search', 'Enter');
         await p.waitForFunction(() => /🪙 100/.test(document.getElementById('adm-player').textContent), null, { timeout: 5000 });
+        const card = await p.textContent('#adm-player');
+        if (!/ASKIDA/.test(card) || !/Son multiplayer maçları \(1\)/.test(card) || !/TypeError: boom/.test(card))
+            throw new Error('the player card misses the suspension, the match or the error: ' + card.slice(0, 400));
         await p.fill('#adm-grant-amount', '50');
         await p.fill('#adm-grant-note', 'smoke test');
         await p.click('#adm-player .adm-grant .adm-btn--primary');
@@ -3209,9 +3291,73 @@ export const remove = async (r) => {
         await p.click('.adm-tab[data-view="audit"]');
         const audit = await p.textContent('#adm-audit');
         if (!/smoke test/.test(audit) || !/=HYPERLINK/.test(audit)) throw new Error('the audit log does not list both grants');
+        for (const w of ['masa kapatıldı', 'askıya alındı', 'duyuru yayınlandı', 'smoke ban'])
+            if (!audit.includes(w)) throw new Error(`the audit log does not show "${w}": ` + audit.slice(0, 300));
         if (errs.length) throw new Error('page errors: ' + errs.join(' | '));
-        console.log('         admin only; hostile name drawn as text; "x/../admins" never reached a path; 3 table checks; room analysis; online list; dead table closed room→lobby→table; +50 audited');
+        console.log('         admin only; hostile name drawn as text; "x/../admins" never reached a path; 3 table checks; room analysis; online list; dead table closed room→lobby→table with 3 records; multiplayer tab; ban + announcement (link refused); error report; +50 audited');
     } finally { await ctx2.close(); }
+});
+
+// ── v3.24.0: what a player sees of the admin's powers ───────────────────────
+// A variant of the inert stub: doc() keeps its path, the player's own ban
+// document exists, and config/announcement carries text with markup in it.
+// This is the only place the menu notice, the suspension line and the lobby's
+// refusal are exercised in a real browser — the rules are proven in the
+// emulator, the wiring only here.
+await step('the menu shows the announcement and a suspension as text, and the lobby refuses a suspended player', async () => {
+    const until = Date.now() + 3 * 86400000;
+    const MENU_STUB = STUB
+        .replace('export const doc = () => ({});', 'export const doc = (db, ...segs) => ({ path: segs.join("/") });')
+        // A FUNCTION replacement: the text below contains '$&', which a string
+        // replacement would expand into the matched text (the same trap banStatus.js guards).
+        .replace('export const getDoc = async () => ({ exists: () => false, data: () => ({}) });',
+            () => `export const getDoc = async (r) => (r && r.path === 'bans/banned1'
+                ? { exists: () => true, data: () => ({ until: { toMillis: () => ${until} }, reason: 'smoke reason $& <b>x</b>', by: 'boss', at: 1 }) }
+                : { exists: () => false, data: () => ({}) });`)
+        .replace('export const onSnapshot = unsub;',
+            `export const onSnapshot = (r, next) => {
+                if (r && r.path === 'config/announcement') setTimeout(() => next({ exists: () => true, data: () => ({
+                    en: '<img src=x onerror="window.__annxss=1"> Maintenance tonight at 23.00', level: 'warn',
+                    until: { toMillis: () => ${until} }, by: 'boss', at: { toMillis: () => 12345 } }) }), 0);
+                return () => {};
+            };`);
+    if (MENU_STUB === STUB || !MENU_STUB.includes("bans/banned1") || !MENU_STUB.includes('config/announcement'))
+        throw new Error('the stub variant did not apply — firebase-stub.mjs changed shape');
+    const ctx4 = await browser.newContext();
+    await ctx4.route('**://www.gstatic.com/firebasejs/**', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: MENU_STUB }));
+    await ctx4.route('**://fonts.googleapis.com/**', r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+    await ctx4.route('**://fonts.gstatic.com/**', r => r.abort());
+    await ctx4.addInitScript(() => { globalThis.__ERS_SMOKE_USER__ = { uid: 'banned1', email: 'b@x.io' }; try { localStorage.clear(); } catch (e) { /* */ } });
+    const p = await ctx4.newPage();
+    const errs = [];
+    p.on('pageerror', e => errs.push(String(e)));
+    try {
+        await p.goto(`${base}/index.html`);
+        await p.waitForFunction(() => {
+            const n = document.getElementById('site-notice'), b = document.getElementById('ban-notice');
+            return n && !n.hidden && b && !b.hidden;
+        }, null, { timeout: 10000 });
+        const seen = await p.evaluate(() => {
+            const n = document.getElementById('site-notice');
+            const r = n.getBoundingClientRect();
+            return { ann: document.getElementById('site-notice-text').textContent, level: n.dataset.level,
+                     ban: document.getElementById('ban-notice').textContent, imgs: document.querySelectorAll('.menu-notices img').length,
+                     xss: window.__annxss, inMenu: !!n.closest('#main-menu'), visible: r.width > 0 && r.height > 0 };
+        });
+        if (!/Maintenance tonight at 23\.00/.test(seen.ann) || seen.level !== 'warn' || !seen.inMenu || !seen.visible)
+            throw new Error('the announcement is not shown in the menu: ' + JSON.stringify(seen));
+        if (seen.imgs || seen.xss || !seen.ann.includes('<img')) throw new Error('announcement markup was rendered as HTML');
+        if (!/smoke reason \$& <b>x<\/b>/.test(seen.ban)) throw new Error('the suspension reason is not shown verbatim, as text: ' + seen.ban);
+        // The lobby refuses before the rules would, and says why.
+        const code = await p.evaluate(() => import('./js/tableManager.js').then(m => m.TableManager.createTable()).then(() => 'created', e => e && e.ersCode));
+        if (code !== 'BANNED') throw new Error('a suspended player was not refused a table: ' + code);
+        // A dismissal sticks to this announcement.
+        await p.click('#site-notice-close');
+        const after = await p.evaluate(() => ({ hidden: document.getElementById('site-notice').hidden, key: localStorage.getItem('ers_ann_dismissed') }));
+        if (!after.hidden || after.key !== '12345') throw new Error('the dismissal did not stick: ' + JSON.stringify(after));
+        if (errs.length) throw new Error('page errors: ' + errs.join(' | '));
+        console.log('         notice in the menu as text (markup inert), suspension line verbatim, lobby says BANNED, dismissal remembered');
+    } finally { await ctx4.close(); }
 });
 
 await step('the admin page refuses a signed-in player who is not an admin', async () => {

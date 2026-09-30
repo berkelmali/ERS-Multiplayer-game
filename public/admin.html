@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <!-- The operator's tool (v3.22.1, redesigned v3.22.2). Not for search
+    <!-- The operator's tool (v3.22.1, redesigned v3.22.2, powers v3.24.0). Not for search
          engines, not in the sitemap, disallowed in robots.txt. Nothing here is
          protected by being hidden: every read and write it makes is refused by
          firestore.rules / database.rules.json unless the signed-in account is
@@ -14,7 +14,7 @@
     <title>ERS Yönetim</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
     <meta name="theme-color" content="#0d1117">
-    <link rel="stylesheet" href="style.css?v=3.22.5">
+    <link rel="stylesheet" href="style.css?v=3.24.0">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
 
@@ -56,12 +56,18 @@
 
         <nav class="adm-nav" aria-label="Bölümler">
             <button type="button" data-view="overview" class="adm-tab is-active" aria-current="page">📊 Genel bakış</button>
-            <span class="adm-nav-group" aria-hidden="true">Multiplayer</span>
-            <button type="button" data-view="rooms" class="adm-tab">🔴 Canlı odalar <span id="adm-rooms-count" class="adm-count"></span></button>
-            <button type="button" data-view="tables" class="adm-tab">🃏 Masalar <span id="adm-tables-count" class="adm-count"></span></button>
+            <span class="adm-nav-sep" aria-hidden="true"></span>
+            <!-- v3.24.0: "Multiplayer" is a real tab (its own overview); rooms and
+                 tables are its detail tabs. v3.22.5 shipped it as a label that
+                 looked like a tab and did nothing when clicked. -->
+            <button type="button" data-view="multiplayer" class="adm-tab">🎮 Multiplayer <span id="adm-mp-count" class="adm-count"></span></button>
+            <button type="button" data-view="rooms" class="adm-tab adm-tab--sub">🔴 Canlı odalar <span id="adm-rooms-count" class="adm-count"></span></button>
+            <button type="button" data-view="tables" class="adm-tab adm-tab--sub">🃏 Masalar <span id="adm-tables-count" class="adm-count"></span></button>
             <span class="adm-nav-sep" aria-hidden="true"></span>
             <button type="button" data-view="online" class="adm-tab">👥 Çevrimiçi <span id="adm-online-count" class="adm-count"></span></button>
             <button type="button" data-view="players" class="adm-tab">🪙 Oyuncular &amp; jeton</button>
+            <button type="button" data-view="moderation" class="adm-tab">🛡 Moderasyon <span id="adm-bans-count" class="adm-count"></span></button>
+            <button type="button" data-view="errors" class="adm-tab">🐞 Hatalar <span id="adm-errors-count" class="adm-count"></span></button>
             <button type="button" data-view="audit" class="adm-tab">📜 Denetim kaydı</button>
         </nav>
 
@@ -88,8 +94,38 @@
                     </section>
                 </div>
                 <section class="adm-card" aria-labelledby="h-grants">
-                    <h3 id="h-grants">Son jeton gönderimleri</h3>
+                    <h3 id="h-grants">Son yönetici işlemleri</h3>
                     <div id="adm-recent-grants" class="adm-list"></div>
+                </section>
+            </section>
+
+            <!-- Multiplayer at a glance (v3.24.0): what is running, what is
+                 waiting, who is in it, and how the last 30 days of matches ended. -->
+            <section id="view-multiplayer" class="adm-view" aria-labelledby="h-mp" hidden>
+                <h2 id="h-mp" class="adm-sr">Multiplayer</h2>
+                <div id="adm-mp-stats" class="adm-stats" aria-busy="true"></div>
+                <div class="adm-grid2">
+                    <section class="adm-card" aria-labelledby="h-mp-live">
+                        <h3 id="h-mp-live">Şu an oynanan maçlar</h3>
+                        <div id="adm-mp-live" class="adm-list"></div>
+                    </section>
+                    <section class="adm-card" aria-labelledby="h-mp-waiting">
+                        <h3 id="h-mp-waiting">Bekleyen masalar</h3>
+                        <div id="adm-mp-waiting" class="adm-list"></div>
+                    </section>
+                </div>
+                <section class="adm-card" aria-labelledby="h-mp-players">
+                    <h3 id="h-mp-players">Multiplayer'daki oyuncular</h3>
+                    <div id="adm-mp-players"></div>
+                </section>
+                <section class="adm-card" aria-labelledby="h-mp-history">
+                    <div class="adm-card-head">
+                        <h3 id="h-mp-history">Biten maçlar (30 gün)</h3>
+                        <span id="adm-mp-history-meta" class="adm-muted"></span>
+                        <button id="adm-mp-sweep" type="button" class="adm-btn adm-btn--ghost" hidden>Süresi dolanları temizle</button>
+                    </div>
+                    <div id="adm-mp-history" class="adm-scroll"></div>
+                    <p class="adm-muted adm-note">Maçı bitiren ev sahibinin tarayıcısı yazar (oda 5 sn sonra silinir). Herkes maç bitmeden ayrılırsa kayıt olmaz. İçerik oyuncunun beyanıdır — teşhis içindir, kanıt değildir.</p>
                 </section>
             </section>
 
@@ -163,12 +199,79 @@
                 <div id="adm-player" class="adm-card" hidden></div>
             </section>
 
+            <!-- Moderation (v3.24.0, council ERS-36): suspensions, the menu
+                 announcement, score boards. Every action here commits with an
+                 admin_actions record (firestore.rules block 7). -->
+            <section id="view-moderation" class="adm-view" aria-labelledby="h-mod" hidden>
+                <h2 id="h-mod" class="adm-sr">Moderasyon</h2>
+                <section class="adm-card" aria-labelledby="h-bans">
+                    <h3 id="h-bans">Askıdaki hesaplar</h3>
+                    <p class="adm-muted adm-note">Askıdaki hesap çok oyunculu masa açamaz/katılamaz, liderlik ve Günlük tablolarına yazamaz; maç kaydı ilerlemez. Jetonları ve tek oyunculu modları açık kalır. En fazla 30 gün; süre dolunca kendiliğinden biter.</p>
+                    <form id="adm-ban-form" class="adm-formgrid" novalidate>
+                        <label for="adm-ban-uid">Oyuncu kimliği</label>
+                        <input id="adm-ban-uid" class="adm-input adm-mono" autocomplete="off" spellcheck="false" placeholder="ör. VI9GW3h5Y0YSh4nwGaqZnt2gyJn2">
+                        <label for="adm-ban-days">Süre</label>
+                        <select id="adm-ban-days" class="adm-input"></select>
+                        <label for="adm-ban-reason">Sebep (oyuncu görür)</label>
+                        <input id="adm-ban-reason" class="adm-input" maxlength="120" autocomplete="off">
+                        <span></span>
+                        <button type="submit" class="adm-btn adm-btn--danger">⛔ Askıya al</button>
+                    </form>
+                    <div id="adm-bans" class="adm-list"></div>
+                </section>
+                <section class="adm-card" aria-labelledby="h-ann">
+                    <h3 id="h-ann">Menü duyurusu</h3>
+                    <p class="adm-muted adm-note">Yalnızca ana menüde görünür, maç sırasında asla. Düz metin; bağlantı, alan adı ya da @ yazılamaz (sunucu reddeder). En fazla 7 gün. Boş bırakılan dilde oyuncu İngilizce ya da Türkçe metni görür.</p>
+                    <div id="adm-ann-current"></div>
+                    <form id="adm-ann-form" class="adm-formgrid" novalidate>
+                        <label for="adm-ann-tr">Türkçe</label>
+                        <input id="adm-ann-tr" class="adm-input" maxlength="160" autocomplete="off">
+                        <label for="adm-ann-en">English</label>
+                        <input id="adm-ann-en" class="adm-input" maxlength="160" autocomplete="off">
+                        <label for="adm-ann-de">Deutsch</label>
+                        <input id="adm-ann-de" class="adm-input" maxlength="160" autocomplete="off">
+                        <label for="adm-ann-ru">Русский</label>
+                        <input id="adm-ann-ru" class="adm-input" maxlength="160" autocomplete="off">
+                        <label for="adm-ann-level">Tür</label>
+                        <select id="adm-ann-level" class="adm-input"><option value="info">Bilgi</option><option value="warn">Uyarı</option></select>
+                        <label for="adm-ann-hours">Süre</label>
+                        <select id="adm-ann-hours" class="adm-input"></select>
+                        <span></span>
+                        <button type="submit" class="adm-btn adm-btn--primary">📣 Yayınla</button>
+                    </form>
+                    <p id="adm-ann-problem" class="adm-error" role="alert"></p>
+                </section>
+                <section class="adm-card" aria-labelledby="h-boards">
+                    <h3 id="h-boards">Skor tabloları</h3>
+                    <p class="adm-muted adm-note">Günlük tablo doğrulanmış değil: herkes biçimi doğru bir yalan yazabilir. Sahte bir kaydı buradan silebilirsin; tekrar ederse hesabı askıya al.</p>
+                    <div class="adm-toolbar">
+                        <label for="adm-daily-date">Günlük tablo</label>
+                        <input id="adm-daily-date" type="date" class="adm-input">
+                        <button id="adm-daily-load" type="button" class="adm-btn adm-btn--ghost">Yükle</button>
+                        <button id="adm-lb-load" type="button" class="adm-btn adm-btn--ghost">Liderlik tablosunu yükle</button>
+                    </div>
+                    <div id="adm-boards" class="adm-scroll"></div>
+                </section>
+            </section>
+
+            <!-- Page errors of signed-in players (v3.24.0) -->
+            <section id="view-errors" class="adm-view" aria-labelledby="h-errors" hidden>
+                <h2 id="h-errors" class="adm-sr">Hata raporları</h2>
+                <div class="adm-toolbar">
+                    <label for="adm-errors-filter" class="adm-sr">Filtre</label>
+                    <input id="adm-errors-filter" type="search" class="adm-input" placeholder="Filtre: oyuncu, dosya, mesaj…" autocomplete="off" spellcheck="false">
+                    <span id="adm-errors-meta" class="adm-muted"></span>
+                </div>
+                <div id="adm-errors" class="adm-list" aria-busy="true"></div>
+                <p class="adm-muted adm-note">Giriş yapmış oyuncuların sayfa hataları: oyuncu başına son 5 hata, 10 sn'de en fazla bir yazma. Mesaj kodla ilgili metindir; web adresleri silinir. Misafirlerin hataları gelmez.</p>
+            </section>
+
             <!-- Audit -->
             <section id="view-audit" class="adm-view" aria-labelledby="h-audit" hidden>
                 <h2 id="h-audit" class="adm-sr">Denetim kaydı</h2>
                 <div class="adm-toolbar">
                     <label for="adm-audit-filter" class="adm-sr">Filtre</label>
-                    <input id="adm-audit-filter" type="search" class="adm-input" placeholder="Filtre: oyuncu, yönetici, sebep…" autocomplete="off">
+                    <input id="adm-audit-filter" type="search" class="adm-input" placeholder="Filtre: oyuncu, yönetici, işlem, sebep…" autocomplete="off">
                     <button id="adm-audit-csv" type="button" class="adm-btn adm-btn--ghost">CSV indir</button>
                 </div>
                 <div id="adm-audit" class="adm-card adm-scroll" aria-busy="true"></div>
@@ -176,11 +279,17 @@
         </main>
     </div>
 
-    <!-- Every coin movement is confirmed here, in words. -->
+    <!-- Every coin movement and every admin action is confirmed here, in
+         words. Since v3.24.0 an action also asks for the reason that goes into
+         its admin_actions record. -->
     <dialog id="adm-confirm" class="adm-dialog" aria-labelledby="adm-confirm-title">
         <form method="dialog">
             <h3 id="adm-confirm-title">Onayla</h3>
             <p id="adm-confirm-text"></p>
+            <div id="adm-confirm-reason-wrap" hidden>
+                <label for="adm-confirm-reason">Sebep (denetim kaydına yazılır)</label>
+                <input id="adm-confirm-reason" class="adm-input adm-wide" maxlength="120" autocomplete="off">
+            </div>
             <div class="adm-toolbar adm-right">
                 <button value="cancel" class="adm-btn adm-btn--ghost">Vazgeç</button>
                 <button value="ok" class="adm-btn adm-btn--primary">Onayla</button>
@@ -190,7 +299,7 @@
 
     <div id="adm-toast" class="adm-toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="js/admin.js?v=3.22.5"></script>
+    <script type="module" src="js/admin.js?v=3.24.0"></script>
 </body>
 
 </html>

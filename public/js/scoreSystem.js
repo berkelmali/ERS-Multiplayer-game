@@ -1,6 +1,7 @@
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { app } from "./firebaseConfig.js";
 import { AuthSystem } from "./auth.js";
+import { BanStatus } from "./banStatus.js";
 import EventBus from "./eventbus.js";
 import { recordMatch } from "./playerRecord.js";
 
@@ -52,6 +53,8 @@ export const ScoreSystem = {
         const reflex = this.sessionBestReflex;
         this.sessionBestReflex = null;
         if (!AuthSystem.currentUser) return;
+        // v3.24.0: a suspended record does not move (firestore.rules block 7).
+        if (BanStatus.isActive()) return;
         try {
             const rec = await this.recorder(AuthSystem.currentUser, { won, reflex });
             this.currentScore = rec.totalScore || 0;

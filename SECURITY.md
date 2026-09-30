@@ -82,6 +82,35 @@ the report is credited if you want it to be.
   matches run in the browser, so a player can write any summary they like —
   it is a diagnostic an admin reads, not a record anything trusts. It is deliberately separate from
   `presence/{uid}`, which decides whether a seated player is dropped.
+- Admin powers beyond coins (v3.24.0, council ERS-36, chosen by the owner)
+  each commit WITH an immutable `admin_actions/{id}` record naming the kind
+  and the exact target, and move `admin_state/{admin}.lastActionId` to it in
+  the same commit; the rules refuse the change otherwise, and an old record
+  cannot be replayed. Realtime Database deletes cannot join that commit: the
+  record is written first, then the delete — logged, not atomic. Powers:
+  close a dead table, delete a dead room or lobby mirror, delete a Daily score
+  or a leaderboard entry, suspend or unsuspend an account (at most 30 days),
+  publish or remove the menu announcement, delete a match record or an error
+  report. There is still no admin write into a live match.
+- A suspended account (`bans/{uid}`, readable by its owner and admins) cannot
+  open or join a multiplayer table, write the leaderboard or the Daily board,
+  or move its match record. Coins, solo play and a seat it already holds are
+  left alone. The player is shown the end date and the reason.
+- The menu announcement (`config/announcement`) is public, plain text in up to
+  four languages, at most 7 days, one line, and may not contain a URL scheme,
+  "www", "@" or a domain-like word (look-alike dots and a full-width "@"
+  included). The filter is lexical — "evil dot com" passes; a stolen admin
+  password can still post text, not a link.
+- `match_log/{roomId}` — a finished multiplayer match (names and ids of the
+  seated players, card counts, winner, start time, disconnects), written once
+  by a player who played in it, readable by admins, kept 30 days (`expireAt`;
+  enable a Firestore TTL policy on it, or sweep from the admin page). Like the
+  room it came from, its content is the client's claim.
+- `client_errors/{uid}` — the last five page errors of a signed-in player
+  (message, file, line, activity word; URLs stripped), one write per 10 s,
+  readable by admins, deletable by the player.
+- Admins may read `users/{uid}` (match counts and best reflex; the email left
+  that document in v3.18.0) for the admin page's player card. Never write.
 - Every rule change is run against the Firestore emulator, with deliberately
   broken copies that must be caught, before `deploy-rules.bat` sends it
   (`tools/firestore-rules-test.mjs`).

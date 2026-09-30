@@ -112,6 +112,33 @@ async function loadRules(content) {
 const LONG_AGO = () => new Date(Date.now() - 60_000);
 const JUST_NOW = () => new Date(Date.now() - 1_000);
 const ago = (minutes) => new Date(Date.now() - minutes * 60_000);
+const ahead = (minutes) => new Date(Date.now() + minutes * 60_000);
+const DAYS = 24 * 60;
+
+// v3.24.0 (council ERS-36): every admin power beyond coins commits with an
+// /admin_actions record and moves /admin_state/{admin}.lastActionId with it.
+let logSeq = 0;
+function logWrites(who, kind, target, over = {}) {
+    const id = `A${++logSeq}`;
+    return [
+        { path: `admin_actions/${id}`, data: { kind, target, by: who, reason: 'test reason', at: SERVER_TIME, ...over } },
+        { path: `admin_state/${who}`, data: { lastActionId: id } }
+    ];
+}
+/** A protected write, committed together with its log record. */
+const logged = (who, kind, target, writes = [], over = {}) => commit(who, [...logWrites(who, kind, target, over), ...writes]);
+const boss = () => seed('admins/boss', { note: 'owner' });
+const banFor = (minutes) => ({ until: ahead(minutes), reason: 'cheating', by: 'boss', at: ago(1) });
+const seatRec = (uid, name, bot = false, cards = 13) => ({ uid, name, bot, cards });
+const matchRec = (over = {}) => ({
+    roomId: 'room_ABC123_1790000000000', tableId: 'ABC123',
+    players: [seatRec('p1', 'Ali'), seatRec('p2', 'Ayşe'), seatRec('', 'Blitz', true, 26)],
+    playerIds: ['p1', 'p2'], winner: 2, startedAt: 1790000000000,
+    endedAt: SERVER_TIME, expireAt: ahead(30 * DAYS), disconnects: 0, god: null, houseRules: 'doubles,sandwich,tens,marriage',
+    ...over
+});
+const errEntry = (over = {}) => ({ m: 'TypeError: x is undefined', src: 'ui.js', line: 120, at: Date.now(), mode: 'bots', ...over });
+const ann = (over = {}) => ({ tr: 'Bu gece 23:00 bakım var.', en: 'Maintenance tonight at 23:00.', level: 'info', until: ahead(24 * 60), by: 'boss', at: SERVER_TIME, ...over });
 const record = (over = {}) => ({ username: 'Berk', totalScore: 5, gamesPlayed: 9, gamesWon: 5, bestReflex: 400, updatedAt: LONG_AGO(), ...over });
 const table = (over = {}) => ({
     tableId: 'ABC123', hostId: 'host', hostUsername: 'Host',
@@ -393,32 +420,242 @@ const SCENARIOS = [
         commit('host', [{ path: 'multiplayer_tables/ABC123', data: table({ playerIds: { host: true }, players: [{ uid: 'host', name: 'Host', index: 0 }] }) }])],
     // v3.22.3 (council ERS-30): an admin closes tables the players never tidied —
     // dead ones only. `ago(m)` is a createdAt m minutes in the past.
-    ['an admin closes a finished table', true, async () => {
-        await seed('admins/boss', { note: 'owner' });
+    ['an admin closes a finished table (with its log record)', true, async () => {
+        await boss();
         await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'finished', playerCount: 2, roomId: 'R1' }, createdAt: ago(3) }));
+        return logged('boss', 'close-table', 'multiplayer_tables/ABC123', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+    ['...but not without the log record (v3.24.0)', false, async () => {
+        await boss();
+        await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'finished', playerCount: 2, roomId: 'R1' }, createdAt: ago(3) }));
+        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+    ['...nor with a record that names another table', false, async () => {
+        await boss();
+        await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'finished', playerCount: 2, roomId: 'R1' }, createdAt: ago(3) }));
+        return logged('boss', 'close-table', 'multiplayer_tables/ZZZ999', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+    ['...nor by replaying an old record', false, async () => {
+        await boss();
+        await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'finished', playerCount: 2, roomId: 'R1' }, createdAt: ago(3) }));
+        await seed('admin_actions/OLD', { kind: 'close-table', target: 'multiplayer_tables/ABC123', by: 'boss', reason: 'old', at: ago(60) });
+        await seed('admin_state/boss', { lastActionId: 'OLD' });
         return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
     ['an admin closes a lobby nobody started for 30 minutes', true, async () => {
         await seed('admins/boss', { note: 'owner' });
         await seed('multiplayer_tables/ABC123', table({ createdAt: ago(31) }));
-        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+        return logged('boss', 'close-table', 'multiplayer_tables/ABC123', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
     ['an admin cannot close a fresh lobby', false, async () => {
         await seed('admins/boss', { note: 'owner' });
         await seed('multiplayer_tables/ABC123', table({ createdAt: ago(5) }));
-        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+        return logged('boss', 'close-table', 'multiplayer_tables/ABC123', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
     ['an admin cannot close a match under 2 hours old', false, async () => {
         await seed('admins/boss', { note: 'owner' });
         await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'playing', playerCount: 2, roomId: 'R1' }, createdAt: ago(60) }));
-        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+        return logged('boss', 'close-table', 'multiplayer_tables/ABC123', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
     ['an admin closes a table opened more than 2 hours ago', true, async () => {
         await seed('admins/boss', { note: 'owner' });
         await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'playing', playerCount: 2, roomId: 'R1' }, createdAt: ago(121) }));
-        return commit('boss', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+        return logged('boss', 'close-table', 'multiplayer_tables/ABC123', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
     ['a player who is neither host nor admin cannot close even a dead table', false, async () => {
         await seed('multiplayer_tables/ABC123', table({ gameState: { status: 'finished', playerCount: 2 }, createdAt: ago(300) }));
         return commit('mem', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
     ['the host still closes their own table at any age', true, async () => {
         await seed('multiplayer_tables/ABC123', table({ createdAt: ago(1) }));
         return commit('host', [{ path: 'multiplayer_tables/ABC123', delete: true }]); }],
+
+    // ── v3.24.0 (council ERS-36): the action log ────────────────────────────
+    ['an admin writes a log record alone (the trail of a Realtime Database delete)', true, async () => {
+        await boss(); return logged('boss', 'delete-room', 'rtdb:gameRooms/room_ABC123_1790000000000'); }],
+    ['a log record must move the admin state in the same commit', false, async () => {
+        await boss(); return commit('boss', [logWrites('boss', 'delete-room', 'rtdb:gameRooms/R1')[0]]); }],
+    ['a player cannot write a log record', false, async () => logged('p1', 'delete-room', 'rtdb:gameRooms/R1')],
+    ['a log record cannot name another admin as its author', false, async () => {
+        await boss(); return logged('boss', 'delete-room', 'rtdb:gameRooms/R1', [], { by: 'someone-else' }); }],
+    ['a log record needs a real reason', false, async () => {
+        await boss(); return logged('boss', 'delete-room', 'rtdb:gameRooms/R1', [], { reason: 'x' }); }],
+    ['a log record kind comes from the list', false, async () => {
+        await boss(); return logged('boss', 'mint-coins', 'wallets/p1'); }],
+    ['a record of one kind does not authorise another (an unban record cannot impose a ban)', false, async () => {
+        await boss(); return logged('boss', 'unban', 'bans/p1', [{ path: 'bans/p1', data: { until: ahead(7 * DAYS), reason: 'cheating', by: 'boss', at: SERVER_TIME } }]); }],
+    ['...nor may a take-down record publish an announcement', false, async () => {
+        await boss(); return logged('boss', 'clear-announcement', 'config/announcement', [{ path: 'config/announcement', data: ann() }]); }],
+    // Defence in depth, made visible: a revoked admin's old admin_state still
+    // points at an id. isAdmin() on the record itself is what stops a forged
+    // entry then — the state rule is no longer in the way.
+    ['a revoked admin cannot file a record, even where their old state points', false, async () => {
+        await seed('admin_state/ex', { lastActionId: 'X9' });
+        return commit('ex', [{ path: 'admin_actions/X9', data: { kind: 'ban', target: 'bans/p1', by: 'ex', reason: 'forged', at: SERVER_TIME } }]); }],
+    ['a record cannot be filed under another admin name, even where the state points', false, async () => {
+        await boss(); await seed('admin_state/boss', { lastActionId: 'X8' });
+        return commit('boss', [{ path: 'admin_actions/X8', data: { kind: 'ban', target: 'bans/p1', by: 'someone-else', reason: 'forged', at: SERVER_TIME } }]); }],
+    ['a log record cannot be edited', false, async () => {
+        await boss(); await seed('admin_actions/OLD', { kind: 'ban', target: 'bans/p1', by: 'boss', reason: 'old', at: ago(5) });
+        return commit('boss', [{ path: 'admin_actions/OLD', data: { reason: 'rewritten' }, mask: ['reason'] }]); }],
+    ['...nor deleted', false, async () => {
+        await boss(); await seed('admin_actions/OLD', { kind: 'ban', target: 'bans/p1', by: 'boss', reason: 'old', at: ago(5) });
+        return commit('boss', [{ path: 'admin_actions/OLD', delete: true }]); }],
+    ['admins read the log; players do not', true, async () => {
+        await boss(); await seed('admin_actions/OLD', { kind: 'ban', target: 'bans/p1', by: 'boss', reason: 'old', at: ago(5) });
+        const a = await get('boss', 'admin_actions/OLD'); const b = await get('p1', 'admin_actions/OLD');
+        return { status: allowed(a) && !allowed(b) ? 200 : 403, text: '' }; }],
+
+    // ── player stats (the owner chose read access for admins) ───────────────
+    ['an admin reads a player match record', true, async () => {
+        await boss(); await seed('users/p1', record()); return get('boss', 'users/p1'); }],
+    ['another player still cannot', false, async () => {
+        await seed('users/p1', record()); return get('p2', 'users/p1'); }],
+    ['an admin cannot write a player record', false, async () => {
+        await boss(); await seed('users/p1', record());
+        return commit('boss', [{ path: 'users/p1', data: { totalScore: 99 }, mask: ['totalScore'] }]); }],
+
+    // ── board cleanup ───────────────────────────────────────────────────────
+    ['an admin deletes a forged daily score with a log record', true, async () => {
+        await boss(); await seed('daily_challenges/2026-09-30/scores/p1', { uid: 'p1', score: 5000 });
+        return logged('boss', 'delete-daily', 'daily_challenges/2026-09-30/scores/p1', [{ path: 'daily_challenges/2026-09-30/scores/p1', delete: true }]); }],
+    ['nobody deletes a daily score without one', false, async () => {
+        await boss(); await seed('daily_challenges/2026-09-30/scores/p1', { uid: 'p1', score: 5000 });
+        return commit('boss', [{ path: 'daily_challenges/2026-09-30/scores/p1', delete: true }]); }],
+    ['a player cannot delete a daily score, even their own', false, async () => {
+        await seed('daily_challenges/2026-09-30/scores/p1', { uid: 'p1', score: 100 });
+        return commit('p1', [{ path: 'daily_challenges/2026-09-30/scores/p1', delete: true }]); }],
+    ['an admin removes a leaderboard entry with a log record', true, async () => {
+        await boss(); await seed('leaderboard/p1', { username: 'Rude name', totalScore: 9, updatedAt: ago(5) });
+        return logged('boss', 'delete-leaderboard', 'leaderboard/p1', [{ path: 'leaderboard/p1', delete: true }]); }],
+    ['...not without one', false, async () => {
+        await boss(); await seed('leaderboard/p1', { username: 'Rude name', totalScore: 9, updatedAt: ago(5) });
+        return commit('boss', [{ path: 'leaderboard/p1', delete: true }]); }],
+    ['the owner still removes their own leaderboard entry', true, async () => {
+        await seed('leaderboard/p1', { username: 'Berk', totalScore: 9, updatedAt: ago(5) });
+        return commit('p1', [{ path: 'leaderboard/p1', delete: true }]); }],
+
+    // ── bans ────────────────────────────────────────────────────────────────
+    ['an admin suspends a player for 7 days with a log record', true, async () => {
+        await boss(); return logged('boss', 'ban', 'bans/p1', [{ path: 'bans/p1', data: { until: ahead(7 * DAYS), reason: 'cheating', by: 'boss', at: SERVER_TIME } }]); }],
+    ['a suspension needs a log record', false, async () => {
+        await boss(); return commit('boss', [{ path: 'bans/p1', data: { until: ahead(7 * DAYS), reason: 'cheating', by: 'boss', at: SERVER_TIME } }]); }],
+    ['a suspension lasts at most 30 days', false, async () => {
+        await boss(); return logged('boss', 'ban', 'bans/p1', [{ path: 'bans/p1', data: { until: ahead(31 * DAYS), reason: 'cheating', by: 'boss', at: SERVER_TIME } }]); }],
+    ['a suspension ends in the future', false, async () => {
+        await boss(); return logged('boss', 'ban', 'bans/p1', [{ path: 'bans/p1', data: { until: ago(5), reason: 'cheating', by: 'boss', at: SERVER_TIME } }]); }],
+    ['a player cannot suspend anyone', false, async () =>
+        commit('p2', [{ path: 'bans/p1', data: { until: ahead(60), reason: 'grudge', by: 'p2', at: SERVER_TIME } }])],
+    ['a player reads their own suspension (to be told why)', true, async () => {
+        await seed('bans/p1', banFor(60)); return get('p1', 'bans/p1'); }],
+    ['...but not anyone else\'s', false, async () => {
+        await seed('bans/p1', banFor(60)); return get('p2', 'bans/p1'); }],
+    ['an admin lifts a suspension with a log record', true, async () => {
+        await boss(); await seed('bans/p1', banFor(60));
+        return logged('boss', 'unban', 'bans/p1', [{ path: 'bans/p1', delete: true }]); }],
+    ['a suspended player cannot write the leaderboard', false, async () => {
+        await seed('users/u1', record()); await seed('bans/u1', banFor(60));
+        return commit('u1', [{ path: 'leaderboard/u1', data: { username: 'Berk', totalScore: 5, updatedAt: SERVER_TIME } }]); }],
+    ['...nor submit a Daily score', false, async () => {
+        await seed('bans/u1', banFor(60));
+        return commit('u1', [{ path: 'daily_challenges/2026-09-30/scores/u1', data: {
+            uid: 'u1', username: 'Berk', score: 1200, reflex: 300, won: true, durationMs: 90000, profile: null, startingCards: 13, at: Date.now() } }]); }],
+    ['...nor open a table', false, async () => {
+        await seed('bans/host', banFor(60));
+        return commit('host', [{ path: 'multiplayer_tables/ABC123', data: table({ playerIds: { host: true }, players: [{ uid: 'host', name: 'Host', index: 0 }] }) }]); }],
+    ['...nor join one', false, async () => {
+        await seed('multiplayer_tables/ABC123', table()); await seed('bans/new', banFor(60));
+        const t = table();
+        return commit('new', [{ path: 'multiplayer_tables/ABC123', data: {
+            players: [...t.players, { uid: 'new', name: 'New', index: 2, status: 'online' }],
+            playerIds: { host: true, mem: true, new: true }, gameState: { status: 'waiting', playerCount: 3 } },
+            mask: ['players', 'playerIds', 'gameState'] }]); }],
+    ['...and their match record does not move', false, async () => {
+        await seed('users/u1', record()); await seed('bans/u1', banFor(60));
+        return commit('u1', [{ path: 'users/u1', data: { gamesPlayed: 10, updatedAt: SERVER_TIME }, mask: ['gamesPlayed', 'updatedAt'] }]); }],
+    ['a suspended player may still leave a table they sit at', true, async () => {
+        await seed('multiplayer_tables/ABC123', table()); await seed('bans/mem', banFor(60));
+        return commit('mem', [{ path: 'multiplayer_tables/ABC123', data: {
+            players: [{ uid: 'host', name: 'Host', index: 0 }], playerIds: { host: true }, gameState: { status: 'waiting', playerCount: 1 } },
+            mask: ['players', 'playerIds', 'gameState'] }]); }],
+    ['an expired suspension no longer blocks', true, async () => {
+        await seed('users/u1', record()); await seed('bans/u1', { ...banFor(60), until: ago(1) });
+        return commit('u1', [{ path: 'leaderboard/u1', data: { username: 'Berk', totalScore: 5, updatedAt: SERVER_TIME } }]); }],
+
+    // ── the announcement ────────────────────────────────────────────────────
+    ['an admin publishes an announcement with a log record', true, async () => {
+        await boss(); return logged('boss', 'announce', 'config/announcement', [{ path: 'config/announcement', data: ann() }]); }],
+    ['an announcement needs a log record', false, async () => {
+        await boss(); return commit('boss', [{ path: 'config/announcement', data: ann() }]); }],
+    ['an announcement cannot carry a domain', false, async () => {
+        await boss(); return logged('boss', 'announce', 'config/announcement', [{ path: 'config/announcement', data: ann({ en: 'Free coins at ers-card-game.web.app now' }) }]); }],
+    ['...nor an address', false, async () => {
+        await boss(); return logged('boss', 'announce', 'config/announcement', [{ path: 'config/announcement', data: ann({ tr: 'Şifreni yaz bana @berk' }) }]); }],
+    ['...nor hide a link on a second line (RE2 dot stops at a newline)', false, async () => {
+        await boss(); return logged('boss', 'announce', 'config/announcement', [{ path: 'config/announcement', data: ann({ en: 'Maintenance tonight\nwww.evil-site.com' }) }]); }],
+    ['...nor use a look-alike dot', false, async () => {
+        await boss(); return logged('boss', 'announce', 'config/announcement', [{ path: 'config/announcement', data: ann({ en: 'Free coins at evil\uFF0Ecom' }) }]); }],
+    ['an ordinary time like 23.00 is not a link', true, async () => {
+        await boss(); return logged('boss', 'announce', 'config/announcement', [{ path: 'config/announcement', data: ann({ tr: 'Bu gece 23.00 ile 23.30 arası bakım.' }) }]); }],
+    ['an announcement lives at most 7 days', false, async () => {
+        await boss(); return logged('boss', 'announce', 'config/announcement', [{ path: 'config/announcement', data: ann({ until: ahead(8 * DAYS) }) }]); }],
+    ['an announcement says something', false, async () => {
+        await boss(); const a = ann(); delete a.tr; delete a.en;
+        return logged('boss', 'announce', 'config/announcement', [{ path: 'config/announcement', data: a }]); }],
+    ['anyone reads the announcement, signed in or not', true, async () => {
+        await seed('config/announcement', { ...ann(), at: ago(1) }); return get(null, 'config/announcement'); }],
+    ['nothing else under /config is readable', false, async () => {
+        await seed('config/other', { secret: 1 }); return get('p1', 'config/other'); }],
+    ['an admin takes the announcement down with a log record', true, async () => {
+        await boss(); await seed('config/announcement', { ...ann(), at: ago(1) });
+        return logged('boss', 'clear-announcement', 'config/announcement', [{ path: 'config/announcement', delete: true }]); }],
+
+    // ── the match log ───────────────────────────────────────────────────────
+    ['a player who played writes the finished match', true, async () =>
+        commit('p1', [{ path: 'match_log/room_ABC123_1790000000000', data: matchRec() }])],
+    ['someone who did not play cannot', false, async () =>
+        commit('p9', [{ path: 'match_log/room_ABC123_1790000000000', data: matchRec() }])],
+    ['a match is written once', false, async () => {
+        await seed('match_log/room_ABC123_1790000000000', { ...matchRec(), endedAt: ago(1) });
+        return commit('p2', [{ path: 'match_log/room_ABC123_1790000000000', data: matchRec() }]); }],
+    ['a match record expires in about 30 days, not later', false, async () =>
+        commit('p1', [{ path: 'match_log/room_ABC123_1790000000000', data: matchRec({ expireAt: ahead(90 * DAYS) }) }])],
+    ['a seat carries counts, never a hand', false, async () =>
+        commit('p1', [{ path: 'match_log/room_ABC123_1790000000000', data: matchRec({ players: [{ ...seatRec('p1', 'Ali'), hand: ['AS'] }, seatRec('p2', 'Ayşe')] }) }])],
+    ['admins read match records; players do not', true, async () => {
+        await boss(); await seed('match_log/room_ABC123_1790000000000', { ...matchRec(), endedAt: ago(1) });
+        const a = await get('boss', 'match_log/room_ABC123_1790000000000'); const b = await get('p1', 'match_log/room_ABC123_1790000000000');
+        return { status: allowed(a) && !allowed(b) ? 200 : 403, text: '' }; }],
+    ['an admin sweeps an expired record without a log', true, async () => {
+        await boss(); await seed('match_log/room_ABC123_1790000000000', { ...matchRec(), endedAt: ago(40 * DAYS), expireAt: ago(10 * DAYS) });
+        return commit('boss', [{ path: 'match_log/room_ABC123_1790000000000', delete: true }]); }],
+    ['...but a live one only with a log record', false, async () => {
+        await boss(); await seed('match_log/room_ABC123_1790000000000', { ...matchRec(), endedAt: ago(1) });
+        return commit('boss', [{ path: 'match_log/room_ABC123_1790000000000', delete: true }]); }],
+    ['an admin deletes a live match record with a log record', true, async () => {
+        await boss(); await seed('match_log/room_ABC123_1790000000000', { ...matchRec(), endedAt: ago(1) });
+        return logged('boss', 'delete-match', 'match_log/room_ABC123_1790000000000', [{ path: 'match_log/room_ABC123_1790000000000', delete: true }]); }],
+
+    // ── error reports ───────────────────────────────────────────────────────
+    ['a signed-in player files an error report', true, async () =>
+        commit('p1', [{ path: 'client_errors/p1', data: { e0: errEntry(), count: 1, v: '3.24.0', updatedAt: SERVER_TIME } }])],
+    ['a report holds text about code, nothing else', false, async () =>
+        commit('p1', [{ path: 'client_errors/p1', data: { e0: errEntry({ email: 'a@b.c' }), count: 1, v: '3.24.0', updatedAt: SERVER_TIME } }])],
+    ['reports are throttled to one per 10 s', false, async () => {
+        await seed('client_errors/p1', { e0: errEntry(), count: 1, v: '3.24.0', updatedAt: ago(0.02) });
+        return commit('p1', [{ path: 'client_errors/p1', data: { e1: errEntry(), count: 2, updatedAt: SERVER_TIME }, mask: ['e1', 'count', 'updatedAt'] }]); }],
+    ['after 10 s the next slot of the ring is written', true, async () => {
+        await seed('client_errors/p1', { e0: errEntry(), count: 1, v: '3.24.0', updatedAt: ago(1) });
+        return commit('p1', [{ path: 'client_errors/p1', data: { e1: errEntry(), count: 2, updatedAt: SERVER_TIME }, mask: ['e1', 'count', 'updatedAt'] }]); }],
+    ['one write changes one slot', false, async () => {
+        await seed('client_errors/p1', { e0: errEntry(), count: 1, v: '3.24.0', updatedAt: ago(1) });
+        return commit('p1', [{ path: 'client_errors/p1', data: { e1: errEntry(), e2: errEntry(), count: 2, updatedAt: SERVER_TIME }, mask: ['e1', 'e2', 'count', 'updatedAt'] }]); }],
+    ['the count moves by exactly one', false, async () => {
+        await seed('client_errors/p1', { e0: errEntry(), count: 1, v: '3.24.0', updatedAt: ago(1) });
+        return commit('p1', [{ path: 'client_errors/p1', data: { e1: errEntry(), count: 7, updatedAt: SERVER_TIME }, mask: ['e1', 'count', 'updatedAt'] }]); }],
+    ['nobody files a report as someone else', false, async () =>
+        commit('p2', [{ path: 'client_errors/p1', data: { e0: errEntry(), count: 1, v: '3.24.0', updatedAt: SERVER_TIME } }])],
+    ['admins read reports; players do not', true, async () => {
+        await boss(); await seed('client_errors/p1', { e0: errEntry(), count: 1, v: '3.24.0', updatedAt: ago(1) });
+        const a = await get('boss', 'client_errors/p1'); const b = await get('p1', 'client_errors/p1');
+        return { status: allowed(a) && !allowed(b) ? 200 : 403, text: '' }; }],
+    ['an admin clears a report with a log record', true, async () => {
+        await boss(); await seed('client_errors/p1', { e0: errEntry(), count: 1, v: '3.24.0', updatedAt: ago(1) });
+        return logged('boss', 'clear-errors', 'client_errors/p1', [{ path: 'client_errors/p1', delete: true }]); }],
+    ['a player clears their own report', true, async () => {
+        await seed('client_errors/p1', { e0: errEntry(), count: 1, v: '3.24.0', updatedAt: ago(1) });
+        return commit('p1', [{ path: 'client_errors/p1', delete: true }]); }],
     // Closed paths
     ['the unused Firestore game rooms are closed', false, async () => {
         await seed('gameRooms/R1', { playerIds: ['u1'] }); return get('u1', 'gameRooms/R1'); }],
@@ -438,7 +675,11 @@ async function runScenarios(verbose) {
 }
 
 const MUTANTS = [
-    ['player records world-readable again', "allow read: if isUser(userId);", "allow read: if true;"],
+    // Re-anchored in v3.24.0: the users read now also admits admins, and the
+    // bare "allow read: if isUser(userId);" text survives only in /admins —
+    // the old anchor would have mutated the wrong block.
+    ['player records world-readable again', "allow read: if isUser(userId) || isAdmin();\n\n      allow create: if isUser(userId)\n        && request.resource.data.keys().hasOnly(['username', 'totalScore', 'gamesPlayed', 'gamesWon', 'bestReflex', 'updatedAt'])",
+        "allow read: if true;\n\n      allow create: if isUser(userId)\n        && request.resource.data.keys().hasOnly(['username', 'totalScore', 'gamesPlayed', 'gamesWon', 'bestReflex', 'updatedAt'])"],
     ['no cooldown between matches', "|| request.time > resource.data.updatedAt + duration.value(10, 's')", "|| true"],
     ['leaderboard score no longer tied to the record', "== getAfter(/databases/$(database)/documents/users/$(userId)).data.get('totalScore', 0)", ">= 0"],
     ['non-hosts may change any table field', "&& changed().hasOnly(['players', 'playerIds', 'gameState', 'hostId', 'hostUsername'])", ""],
@@ -477,7 +718,52 @@ const MUTANTS = [
     ['an admin may close any table', "&& (resource.data.gameState.status == 'finished'", "&& (true"],
     ['a waiting lobby may be closed at any age', "(resource.data.gameState.status == 'waiting' && resource.data.createdAt < request.time - duration.value(30, 'm'))", "(resource.data.gameState.status == 'waiting')"],
     ['a running match may be closed after 30 minutes', "|| resource.data.createdAt < request.time - duration.value(2, 'h'));", "|| resource.data.createdAt < request.time - duration.value(30, 'm'));"],
-    ['anyone may close a dead table', "      return isAdmin()\n             && (resource.data.gameState.status == 'finished'", "      return signedIn()\n             && (resource.data.gameState.status == 'finished'"],
+    // v3.24.0: 'anyone may close a dead table' is retired, not lost: the close
+    // now also needs a log record, and only an admin can write one. Swapping
+    // adminMayClose's isAdmin() alone can no longer change a verdict, so the
+    // mutant would be equivalent. The log's own mutants below cover it.
+    ['tables close without a log record', "(adminMayClose() && loggedAction('close-table', 'multiplayer_tables/' + tableId))", "(adminMayClose())"],
+    // v3.24.0 — the action log and every power that rides on it (council ERS-36)
+    ['player records readable by any signed-in user', "allow read: if isUser(userId) || isAdmin();\n\n      allow create: if isUser(userId)\n        && request.resource.data.keys().hasOnly(['username', 'totalScore', 'gamesPlayed', 'gamesWon', 'bestReflex', 'updatedAt'])",
+        "allow read: if signedIn();\n\n      allow create: if isUser(userId)\n        && request.resource.data.keys().hasOnly(['username', 'totalScore', 'gamesPlayed', 'gamesWon', 'bestReflex', 'updatedAt'])"],
+    ['a protected write accepts an old log record', "             && !exists(/databases/$(database)/documents/admin_actions/$(actionAfter()))\n", ""],
+    ['the log kind is not checked', "             && log.kind == kind\n", ""],
+    ['the log target is not checked', "             && log.target == target\n", ""],
+    ['anyone may write a log record', "allow create: if isAdmin()\n        && request.resource.data.keys().hasOnly(['kind', 'target', 'by', 'reason', 'detail', 'at'])",
+        "allow create: if signedIn()\n        && request.resource.data.keys().hasOnly(['kind', 'target', 'by', 'reason', 'detail', 'at'])"],
+    ['log records editable', "      allow update, delete: if false;\n    }\n    match /admin_state/{userId} {", "      allow update, delete: if isAdmin();\n    }\n    match /admin_state/{userId} {"],
+    ['a log record may name any author', "        && request.resource.data.by == request.auth.uid\n        && request.resource.data.reason is string", "        && request.resource.data.reason is string"],
+    ['daily deletes need no log', "allow delete: if loggedAction('delete-daily', 'daily_challenges/' + dateKey + '/scores/' + userId);", "allow delete: if isAdmin();"],
+    ['leaderboard deletes need no log', "|| loggedAction('delete-leaderboard', 'leaderboard/' + userId);", "|| isAdmin();"],
+    ['a ban needs no log', "allow create, update: if loggedAction('ban', 'bans/' + userId)", "allow create, update: if isAdmin()"],
+    ['bans are uncapped', "request.resource.data.until <= request.time + duration.value(30, 'd')", "request.resource.data.until <= request.time + duration.value(3650, 'd')"],
+    ['a ban may end in the past', "        && request.resource.data.until > request.time\n        && request.resource.data.until <= request.time + duration.value(30, 'd')",
+        "        && request.resource.data.until <= request.time + duration.value(30, 'd')"],
+    ['bans readable by anyone', "allow read: if isUser(userId) || isAdmin();\n      allow create, update: if loggedAction('ban'", "allow read: if signedIn();\n      allow create, update: if loggedAction('ban'"],
+    ['bans do not reach the leaderboard', "        && !isBanned()\n        && request.resource.data.keys().hasOnly(['username', 'totalScore', 'updatedAt'])", "        && request.resource.data.keys().hasOnly(['username', 'totalScore', 'updatedAt'])"],
+    ['bans do not reach the Daily board', "                    && !isBanned()\n                    && validScore(request.resource.data);", "                    && validScore(request.resource.data);"],
+    ['bans do not stop new tables', "        && !isBanned()\n        && request.resource.data.hostId == request.auth.uid", "        && request.resource.data.hostId == request.auth.uid"],
+    ['bans do not stop joining', "                       && !isBanned()\n", ""],
+    ['bans do not freeze the record', "        && (!isBanned() || !(grew('totalScore') || grew('gamesPlayed') || grew('gamesWon')))\n", ""],
+    ['an expired ban still blocks', ".data.until > request.time;\n    }", ".data.until != null;\n    }"],
+    ['announcements need no log', "&& loggedAction('announce', 'config/announcement')", "&& isAdmin()"],
+    ['announcements may span lines', "      return t.matches('[^\\\\n\\\\r]*')\n             && ", "      return "],
+    ['announcements may carry a domain', "\n             && !t.matches('.*[a-zA-Z0-9-][.․．。﹒][a-zA-Z]{2,}.*');", ";"],
+    ['announcements may carry an address', "             && !t.matches('.*(://|[wW][wW][wW]|[@＠]|[hH][tT][tT][pP]).*')\n", ""],
+    ['announcements live for a year', "request.resource.data.until <= request.time + duration.value(7, 'd')", "request.resource.data.until <= request.time + duration.value(365, 'd')"],
+    ['all of /config is readable', "allow read: if docId == 'announcement';", "allow read: if true;"],
+    ['anyone writes a match record', "        && request.auth.uid in request.resource.data.playerIds\n", ""],
+    ['match seats are not checked', "        && validSeat(request.resource.data.players[0]) && validSeat(request.resource.data.players[1])\n", ""],
+    ['match records live forever', "request.resource.data.expireAt < request.time + duration.value(31, 'd')", "request.resource.data.expireAt < request.time + duration.value(3650, 'd')"],
+    ['match records readable by players', "match /match_log/{roomId} {\n      allow read: if isAdmin();", "match /match_log/{roomId} {\n      allow read: if signedIn();"],
+    ['match records rewritable', "      allow update: if false;\n      allow delete: if (isAdmin() && resource.data.expireAt < request.time)", "      allow update: if signedIn();\n      allow delete: if (isAdmin() && resource.data.expireAt < request.time)"],
+    ['live match records swept without a log', "(isAdmin() && resource.data.expireAt < request.time)", "(isAdmin())"],
+    ['error reports unthrottled', "        && request.time > resource.data.updatedAt + duration.value(10, 's');", ";"],
+    ['error report slots unchecked', "             && (!('e0' in d) || validErr(d.e0)) && (!('e1' in d) || validErr(d.e1))\n", "             && (!('e1' in d) || validErr(d.e1))\n"],
+    ['more than one slot per write', ".difference(['count', 'v', 'updatedAt'].toSet()).size() == 1", ".difference(['count', 'v', 'updatedAt'].toSet()).size() >= 1"],
+    ['the report count may jump', "request.resource.data.count == resource.data.count + 1", "request.resource.data.count > resource.data.count"],
+    ['error reports readable by players', "match /client_errors/{userId} {\n      allow read: if isAdmin();", "match /client_errors/{userId} {\n      allow read: if signedIn();"],
+    ['anyone files a report for anyone', "      allow create: if isUser(userId)\n        && errShape(request.resource.data)", "      allow create: if signedIn()\n        && errShape(request.resource.data)"],
 ];
 
 (async () => {

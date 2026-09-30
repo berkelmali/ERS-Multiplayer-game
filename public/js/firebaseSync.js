@@ -1,4 +1,5 @@
-import { getFirestore, doc, getDoc, updateDoc, increment, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, updateDoc, increment, deleteDoc, setDoc, serverTimestamp as fsServerTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { matchRecordFromRoom } from './moderationCore.js';
 import { ref as dbRef, onValue, off, update as rtdbUpdate, remove as rtdbRemove, onDisconnect, serverTimestamp as rtdbServerTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import { app, rtdb, functions } from "./firebaseConfig.js";
@@ -428,6 +429,11 @@ export const FirebaseSync = {
             import('./auth.js').then(({ AuthSystem }) => {
                 const amIHost = data.hostId === AuthSystem.currentUser?.uid;
                 if (amIHost && data.status === 'finished') {
+                    // v3.24.0 (council ERS-36): the room is deleted in 5 s, so
+                    // the finished match leaves a small record for the admin's
+                    // match history — counts and names, never a hand. Create-
+                    // only in the rules; a second writer is refused harmlessly.
+                    this.writeMatchLog(data, AuthSystem.currentUser?.uid);
                     setTimeout(async () => {
                         // ERS-23: re-read at fire time, not at scheduling — a
                         // client that lost the connection or the host role in
@@ -532,6 +538,16 @@ export const FirebaseSync = {
             data.winnerId = -1;   // no human won
             return data;
         }).catch(e => console.warn('end-of-match (no human left) failed', e));
+    },
+
+    /** Once per room: the finished match, for /match_log (firestore.rules). */
+    writeMatchLog(data, uid) {
+        if (!this.roomId || this._matchLogged === this.roomId) return;
+        const rec = matchRecordFromRoom(data, this.roomId, uid);
+        if (!rec) return;
+        this._matchLogged = this.roomId;
+        setDoc(doc(db, 'match_log', this.roomId), { ...rec, endedAt: fsServerTimestamp() })
+            .catch(e => console.warn('[match log] not written:', e && e.code));
     },
 
     claimOrphanedHost(data) {

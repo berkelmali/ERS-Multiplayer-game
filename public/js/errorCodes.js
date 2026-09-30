@@ -35,6 +35,7 @@ export const ERR = Object.freeze({
     HOST_LEFT: 'HOST_LEFT',
     SYNC_LOST: 'SYNC_LOST',
     CLIPBOARD_DENIED: 'CLIPBOARD_DENIED',
+    BANNED: 'BANNED',              // v3.24.0: an admin suspended this account (bans/{uid})
     UNKNOWN: 'UNKNOWN'
 });
 
