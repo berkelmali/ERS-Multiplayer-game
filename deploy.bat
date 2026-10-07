@@ -1969,6 +1969,28 @@ echo       listesinde Ispanyolca degil Rusca, bot adlari Blitz/Chaos/Viper,
 echo       Cloud Functions deploy EDILMEDI. 3612 test ^(6 yeni mutant
 echo       yakalandi^), smoke 76 adim yesil.
 echo.
+echo  --- v3.26.0 -- SENET: GECIS OYUNU ^(konsey ERS-40^) ---
+echo  257) Istek: "versiyon arttiracak bir fikir, eglence katsin". Konsey
+echo       ERS-40: Kismen Savunulabilir 4-1, Guclu. Secilen: Senet -- Misir'in
+echo       kendi tahta oyunu, ERS'in yiginlariyla. Efsaneler'de 3. yolculuk.
+echo       Ispanyolca/SSS surumu v3.27.0'a kaydi ^(ERS-39 sirasi bir kez asildi^).
+echo  258) Kural: her yigin bir atis. Saplakla alinan yigin desenine gore
+echo       ^(Cift 2, Sandvic 2, Onluk 3, Evlilik 5 -- Tanrilarin Masasi'nin
+echo       hasar tablosundan turetildi^), yuz karti yigini 1. 27. kareye ^(Su
+echo       Evi^) tam gelen 15'e ^(Hayat Evi^) doner; baska tasa denk gelen onunla
+echo       yer degistirir; 30. kareyi ilk gecen kazanir, 52 kart yine kazanir.
+echo       Klasik kurallar kilitli, yalniz solo. game.js ve ai.js DEGISMEDI.
+echo  259) Olcum ^(tools/sim-senet.mjs^): yaris normal macin yaklasik yarisi
+echo       kadar surer; zayif oyuncunun sansi artar, gucluninki degismez.
+echo       Coin: siradan mac ^(+40 / -15^); gunluk 1200 tavani aynen gecerli.
+echo  260) Telefon: tahta yigin ile deste arasina sigdirilir, deste sirada
+echo       kalktiginda bile; sigmazsa ayni yol tek sira serit olarak cizilir.
+echo       Tahta yiginin ^(saplak alani^), destelerin ve emoji/sohbet
+echo       dugmelerinin ustune asla binmez -- smoke 6 ekran boyunda olcuyor.
+echo  261) Elenen aday: Ka Duellosu ^(olcumde oyuncuyu degil masayi
+echo       yansitiyordu^); Thoth'un Kitabi sonraya. 3736 test ^(16 mutant
+echo       yakalandi^), smoke 80 adim yesil.
+echo.
 echo  --- v3.16.0, ADSENSE ICIN. BUNLARI ATLAMA -------------------
 echo   - ONCE SERT YENILE ^(Ctrl+Shift+R^). v3.16.2 sayfalarin onbellek
 echo     kuralini duzeltiyor ama ESKI kopya hala kenarda durabilir
@@ -2242,8 +2264,16 @@ echo  --- v3.25.0 -- SIRADAKI ADIM VERIYE BAGLI ^(konsey ERS-39^) ---
 echo   - Deploy sonrasi: oyunun linkini ^(ya da bir davet linkini^) WhatsApp
 echo     veya Discord'a yapistir: basliklu, menu gorselli kart gorunmeli.
 echo     Eski onizleme onbellekte kalabilir; baska bir sohbette dene.
-echo   - 2 hafta icinde Search Console'u kur ^(sitemap.xml gonder^). v3.26.0
+echo   - 2 hafta icinde Search Console'u kur ^(sitemap.xml gonder^). v3.27.0
 echo     buna gore secilecek: Ispanyolca 5. dil mi, SSS/strateji icerigi mi.
 echo     Kurulmazsa varsayilan SSS/icerik.
+echo.
+echo  --- v3.26.0 -- SENET'I DENE ---
+echo   - Deploy sonrasi: Efsaneler'de "Senet oyna". Kartta atis listesi
+echo     ^(Cift 2, Sandvic 2, Onluk 3, Evlilik 5, yuz karti yigini 1^) olmali.
+echo   - Masada tahta destenin yaninda ^(telefonda yigin ile deste arasinda^)
+echo     durur; bir yigin alinca tasin ilerler, alt satir ne oldugunu yazar.
+echo   - Kisa telefonda tahta yerine tek sira serit cikmasi NORMAL.
+echo   - Begenmezsen kolayca geri alinir: tek modul ve tek kart.
 echo.
 pause

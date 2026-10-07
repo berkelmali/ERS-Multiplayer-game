@@ -21,6 +21,7 @@ import { TutorialMode } from './tutorialMode.js';
 import { PantheonMode } from './pantheon.js';
 import { DuatMode } from './duat.js';
 import { TombMode } from './tomb.js';
+import { SenetMode } from './senet.js';
 import { BotNemesis } from './botNemesis.js';
 import { CardSkins } from './cardSkins.js';
 import { Wallet } from './wallet.js';
@@ -74,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
     PantheonMode.init();
     DuatMode.init();
     TombMode.init();
+    SenetMode.init();
     BotNemesis.init();
     CardSkins.init();
     // v3.21.0 — the coin ledger is the server's. Before AuthSystem's first
@@ -95,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
         : DailyChallenge.active ? 'daily'
         // Tomb is left out: it runs on its own screen, emits neither event, and
         // keeps `run` after it ends — it would read as 'legends' forever.
-        : (PantheonMode.armed || DuatMode.armed) ? 'legends'
+        : (PantheonMode.armed || DuatMode.armed || SenetMode.armed) ? 'legends'
         : GameManager.activeMode === 'bots' ? 'bots' : 'menu';
     EventBus.on('gameStarted', () => OnlinePresence.setActivity(currentActivity()));
     // v3.24.0: only 'menu' is taken from gameStateChanged. lobbyUI fires

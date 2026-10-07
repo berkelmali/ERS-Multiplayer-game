@@ -224,7 +224,34 @@ const EMBLEMS = {
     <path d="M52 94 L52 74 Q60 66 68 74 L68 94 Z" fill="#1a1008" stroke="${INK}" stroke-width="1.4"/>
     <path d="M60 86 Q56 80 60 74 Q64 80 60 86 Z" fill="#ffb347"/>
     <path d="M60 84 Q58.5 81 60 78 Q61.5 81 60 84 Z" fill="#fff0a6"/>
-    <path d="M59 86 L59 93 M61 86 L61 93" stroke="#6b3d18" stroke-width="1.6"/>`, uid)
+    <path d="M59 86 L59 93 M61 86 L61 93" stroke="#6b3d18" stroke-width="1.6"/>`, uid),
+
+    /* Senet (v3.26.0): the board in its wooden case, thirty squares, the
+       House of Water and the House of Life marked as on surviving boards,
+       two spools and two cones, and the four casting sticks before it. */
+    senet: (uid) => emblem('senet', ['#e7b45a', '#6a3a12'], '#d4af37', `
+    <path d="M12 46 H108 V84 H12 Z" fill="#7a4f2a" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M12 84 H108 V91 H12 Z" fill="#5b3a1e" stroke="${INK}" stroke-width="1.2"/>
+    <rect x="52" y="85.6" width="16" height="3.6" rx="1.4" fill="#d4af37" stroke="${INK}" stroke-width=".6"/>
+    <rect x="16" y="50" width="88" height="30" fill="#f4ead2" stroke="${INK}" stroke-width="1"/>
+    <path d="M24.8 50 V80 M33.6 50 V80 M42.4 50 V80 M51.2 50 V80 M60 50 V80 M68.8 50 V80 M77.6 50 V80 M86.4 50 V80 M95.2 50 V80 M16 60 H104 M16 70 H104"
+          stroke="${INK}" stroke-width=".8" opacity=".55"/>
+    <rect x="68.8" y="70" width="8.8" height="10" fill="#cfe1f2"/>
+    <path d="M70 73.5 l1.7 -1.4 l1.7 1.4 l1.7 -1.4 l1.7 1.4 M70 77 l1.7 -1.4 l1.7 1.4 l1.7 -1.4 l1.7 1.4"
+          fill="none" stroke="#1f4fa0" stroke-width="1" stroke-linejoin="round"/>
+    <rect x="60" y="60" width="8.8" height="10" fill="#f6e7b8"/>
+    <g fill="none" stroke="${INK}" stroke-width="1" opacity=".7"><ellipse cx="64.4" cy="63.4" rx="1.6" ry="2"/><path d="M61.6 65.8 H67.2 M64.4 65.6 V69"/></g>
+    <circle cx="99.6" cy="75" r="3" fill="#e8421f" stroke="${INK}" stroke-width=".8"/>
+    <path d="M24 59 L29.2 41 L34.4 59 Z" fill="#2a1a10" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M78 59 L83.2 41 L88.4 59 Z" fill="#2a1a10" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M38 69 h9 l-2.6 -6 l2.6 -6 h-9 l2.6 6 Z" fill="#f0c94a" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M86 69 h9 l-2.6 -6 l2.6 -6 h-9 l2.6 6 Z" fill="#f0c94a" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+    <g stroke="${INK}" stroke-width="1" stroke-linejoin="round">
+      <rect x="30" y="95" width="27" height="4.4" rx="2.2" fill="#f4ead2" transform="rotate(-8 43 97)"/>
+      <rect x="34" y="101.5" width="25" height="4.4" rx="2.2" fill="#2a1a10" transform="rotate(-8 46 103)"/>
+      <rect x="62" y="95.5" width="27" height="4.4" rx="2.2" fill="#f4ead2" transform="rotate(6 75 97)"/>
+      <rect x="62" y="102" width="25" height="4.4" rx="2.2" fill="#2a1a10" transform="rotate(6 74 104)"/>
+    </g>`, uid)
 };
 
 let _uid = 0;

@@ -2879,6 +2879,223 @@ await step('the Tomb: a hand face up, a card laid, the guardian answers, nothing
     console.log('         rules first, then a hand of 3 face up, a card laid, the guardian answered, back to menu, 0 shared events');
 });
 
+// Back to the menu from wherever a failed step left the page, so one broken
+// promise is reported once instead of cascading into every step after it.
+const senetToMenu = async () => {
+    const where = await page.evaluate(() => document.querySelector('.screen.active')?.id || '');
+    if (where === 'victory-screen') await page.click('#btn-victory-menu');
+    else if (where === 'game-container') {
+        await page.click('#btn-quit');
+        await page.waitForTimeout(300);
+        await page.click('#btn-confirm-leave');
+    } else if (where === 'legends-panel') await page.click('#btn-legends-back');
+    await page.waitForSelector('#main-menu.active', { timeout: 8000 });
+};
+
+// v3.26.0 (council ERS-40): Senet — the Game of Passing, through its real
+// button and the engine's real slap path. The card lists throws generated from
+// the damage table; the race opens with every piece on square 1 and the classic
+// rules locked; the board moves when a pile is won and at no other moment.
+await step('Senet: the card lists derived throws, the race opens on square 1, rules locked, the board still while a card is played', async () => {
+    await senetToMenu();
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    const card = await page.evaluate(async () => {
+        const T = await import('./js/senet.js');
+        const { Localization } = await import('./js/localization.js?v=3');
+        const items = [...document.querySelectorAll('#senet-throws li')].map(li => li.textContent.trim());
+        const want = [...T.throwTable().map(t => `${Localization.get('ruleName_' + t.id)} ${t.steps}`),
+            `${Localization.get('senetFacePile')} ${T.CHALLENGE_THROW}`];
+        return { items, want, emblem: !!document.querySelector('#senet-emblem svg') };
+    });
+    if (card.items.join('|') !== card.want.join('|')) throw new Error('the card does not list the derived throws: ' + JSON.stringify(card));
+    if (!card.emblem) throw new Error('the Senet card has no emblem');
+    await page.click('#btn-senet-start');
+    await page.waitForSelector('#game-container.active', { timeout: 8000 });
+    const r = await page.evaluate(async () => {
+        const { SenetMode } = await import('./js/senet.js');
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+        const GS = window.GameState;
+        await sleep(300);
+        const hud = document.getElementById('senet-hud');
+        const tf = () => [...hud.querySelectorAll('.senet-piece')].map(p => p.style.transform).join('|');
+        const out = { positions: SenetMode.positions.slice(), hudShown: !hud.hidden, pieces: hud.querySelectorAll('.senet-piece').length,
+            locked: window.HouseRules.lockedBy, rules: window.HouseRules.key(), classic: window.HouseRules.isClassic(), line: document.getElementById('senet-line').textContent };
+        // A card played onto an empty pile wins nothing: not one piece may move.
+        const before = tf();
+        GS.pile = []; GS.burnPile = [];
+        GS.activePlayerId = 0;
+        GS.playCard(0);
+        await sleep(120);
+        out.played = GS.pile.length;
+        out.still = tf() === before;
+        return out;
+    });
+    if (r.positions.join() !== '1,1,1,1') throw new Error('the race did not open on square 1: ' + JSON.stringify(r));
+    if (!r.hudShown || r.pieces !== 4) throw new Error('the board is not shown with four pieces: ' + JSON.stringify(r));
+    if (r.locked !== 'senet' || !r.classic) throw new Error('the classic rules are not locked for the race: ' + JSON.stringify(r));
+    if (!r.line) throw new Error('the race opened without saying how it is played');
+    if (r.played !== 1 || !r.still) throw new Error('a piece moved while a card was played: ' + JSON.stringify(r));
+    console.log(`         ${card.items.join(' · ')}; 4 pieces on 1; locked ${r.rules}; still while a card lands`);
+});
+
+await step('Senet: a Tens throws 3, a face-card pile 1, the water returns to 15, a swap is said, passing wins; leaving hands back', async () => {
+    const r = await page.evaluate(async () => {
+        const T = await import('./js/senet.js');
+        const { SenetMode } = T;
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+        const GS = window.GameState;
+        const line = () => document.getElementById('senet-line').textContent;
+        const tf = (seat) => document.querySelector(`#senet-hud .senet-piece[data-seat="${seat}"]`).style.transform;
+        const slapYou = async (a, b) => {
+            await sleep(650);   // past the engine's 500 ms grace after a won pile
+            GS.pile = [a, b]; GS.burnPile = [];
+            GS.slap(0);
+            await sleep(60);
+        };
+        const out = {};
+        // The bots stand still for the staged slaps: no pending play or slap,
+        // and every pile below is won by you, so the turn stays yours.
+        const { AIController } = await import('./js/ai.js');
+        AIController.clearAllTimeouts();
+        GS.activePlayerId = 0;
+        const t0 = tf(0), t1 = tf(1);
+        await slapYou({ rank: 4, suit: 'clubs' }, { rank: 6, suit: 'hearts' });
+        out.tens = SenetMode.positions[0];
+        out.tensWant = 1 + T.throwFor('tens');
+        out.tensLine = line();
+        out.youMoved = tf(0) !== t0;
+        out.othersStill = tf(1) === t1;
+        await sleep(650);
+        GS.pile = [{ rank: 12, suit: 'spades' }, { rank: 3, suit: 'hearts' }]; GS.burnPile = [];
+        GS.winPile(0, 'challenge');
+        await sleep(60);
+        out.face = SenetMode.positions[0] - out.tens;
+        SenetMode.positions = [24, 1, 1, 1];
+        await slapYou({ rank: 4, suit: 'clubs' }, { rank: 6, suit: 'hearts' });
+        out.water = SenetMode.positions[0];
+        out.waterLine = line();
+        SenetMode.positions = [5, 7, 1, 1];
+        await slapYou({ rank: 9, suit: 'clubs' }, { rank: 9, suit: 'hearts' });
+        out.swap = SenetMode.positions.slice(0, 2);
+        out.swapLine = line();
+        const passingsBefore = SenetMode.store.passings;
+        SenetMode.positions = [28, 1, 1, 1];
+        await slapYou({ rank: 8, suit: 'clubs' }, { rank: 8, suit: 'diamonds' });
+        out.over = GS.gameOver;
+        out.passed = SenetMode.passed;
+        out.passings = SenetMode.store.passings - passingsBefore;
+        out.passLine = line();
+        return out;
+    });
+    const broken = [];
+    if (r.tens !== r.tensWant || !/4/.test(r.tensLine)) broken.push('a slapped Tens did not throw its derived squares: ' + JSON.stringify({ tens: r.tens, want: r.tensWant, line: r.tensLine }));
+    if (!r.youMoved || !r.othersStill) broken.push('the wrong piece moved');
+    if (r.face !== 1) broken.push(`a face-card pile threw ${r.face}, want 1`);
+    if (r.water !== 15 || !/15/.test(r.waterLine)) broken.push('the House of Water did not return the piece to the House of Life, or did not say so: ' + r.waterLine);
+    if (r.swap.join() !== '7,5' || !/Blitz/.test(r.swapLine)) broken.push('a landing on Blitz did not swap, or the swap was not said: ' + r.swapLine);
+    if (!r.over || r.passed !== 0 || r.passings !== 1 || !r.passLine) broken.push('passing square 30 did not win the match: ' + JSON.stringify({ over: r.over, passed: r.passed }));
+    if (broken.length) {
+        await senetToMenu();
+        throw new Error(broken.join(' | '));
+    }
+    await page.waitForSelector('#victory-screen.active', { timeout: 8000 });
+    await page.click('#btn-victory-menu');
+    await page.waitForSelector('#main-menu.active', { timeout: 8000 });
+    const after = await page.evaluate(async () => {
+        await new Promise(res => setTimeout(res, 300));
+        const { SenetMode } = await import('./js/senet.js');
+        const { GameManager } = await import('./js/gameManager.js');
+        return { armed: SenetMode.armed, locked: window.HouseRules.lockedBy, rematch: GameManager.rematchOptions,
+            race: document.body.classList.contains('senet-race'), hudHidden: document.getElementById('senet-hud').hidden,
+            best: document.getElementById('senet-best').textContent };
+    });
+    if (after.armed || after.locked !== null || after.rematch !== null || after.race || !after.hudHidden) throw new Error('leaving did not hand everything back: ' + JSON.stringify(after));
+    if (!after.best) throw new Error('the card does not show the passing just made');
+    console.log(`         Tens 1 -> ${r.tens}, face pile +${r.face}, water -> ${r.water}, swap ${r.swap.join('/')}, passed and won; card: "${after.best}"`);
+});
+
+// §17.11's lesson: a teardown hooked only to the normal ending misses the
+// player who walks out. Quit mid-race and measure the board gone.
+await step('Senet: quitting mid-race takes the board, the lock and the rematch with it', async () => {
+    await senetToMenu();
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    await page.click('#btn-senet-start');
+    await page.waitForSelector('#game-container.active', { timeout: 8000 });
+    await page.waitForTimeout(300);
+    const during = await page.evaluate(() => ({ hud: !document.getElementById('senet-hud').hidden, locked: window.HouseRules.lockedBy }));
+    await page.click('#btn-quit');
+    await page.waitForTimeout(300);
+    await page.click('#btn-confirm-leave');
+    await page.waitForSelector('#main-menu.active', { timeout: 5000 });
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(async () => {
+        const { SenetMode } = await import('./js/senet.js');
+        const { GameManager } = await import('./js/gameManager.js');
+        return { armed: SenetMode.armed, locked: window.HouseRules.lockedBy, rematch: GameManager.rematchOptions,
+            race: document.body.classList.contains('senet-race'), hudHidden: document.getElementById('senet-hud').hidden };
+    });
+    if (!during.hud || during.locked !== 'senet') throw new Error('the race did not start: ' + JSON.stringify(during));
+    if (after.armed || after.locked !== null || after.rematch !== null || after.race || !after.hudHidden) throw new Error('quitting left the race behind: ' + JSON.stringify(after));
+    console.log('         board, lock and rematch gone after Quit');
+});
+
+// The board may never sit on the pile (the slap target), on a deck, or on the
+// emoji and chat buttons. Measured at desktop and phone sizes with your deck
+// pulsing as it does on your turn — the first phone fit was taken from the
+// resting deck and the lifted one slid under the board. A short phone gets
+// the strip (the same road unfolded), a tall one the board.
+await step('Senet: the board fits the table — desktop and phone, never on the pile, a deck or the buttons', async () => {
+    const shots = process.env.SMOKE_SHOTS;
+    const sizes = [[1280, 860], [1024, 768], [1366, 768], [375, 667], [390, 844], [412, 915]];
+    await senetToMenu();
+    await page.click('#btn-legends');
+    await page.waitForSelector('#legends-panel.active', { timeout: 5000 });
+    await page.click('#btn-senet-start');
+    await page.waitForSelector('#game-container.active', { timeout: 8000 });
+    await page.waitForTimeout(300);
+    await page.evaluate(async () => {
+        // Hold the table still while it is measured; your deck pulses as on your turn.
+        const { AIController } = await import('./js/ai.js');
+        AIController.clearAllTimeouts();
+        window.GameState.activePlayerId = 0;
+        document.getElementById('human-deck').classList.add('active');
+        const { SenetMode } = await import('./js/senet.js');
+        SenetMode.positions = [12, 9, 15, 4];
+        SenetMode._draw();
+        SenetMode.renderHud();
+    });
+    const seen = [];
+    const bad = [];
+    for (const [w, h] of sizes) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(450);
+        const m = await page.evaluate(async () => {
+            const { SenetMode } = await import('./js/senet.js');
+            const r = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return b.width && b.height ? [b.left, b.top, b.right, b.bottom] : null; };
+            const hud = document.getElementById('senet-hud');
+            const ids = { pile: 'center-pile', deck: 'human-deck', emoji: 'emoji-btn', chat: 'chat-btn', left: 'left-deck', right: 'right-deck', top: 'top-deck' };
+            return { layout: SenetMode.layout, shown: getComputedStyle(hud).display !== 'none', hud: r(hud), vw: innerWidth, vh: innerHeight,
+                others: Object.fromEntries(Object.entries(ids).map(([k, id]) => [k, r(document.getElementById(id))])) };
+        });
+        const tag = `${w}x${h}`;
+        seen.push(`${tag} ${m.shown ? m.layout : 'hidden'}`);
+        if (!m.shown || !m.hud) { bad.push(`${tag}: no board shown`); continue; }
+        const [l, t, rt, b] = m.hud;
+        if (l < 0 || t < 0 || rt > m.vw || b > m.vh) bad.push(`${tag}: off the screen ${JSON.stringify(m.hud)}`);
+        for (const [k, o] of Object.entries(m.others)) {
+            if (o && !(rt <= o[0] || o[2] <= l || b <= o[1] || o[3] <= t)) bad.push(`${tag}: on the ${k} ${JSON.stringify({ hud: m.hud, [k]: o })}`);
+        }
+        if (shots) await page.screenshot({ path: `${shots}/senet-${tag}.png` });
+    }
+    await page.setViewportSize({ width: 1280, height: 860 });
+    await page.waitForTimeout(300);
+    await senetToMenu();
+    if (bad.length) throw new Error(bad.join(' | '));
+    console.log(`         ${seen.join(', ')}`);
+});
+
 // ── v3.21.2 (council ERS-27): what the player actually sees ───────────────────
 //
 // A PNG from the browser, decoded here with zlib — no dependency. Colour types

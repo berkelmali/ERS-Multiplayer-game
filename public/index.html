@@ -58,7 +58,7 @@
          different cache key, so the offline page would load with no
          stylesheet at all. -->
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="style.css?v=3.25.0">
+    <link rel="stylesheet" href="style.css?v=3.26.0">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
 
     <!-- BOOT SAFETY NET (v3.7.0, narrowed in v3.16.3) — must stay INLINE and
@@ -293,7 +293,7 @@
              may run inline script (the CSP has broken this site three times).
              From either page, the header and footer nav reach all twelve — and
              sitemap.xml lists every one of them directly. -->
-        <div id="game-version">Berk Elmalı · v3.25.0
+        <div id="game-version">Berk Elmalı · v3.26.0
             <a id="btn-about" class="link-btn" href="/en/about" data-i18n="aboutButton">About</a>
             <a id="btn-privacy" class="link-btn" href="/en/privacy" data-i18n="privacyButton">Privacy</a>
         </div>
@@ -445,6 +445,28 @@
                         <div class="mode-foot">
                             <button id="btn-tomb-start" class="btn primary" data-i18n="tombStart">Enter the tomb</button>
                             <span id="tomb-best" class="mode-best"></span>
+                        </div>
+                    </div>
+                </article>
+                <!-- SENET (v3.26.0, council ERS-40): Egypt's own board game, played
+                     with the piles of an ordinary bot table (senet.js). The throw
+                     list is generated from the damage table, never typed here. -->
+                <article class="mode-card mode-senet">
+                    <div id="senet-emblem" class="mode-emblem"></div>
+                    <div class="mode-body">
+                        <h3 class="mode-title" data-i18n="senetTitle">Senet — the Game of Passing</h3>
+                        <p class="mode-tagline" data-i18n="senetTagline">Every pile is a throw. First past the thirtieth square wins.</p>
+                        <ul class="mode-facts">
+                            <li data-i18n="senetFact1">▦ 30 squares, 4 pieces</li>
+                            <li data-i18n="senetFact2">≋ The House of Water</li>
+                            <li data-i18n="senetFact3">☥ Pass to win</li>
+                        </ul>
+                        <p class="mode-desc" data-i18n="senetDesc">Egypt's own board game, played with the piles of ERS. Every pile a seat takes moves its piece: a slapped pile by its pattern — the rarer the slap, the further it goes — and a face-card pile by one. Land on the House of Water (27) and you wash back to the House of Life (15); land on a piece and you swap places. First past square 30 wins — or take all 52 cards. Classic rules.</p>
+                        <p class="senet-throws-cap" data-i18n="senetThrowsTitle">Throws — squares per pile:</p>
+                        <ul id="senet-throws" class="mode-facts senet-throws"></ul>
+                        <div class="mode-foot">
+                            <button id="btn-senet-start" class="btn primary" data-i18n="senetStart">Play Senet</button>
+                            <span id="senet-best" class="mode-best"></span>
                         </div>
                     </div>
                 </article>
@@ -1290,6 +1312,15 @@
             </div>
             <!-- v3.19.3: the stamp when the Duat keeps you (out of ankhs or rounds) -->
             <div id="duat-verdict" class="duat-verdict" role="alert" hidden></div>
+            <!-- v3.26.0: the Senet board beside your deck — where every seat's
+                 piece stands. Shown only during a race (senet.js); it moves when
+                 a pile is won and at no other moment (council ERS-40). -->
+            <div id="senet-hud" class="senet-hud" hidden>
+                <div id="senet-title" class="senet-title"></div>
+                <div id="senet-board" class="senet-board"></div>
+                <ul id="senet-legend" class="senet-legend"></ul>
+                <div id="senet-line" class="senet-line" role="status" aria-live="polite"></div>
+            </div>
             <div class="deck human-deck" id="human-deck"><span id="player-name-display" data-i18n="you">YOU</span>
                 <br><span id="p0-count" class="count">13</span><br><small data-i18n="tapToPlay">TAP TO PLAY</small>
             </div>
@@ -1471,7 +1502,7 @@
     </div>
 
     <!-- Note the type="module" -->
-    <script type="module" src="js/main.js?v=3.25.0"></script>
+    <script type="module" src="js/main.js?v=3.26.0"></script>
 </body>
 
 </html>

@@ -51,6 +51,9 @@ taşıyan çark. Bu, dekorasyon değil dünyadır — ama P6 gereği *ekranları
   aldığın her el gecenin bir saatidir, on ikinci kapıda güneş doğar (§3.5).
 - **Firavunun Mezarı:** yüz kartı meydan okuması bir karara dönüşür — üç kartın
   açık, hangisini atacağını seçersin; yedi oda, yedi bekçi (§3.6).
+- **Senet — Geçiş Oyunu (v3.26.0):** Mısır'ın kendi tahta oyunu, ERS'in
+  yığınlarıyla: her yığın bir atıştır, otuzuncu kareyi ilk geçen kazanır —
+  maçın yaklaşık yarısı kadar süren yeni bir oturum (§3.7).
 
 ### Uzun vade (günler–haftalar)
 - **Günlük Meydan Okuma:** günde bir puanlı koşu, herkese aynı pozisyon (P1, P4).
@@ -79,6 +82,7 @@ rapor, üzerinde karar verilmedikçe bir döngü değildir.
 | Tanrıların Masası | tanrıyı yenmek sıradan bir galibiyettir (**+40**), kaybetmek sıradan bir kayıp (**−15**); muska kozmetiktir | Ayrı bir ödül yok: düello bir maçtır |
 | Duat Yolculuğu | şafak bir galibiyettir (**+40**), Duat'ta kalmak bir kayıp (**−15**) | Aynı gerekçe |
 | Firavunun Mezarı | **ilk** tam soygun bir kez **+40** (bir galibiyet); başka hiçbir şey ödemez | Çiftlenemez (G3) |
+| Senet | geçiş bir galibiyettir (**+40**), bir botun geçişi bir kayıp (**−15**); kendine ait coin yok | Aynı gerekçe. **Bilinen sonuç (konsey ERS-40):** yarış aynı masanın yaklaşık yarısı kadar kart sürer, yani kazanan oyuncu için **saat başına** coin artar; **günlük** coin artmaz — sunucu her oyuncuya ve her moda günde **1200** tavanı koyar (`walletRules.js`, `firestore.rules`) |
 | Skinler (havuz) | 150 – 500, toplam **2950** | Kozmetik ilerleme |
 
 ### 3.2 Ra'nın Çarkı — kademe tablosu (v3.17.0)
@@ -211,6 +215,42 @@ kaçan ya da yanlış = 0). Pencere dolduğunda oran bir işarete çevrilir.
 
 ---
 
+### 3.7 Senet — Geçiş Oyunu (v3.26.0, konsey ERS-40)
+
+- **Tahta:** 30 kare, üç sıra, S biçimli yol (1–10 soldan sağa, 11–20 sağdan
+  sola, 21–30 yine soldan sağa). Herkes 1. karede başlar; her koltuğun bir taşı
+  var. Karelerdeki işaretler hayatta kalan tahtalardaki gibi: 15'te ankh (Hayat
+  Evi), 27'de dalgalar (Su Evi). Kurallar bu oyunun kendisinindir; Senet'in
+  antik kural kitabı yoktur (Bell, Kendall yeniden kurguları).
+- **Atış türetildi (#113):** şaplakla alınan yığın
+  `round(2 × DAMAGE[desen] / DAMAGE.doubles)`, en çok **5** (dört atış
+  çubuğunun en yüksek atışı) — Tanrıların Masası'nın ölçülmüş nadirlik
+  tablosu, karelere çevrilmiş: Çift 2, Sandviç 2, Onluk 3, Evlilik 5. Yüz
+  kartıyla alınan yığın **1**. Yalnız `THROW_SCALE = 2` ayarlandı
+  (`tools/sim-senet.mjs`): yarışlar maçın yaklaşık yarısı.
+- **Su Evi:** 27'ye tam denk gelen taş 15'e döner. **Yer değiştirme:** başka
+  bir taşın üstüne denk gelen taş onunla yer değiştirir (yeniden kurguların
+  yakalama kuralı); Hayat Evi istediği kadar taş taşır. Her düşüş ve her yer
+  değiştirme HUD satırında ve günlükte söylenir, tahtada uçar (koşul 4).
+- **Bitiş:** 30. kareyi geçen kazanır (`GameState.endMatch`); 52 kart yine
+  kazanır. Klasik dört kural yarış boyunca kilitli.
+- **Ölçüm (n=800, model kahramanlar, sim-senet):** yarış, tahtasız aynı masanın
+  kartlarının yaklaşık yarısı (Zor/ortalama 188'e karşı 378); maçların %55–87'si
+  geçişle biter; zayıf kahramanın şansı artar (Zor/yavaş %3,5 → %11,6), güçlü
+  kahramanınki değişmez (%100). Gerçek oyuncu verisi yok — bu bir yargı,
+  ölçüm değil.
+- **Ekran (koşul 9, ölçüldü):** masaüstünde tahta destenin sağında, alt
+  bölgenin sağ kenarında biter (emoji/sohbet düğmeleri o kenarın dışında
+  asılı). Telefonda yığın ile deste arasındaki boşluğa sığdırılır ve deste
+  sıra sende kalkıp büyüdüğünde bile ona değmez (`liftedDeckTop`); 375×667
+  gibi kısa ekranda üç sıra sığmaz, aynı yol **tek sıra şerit** olarak
+  çizilir (`phoneLayout`). Renkler masadaki isimlerin yanında nokta olarak
+  durur; cümleler günlüğe düşer. Smoke altı ekran boyunda tahtanın yığına,
+  destelere ve düğmelere binmediğini ölçer.
+- **Dokunmadığı:** `game.js` ve `ai.js` değişmedi; oda, protokol, Günlük
+  Meydan Okuma yok (yalnız solo). Tahta yalnız bir yığın kazanıldığında
+  kıpırdar; kart oynanırken hiçbir şey hareket etmez (koşul 5, P1).
+
 ## 4. Görsel ve hareket dili
 
 - **Ekran çerçeveleri** (panel, buton, modal) ortak yüzeyi kullanır:
@@ -242,6 +282,7 @@ kaçan ya da yanlış = 0). Pencere dolduğunda oran bir işarete çevrilir.
 
 | Sürüm | Değişiklik |
 |---|---|
+| 1.4 (v3.26.0) | Senet — Geçiş Oyunu (§2, §3.1, §3.7): Efsaneler'de üçüncü yolculuk; atışlar hasar tablosundan türetildi, klasik kurallar kilitli, yalnız solo. Konsey ERS-40 (`COUNCIL-v3.26.0-senet.md`); Ka Düellosu ölçümle geri çekildi, Thoth'un Kitabı sonraya kaydedildi. |
 | 1.3.2 (v3.23.3) | Maçtan çıkış artık kalıcı kayda **yenilgi** olarak da yazılır ve galibiyet serisini bitirir (§2 ekonomi tablosu; v2.9.0 davranışı, v3.18 yeniden yazımında kaybolmuştu). Konsey ERS-35. |
 | 1.3.1 (v3.23.1) | Görünen Kaplama: çok oyunculu masada kaplaman herkese görünür (§3.4), kural değişikliği yok, sahiplik odada doğrulanamaz (konsey ERS-33). |
 | 1.3 (v3.23.0) | Tanrı Yükselişi I–III (§3.4), yalnız solo, ödül altın çerçeve; tablo `ascension.js`'te, bantlar `sim-pantheon --levels` ile ölçüldü (konsey ERS-33). |

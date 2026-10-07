@@ -39,6 +39,8 @@ export const GameManager = {
         // Same for a Pantheon duel: the god's seat, rules and name go back.
         import('./pantheon.js').then(m => m.PantheonMode.stop()).catch(() => {});
         import('./duat.js').then(m => m.DuatMode.stop()).catch(() => {});
+        // v3.26.0: and a Senet race — its board, its locked rules and its rematch.
+        import('./senet.js').then(m => m.SenetMode.stop()).catch(() => {});
 
         // Clean up any stray UI states if possible.
         //
